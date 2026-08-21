@@ -1,3 +1,8 @@
+---
+name: remote-idea-mcp-usage
+description: Use when 通过 JetBrains IDEA MCP 读取代码、构建项目、查询数据库、设置本地权限，需判断操作是否需要确认或用户授权，或解释默认允许/需确认/必须授权的三级权限。
+---
+
 # IDEA MCP 使用范围与操作规范
 
 ## 1. 文档目的
