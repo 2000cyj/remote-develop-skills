@@ -1,6 +1,6 @@
 ---
-name: basics-claude-hooks-vue
-description: 判断某个自动化任务（静态检查、上下文注入、工具拦截、质量门、会话清理等）应该以 Skill 方式手动触发，还是挂到 Claude Code 的某个生命周期 hook（SessionStart / UserPromptSubmit / PreToolUse / PostToolUse / Stop / SessionEnd 等），并给出放到每个阶段的优缺点与配置方式。适用于在本项目为 Claude Code 新增或改造 hooks、排查 hook 不生效或误拦截、向新人解释 hook 生命周期时。
+name: remote-claude-hooks
+description: Use when 判断某个自动化任务该用 Skill 还是 Hook、选择哪个生命周期事件（SessionStart/UserPromptSubmit/PreToolUse/Stop 等）、排查 hook 不生效或误拦截、向新人解释 hook 生命周期。
 ---
 
 # Claude Code Hooks 使用说明

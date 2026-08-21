@@ -1,6 +1,6 @@
 ---
-name: basics-permission-summary-vue
-description: 在 cashier 微应用中应用权限汇总导出的统一规范。适用于需要把某个目录下所有按钮操作权限汇总成结构化清单、扫描 checkPermission 调用点、补齐动态权限码、生成可执行 SQL，或按固定模板产出 docs/权限/ 下的三个文件（权限模板.sql / package.json / 权限.sql）。
+name: remote-permission-summary
+description: Use when 把某目录下所有按钮操作权限汇总成结构化清单、扫描 checkPermission 调用点、补齐动态权限码、生成可执行 SQL，按模板产出 docs/权限/ 下的三个文件。
 ---
 
 # Cashier Permission Summary

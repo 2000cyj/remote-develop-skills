@@ -1,6 +1,6 @@
 ---
-name: basics-button-permission-vue
-description: 在 cashier 微应用中应用按钮操作权限的统一规范。适用于需要确认按钮权限码命名（Insert/Check/Change/Delete）、给新增/查看/编辑/删除等按钮添加操作权限控制、改造现有按钮权限的写法与兜底逻辑、处理下拉菜单空菜单兜底、列表页操作列按权限隐藏、或按板块分级控制查看权限，确保全模块权限写法一致。
+name: remote-button-permission
+description: Use when 给 cashier 等子应用页面按钮添加操作权限控制、改造现有按钮权限写法、规范权限码命名、处理下拉菜单空菜单兜底、列表页操作列按权限隐藏，确保全模块权限写法一致。
 ---
 
 # Cashier Button Permission

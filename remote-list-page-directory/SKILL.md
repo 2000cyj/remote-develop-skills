@@ -1,6 +1,6 @@
 ---
-name: basics-list-page-directory-vue
-description: 在 cashier 微应用中应用列表页目录结构的统一规范。适用于需要在 src/pages/ 下新建页面或业务模块、改造现有页面目录、组织新增/修改/详情表单页（addOrEdit 内文件可拆可合、可递归嵌套 addOrEdit）、确定 apis/components/config/enum/utils 的文件归属、或判定共用放外层与独立放当前，确保所有页面目录结构一致。
+name: remote-list-page-directory
+description: Use when 在 src/pages/ 下新建或改造页面/业务模块目录、组织新增/修改/详情表单页、确定 apis/components/config/enum/utils 的归属、判定共用放外层与独立放当前，确保所有页面目录结构一致。
 ---
 
 # Cashier List Page Directory

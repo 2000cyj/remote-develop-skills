@@ -1,6 +1,6 @@
 ---
-name: basics-ts-es-check-vue
-description: 在 cashier 微应用中运行 TypeScript 与 ESLint 静态检查并定位/修复问题。适用于改动前或提交前批量扫描 src/、处理 vue-tsc 或 eslint 报出的错误、遇到 TS2554（renderDialog 参数个数）、style/member-delimiter-style 缺逗号、vue/valid-template-root 模板缺根元素、no-multiple-empty-lines、unused-imports、unused eslint-disable 等错误时定位根因，以及区分「cashier 自身问题」与「packages/share 包既有问题」。
+name: remote-ts-es-check
+description: Use when 改动前后批量扫描 src/、定位 vue-tsc 或 eslint 报错根因（TS2554、member-delimiter、valid-template-root、unused-imports 等），区分 cashier 自身问题与 packages/share 既有问题。
 ---
 
 # Cashier TS & ESLint Check
