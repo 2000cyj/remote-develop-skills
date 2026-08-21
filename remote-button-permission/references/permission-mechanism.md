@@ -1,6 +1,6 @@
 # 权限机制与权限码命名
 
-本文件是 `basics-button-permission-vue` 的机制背景与命名规范。先读它，再执行 SKILL.md 的 Workflow。
+本文件是 `remote-button-permission` 的机制背景与命名规范。先读它，再执行 SKILL.md 的 Workflow。
 
 ## 权限机制
 

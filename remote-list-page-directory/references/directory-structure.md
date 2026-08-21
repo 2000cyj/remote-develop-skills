@@ -1,6 +1,6 @@
 # 目录结构与放置规则
 
-本文件是 `basics-list-page-directory-vue` 的目录结构与放置规则。先读它，再执行 SKILL.md 的 Workflow。
+本文件是 `remote-list-page-directory` 的目录结构与放置规则。先读它，再执行 SKILL.md 的 Workflow。
 
 ## 固定目录项
 

@@ -1,6 +1,6 @@
 # SQL 生成脚本
 
-本文件是 `basics-permission-summary-vue` Workflow 第 5 步用的 node 脚本。把 `PKG` / `OUT` 改成目标目录的实际路径即可。
+本文件是 `remote-permission-summary` Workflow 第 5 步用的 node 脚本。把 `PKG` / `OUT` 改成目标目录的实际路径即可。
 
 ```bash
 node <<'NODESCRIPT'

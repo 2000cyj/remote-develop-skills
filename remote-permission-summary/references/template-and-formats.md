@@ -1,6 +1,6 @@
 # 产出物格式与固定模板
 
-本文件是 `basics-permission-summary-vue` 的产出物格式说明。SKILL.md Workflow 第 2~5 步按需使用。
+本文件是 `remote-permission-summary` 的产出物格式说明。SKILL.md Workflow 第 2~5 步按需使用。
 
 ## 产出物（目标目录/docs/权限/ 下，共 3 个）
 
@@ -53,7 +53,7 @@ INSERT INTO `bi_sys`.`sys_menu_permission` (`two_level_id`, `menu_id`, `menu_nam
     "操作类型说明": "新增=Insert / 查看=Check / 编辑=Change / 删除=Delete / 特殊=...",
     "权限码总数": N,
     "模块数": M,
-    "配套规范": "basics-develop-skills-vue/basics-button-permission-vue/SKILL.md",
+    "配套规范": "remote-button-permission/SKILL.md",
     "权限机制": "主应用经 qiankun 透传 buttonPermissions[]，子应用 setButtonPermissions 存储，页面用 checkPermission('码') 匹配"
   },
   "<module>": {

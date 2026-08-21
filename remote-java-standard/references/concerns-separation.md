@@ -238,3 +238,216 @@ public Boolean updateCompanyAll(CompanySaveRequestDTO request) {
 3. **业务规则**按类型分层放置：DTO 注解 → Service 入口前置 → 状态机校验 → 数据级唯一性下沉到 Component
 
 只要这 3 个动作到位，目录结构和代码结构会自然清晰，无需靠 IDE "Find Usages" 链式追溯。
+
+---
+
+## 业务-数据归属精确规则（Component vs Service 聚合层，按行级）
+
+本章明确**两类 Service** 之间的边界：哪些 Service 文件放哪一层、按行级允许什么 / 禁止什么。
+
+### 1. 物理位置决定层
+
+| Service 类型 | Service 接口路径 | Service Impl 路径 |
+|------|------|------|
+| **Component Service**（数据访问层）| `bi-cashier-component/src/main/java/com/obo/bi/cashier/service/IXxxService.java` | `bi-cashier-component/src/main/java/com/obo/bi/cashier/service/impl/XxxServiceImpl.java` |
+| **Service 聚合层**（业务编排） | `bi-cashier-service/src/main/java/com/obo/bi/cashier/service/IXxxManageService.java` | `bi-cashier-service/src/main/java/com/obo/bi/cashier/service/impl/XxxManageServiceImpl.java` |
+| **Helper / Convert / Strategy** | `bi-cashier-component/src/main/.../helper/convert/` 或 `bi-cashier-service/src/main/.../utils/` | （同前） |
+
+### 2. Component Service 行级模板（数据访问）
+
+```java
+package com.obo.bi.cashier.service;
+
+import com.baomidou.mybatisplus.extension.service.IService;
+import com.obo.bi.cashier.po.Xxx;
+import com.obo.bi.cashier.mapper.XxxMapper;
+
+public interface IXxxService extends IService<Xxx> {
+    // 数据访问方法：纯 CRUD
+    Xxx getById(Long id);
+    List<Xxx> listByCompanyUniqueValue(String companyUniqueValue);
+}
+
+package com.obo.bi.cashier.service.impl;
+
+@Slf4j
+@Service
+public class XxxServiceImpl
+        extends ServiceImpl<XxxMapper, Xxx>                          // 行 N：必须 extends ServiceImpl
+        implements IXxxService {
+
+    @Override
+    public Xxx getById(Long id) {
+        if (id == null) return null;                                 // 判空 → 直接返回 null
+        return baseMapper.selectById(id);                            // 调 Mapper
+    }
+
+    @Override
+    public List<Xxx> listByCompanyUniqueValue(String companyUniqueValue) {
+        if (StringUtils.isBlank(companyUniqueValue)) {
+            return Collections.emptyList();                          // 空集合
+        }
+        return this.lambdaQuery()                                    // 链式查询
+                .eq(Xxx::getCompanyUniqueValue, companyUniqueValue)
+                .eq(Xxx::getDeleted, 0)
+                .list();
+    }
+}
+```
+
+### 3. Component Service 禁止的事（按行级）
+
+| 行级位置 | 禁止内容 |
+|---------|----------|
+| **类级 Javadoc** | 不写"业务逻辑" / "状态机" / "事务编排" |
+| **类注解** | 不加 `@Transactional` |
+| **@Override 公共方法体** | 不抛 `throw new BusinessException` |
+| **@Override 公共方法体** | 不调 Feign Client |
+| **@Override 方法体** | 不写 `@Resource` 注入其他 Component Service |
+| **@Override 方法体** | 不写 `@Resource` 注入 Helper 业务层 |
+| **@Override 方法体** | 不写 `@Resource` 注入 Feign / 数据字典 Provider |
+| **私有方法** | 不含业务校验（`if (xxx) throw ...`） |
+| **@Override 方法体** | 不直接调 `this.lambdaQuery()` 拼复杂业务聚合 |
+
+### 4. Service 聚合层行级模板（业务编排）
+
+```java
+package com.obo.bi.cashier.service;
+
+import com.obo.bi.cashier.dto.XxxSaveDTO;
+import com.obo.bi.cashier.po.Xxx;
+import com.obo.bi.cashier.service.IXxxManageService;
+import com.obo.bi.cashier.service.IXxxService;                // 注入 Component Service
+import com.obo.bi.cashier.helper.CashierManageHelper;
+import com.obo.bi.gateway.service.IFileManageClient;            // 注入 Feign Client
+
+public interface IXxxManageService {
+    /** 业务编排入口：先校验后编排 */
+    Boolean saveXxx(XxxSaveDTO dto);
+}
+
+package com.obo.bi.cashier.service.impl;
+
+@Slf4j
+@Service
+public class XxxManageServiceImpl implements IXxxManageService {
+
+    @Resource
+    private IXxxService xxxService;                                // 注入 Component Service
+
+    @Resource
+    private CashierManageHelper cashierManageHelper;               // 注入 Helper
+
+    @Resource
+    private IFileManageClient fileClient;                         // 注入 Feign Client
+
+    @Override
+    public Boolean saveXxx(XxxSaveDTO dto) {
+        if (StringUtils.isBlank(dto.getXxx())) {                   // 业务校验（直接判空）
+            throw new BusinessException("xxx 不能为空");
+        }
+        return xxxService.saveXxx(dto);                            // 调 Component Service
+    }
+}
+```
+
+### 5. Service 聚合层禁止的事（按行级）
+
+| 行级位置 | 禁止内容 |
+|---------|----------|
+| **类声明** | 不写 `extends ServiceImpl<...>`（这是 Component 层的事） |
+| **类级 Javadoc** | 不写"数据访问" / "CRUD" |
+| **类字段** | 不使用 `baseMapper`（baseMapper 是 Component 私有） |
+| **@Override 方法体** | 不直接写 `this.lambdaQuery()` / `this.lambdaUpdate()` |
+| **@Override 方法体** | 不写 SQL 字符串 |
+| **@Override 方法体** | 不调 `baseMapper.xxx()` 直接 Mapper |
+| **@Override 方法** | 不写单纯的 `pageXxx()` / `getById()` 这种 CRUD |
+
+### 6. Service 接口命名的硬规则
+
+| Service 类型 | 接口名 | 路径 |
+|------|------|------|
+| 数据访问 | `IXxxService`（**不含 Manage**） | `bi-cashier-component/.../service/` |
+| 业务编排 | `IXxxManageService`（**必须含 Manage**） | `bi-cashier-service/.../service/` |
+
+**反例**：
+- `IXxxService` 在 `bi-cashier-service` —— 立即搬移到 `bi-cashier-component`
+- `IXxxManageService` 在 `bi-cashier-component` —— 立即搬移到 `bi-cashier-service`
+- `IXxxService` 名字里有 `Service` 但接口内只做 CRUD —— 放 Component
+- `IXxxService` 名字里有 `Service` 但接口内有业务校验或事务 —— 名字错，应该叫 `IXxxManageService` 放 Service 聚合层
+
+### 7. Service Impl 命名的硬规则
+
+| Service 类型 | Impl 名 | 路径 |
+|------|------|------|
+| 数据访问 | `XxxServiceImpl extends ServiceImpl<XxxMapper, T>` | `bi-cashier-component/.../service/impl/` |
+| 业务编排 | `XxxManageServiceImpl implements IXxxManageService` | `bi-cashier-service/.../service/impl/` |
+
+**反例**：
+- `XxxServiceImpl` 出现在 `bi-cashier-service`（应放 Component）
+- `XxxManageServiceImpl` 出现在 `bi-cashier-component`（应放 Service 聚合层）
+- `XxxServiceImpl` 不含 `extends ServiceImpl`（漏掉）
+- `XxxServiceImpl` 不含 `implements IXxxService`（漏掉）
+
+### 8. 已迁移的实际例子（这轮工作）
+
+| 旧位置 | 新位置 | 触发原因 |
+|------|------|------|
+| `bi-cashier-service/.../service/IAuditFileRelationService.java` | `bi-cashier-component/.../service/IAuditFileRelationService.java` | 缺 Manage 后缀 → 改放 Component |
+| `bi-cashier-service/.../service/ISubAccountAuditService.java` | `bi-cashier-component/.../service/ISubAccountAuditService.java` | 同上 |
+| `bi-cashier-service/.../service/ISubAccountService.java` | `bi-cashier-component/.../service/ISubAccountService.java` | 同上 |
+| `bi-cashier-service/.../service/impl/AuditFileRelationServiceImpl.java` | `bi-cashier-component/.../service/impl/AuditFileRelationServiceImpl.java` | 跟随接口 |
+| `bi-cashier-service/.../service/impl/SubAccountAuditServiceImpl.java` | `bi-cashier-component/.../service/impl/SubAccountAuditServiceImpl.java` | 同上 |
+| `bi-cashier-service/.../service/impl/SubAccountServiceImpl.java` | `bi-cashier-component/.../service/impl/SubAccountServiceImpl.java` | 同上 |
+
+### 9. Component Service 业务校验的红线
+
+即使 Component Service 的方法中有"业务校验"（如 `assertRelationComplete`），仍**应在 Component 层**：
+
+```java
+// ✅ 允许：Component Service 内部字段完整性校验
+@Override
+public void save(List<AuditFileRel> relations) {
+    for (AuditFileRel relation : relations) {
+        assertRelationComplete(relation);                            // 字段完整性（数据约束）
+        assertNoSensitiveKeyword(relation);                          // 字段关键字（数据约束）
+    }
+    baseMapper.insert(...);
+}
+
+// ❌ 禁止：Component Service 业务校验（应放 Service 聚合层）
+if (!"admin".equals(getRole())) {
+    throw new BusinessException("无权操作");                           // 业务校验 = Service 聚合层的事
+}
+```
+
+**判断准则**：
+- "字段 X 不能为空"、"URL 不能含 password" → Component Service（数据约束）
+- "用户没权限"、"状态已取消不能编辑"、"业务规则 A 不满足" → Service 聚合层（业务校验）
+
+### 10. 跨层调用规则
+
+```
+Service 聚合层 → Component Service          ✅ 允许
+Service 聚合层 → Mapper（baseMapper.xxx）   ❌ 禁止（必须通过 Component Service）
+Component Service → Mapper（baseMapper.xxx）   ✅ 允许
+Component Service → Service 聚合层           ❌ 禁止（反向依赖）
+Component Service → 其他 Component Service    ❌ 禁止（横向依赖）
+Service 聚合层 → Feign Client                 ✅ 允许
+Component Service → Feign Client             ❌ 禁止（数据层不跨服务）
+```
+
+### 11. 反例清单（按行级）
+
+- ❌ Component Service 接口 `extends Service` 而不是 `IService<T>`
+- ❌ Component Service Impl 没 `extends ServiceImpl<XxxMapper, T>`
+- ❌ Service 聚合层 Impl `extends ServiceImpl`（侵入 Component 层）
+- ❌ Service 聚合层 Impl 直接调 `baseMapper.xxx()`
+- ❌ Service 聚合层 Impl 写 `this.lambdaQuery()` 链式
+- ❌ Service 聚合层 Impl 写 SQL 字符串
+- ❌ Component Service 抛 `throw new BusinessException("业务错误")`
+- ❌ Component Service 加 `@Transactional` 处理跨表写入
+- ❌ Component Service 注入 Feign Client 或数据字典 Provider
+- ❌ Service 聚合层 Impl 不依赖 Component Service 直接调 Mapper
+- ❌ 文件名 `IXxxService` 出现在 `bi-cashier-service` 模块
+- ❌ 文件名 `IXxxManageService` 出现在 `bi-cashier-component` 模块

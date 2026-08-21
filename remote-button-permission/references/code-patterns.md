@@ -1,6 +1,6 @@
 # 代码模式与自检清单
 
-本文件是 `basics-button-permission-vue` 的代码落地示例。SKILL.md Workflow 第 3~6 步按需使用。
+本文件是 `remote-button-permission` 的代码落地示例。SKILL.md Workflow 第 3~6 步按需使用。
 
 ## 基本按钮 v-if
 

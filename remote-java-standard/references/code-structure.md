@@ -285,3 +285,143 @@ public final class XxxUtils {
     }
 }
 ```
+
+---
+
+## DTO/VO 设计规范
+
+### 1. DTO 命名
+
+| 类型 | 命名 | 例 |
+|------|------|-----|
+| 分页查询 | `XxxPageDTO` | `BankCardPageDTO` |
+| 通用保存 | `XxxSaveDTO` | `BankCardSaveDTO` |
+| 复合保存（含子表） | `XxxSaveRequestDTO` | `StoreSaveRequestDTO` |
+| 批量更新字段 | `XxxBatchUpdateFieldDTO` | `BankCardBatchUpdateFieldDTO` |
+| 详情查询 | `XxxDetailRequestDTO` | （少见） |
+
+### 2. PageDTO 字段规约
+
+```java
+@Data
+@ApiModel("银行卡分页查询DTO")
+public class BankCardPageDTO {
+    @ApiModelProperty("页码")
+    private Integer pageNum = 1;
+    @ApiModelProperty("每页数量")
+    private Integer pageSize = 10;
+    @ApiModelProperty("账户名称（模糊查询）")
+    private String accountName;
+    @ApiModelProperty("账号列表（已选项）")
+    private List<String> selectedAccountNumbers;
+    @ApiModelProperty("开户行编码列表")
+    private List<String> bankCodes;
+    @ApiModelProperty("开户日期开始")
+    @DateTimeFormat(pattern = "yyyy-MM-dd")
+    @JsonFormat(pattern = "yyyy-MM-dd")
+    private LocalDate openDateStart;
+    @ApiModelProperty("开户日期结束")
+    @DateTimeFormat(pattern = "yyyy-MM-dd")
+    @JsonFormat(pattern = "yyyy-MM-dd")
+    private LocalDate openDateEnd;
+}
+```
+
+**Page 字段标准**：
+- `pageNum`（Integer，默认 1）
+- `pageSize`（Integer，默认 10）
+- 业务字段用 `List`（多选 IN）或 `String`（模糊）
+
+### 3. 复合保存 DTO（嵌套结构）
+
+```java
+@Data
+@ApiModel("店铺保存请求（复合）")
+public class StoreSaveRequestDTO {
+    @ApiModelProperty("店铺业务唯一流水号")
+    private String uniqueValue;
+    
+    @ApiModelProperty("变更信息列表")
+    private List<ChangeInfoItem> changeInfoList;
+    
+    @Data
+    @ApiModel("变更信息项")
+    public static class ChangeInfoItem {
+        @ApiModelProperty("变更信息ID")
+        private Long id;
+        @ApiModelProperty("变更日期")
+        @DateTimeFormat(pattern = "yyyy-MM-dd")
+        @JsonFormat(pattern = "yyyy-MM-dd")
+        private LocalDate changeDate;
+    }
+}
+```
+
+**嵌套静态类**模式（参考 `StoreSaveRequestDTO.ChangeInfoItem`）。
+
+### 4. VO 命名
+
+| 类型 | 命名 | 例 |
+|------|------|-----|
+| 详情 | `XxxVO` | `BankCardVO` |
+| 列表 | `XxxListVO` | `BankCardListVO` |
+| 嵌套详情 | `XxxDetailVO` | `StoreDetailVO` |
+| 导出 | `XxxExportVO` | `BankCardExportVO` |
+
+### 5. ListVO vs DetailVO 字段差异
+
+| 字段 | ListVO | DetailVO |
+|------|--------|---------|
+| 主键 | 有 | 有 |
+| 基础字段 | 必要字段 | 全部字段 |
+| 外键关联 | 不嵌入 | 嵌入（关联名、关联状态） |
+| 子表 | 不嵌入 | 嵌入 List（变更信息、附件） |
+| 审计字段 | createTime / updateTime | createTime / updateTime / createUser / updateUser |
+| 状态快照 | 简版 | 完整 |
+
+### 6. DTO/VO 通用约束
+
+- 必须 `@Data` + `@ApiModel`
+- 字段必须有 `@ApiModelProperty` + 中文
+- **不能**有业务逻辑（不要放 helper 方法）
+- **不能**持有 Service / Component 依赖
+- 日期字段同时 `@DateTimeFormat` + `@JsonFormat`
+- 列表字段用 `List<Xxx>`（统一不带 `s` 后缀）
+
+### 7. 校验注解（javax.validation）
+
+```java
+@NotBlank(message = "印章名称不能为空")
+@Size(max = 100, message = "印章名称长度不能超过 100")
+private String sealName;
+```
+
+| 注解 | 用途 |
+|------|------|
+| `@NotBlank` | 字符串非空（比 `@NotNull` + `@NotEmpty` 更严） |
+| `@NotNull` | 任意对象非空 |
+| `@Size` | 字符串长度 |
+| `@Pattern` | 正则 |
+| `@Min` / `@Max` | 数值范围 |
+| `@Email` | 邮箱格式 |
+| `@Valid` | 嵌套校验（触发嵌套 DTO 上的校验） |
+
+**规则**：`message` 必须中文。
+
+### 8. 嵌套 DTO 校验
+
+```java
+@Valid  // 触发嵌套校验
+private List<ChangeInfoItem> changeInfoList;
+```
+
+### 9. 反例
+
+- ❌ DTO 字段没 `@ApiModelProperty`
+- ❌ DTO 字段命名 snake_case
+- ❌ 字段不用 `List<Xxx>` 而用 `Xxxs` / `XxxList`
+- ❌ 复合 DTO 把子表平铺（应该嵌套）
+- ❌ VO 嵌入 Service 依赖
+- ❌ 校验注解 message 是英文
+- ❌ 校验注解缺失
+- ❌ DTO 字段无 `@ApiModel`

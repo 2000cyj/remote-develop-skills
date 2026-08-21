@@ -207,3 +207,151 @@ docs/sql/2026.04.10/bi_cashier.sql
 | `cashier_store_change_info` | `store_unique_value`、`change_date` | `idx_store_unique_value` / `idx_change_date` |
 
 注：`cashier_company`、`cashier_employee_file_*`、`cashier_file_*` 等表的具体列结构以最新 DDL 为准。
+
+---
+
+## PO 字段映射规约
+
+PO 是数据访问的核心载体。本节明确字段映射、类型选择、命名规则。
+
+### 1. PO 类结构模板
+
+```java
+package com.obo.bi.cashier.po;
+
+import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
+import com.baomidou.mybatisplus.annotation.TableId;
+import com.baomidou.mybatisplus.annotation.TableName;
+import com.obo.core.common.model.BaseEntity;
+import io.swagger.annotations.ApiModel;
+import io.swagger.annotations.ApiModelProperty;
+import lombok.Data;
+
+@Data
+@TableName("cashier_bank_card")
+@ApiModel("银行卡实体")
+public class BankCard extends BaseEntity implements Serializable {
+
+    @ApiModelProperty("主键ID")
+    @TableId(type = IdType.AUTO)
+    @TableField("id")
+    private Long id;
+
+    @ApiModelProperty("账号")
+    @TableField("account_number")
+    private String accountNumber;
+}
+```
+
+**类级注解顺序**：
+- `@Data`（Lombok）
+- `@TableName("cashier_xxx")`（MyBatis-Plus）
+- `@ApiModel("xxx 实体")`（Swagger）
+
+**继承**：`extends BaseEntity`（统一审计字段）+ `implements Serializable`（虽然 MP 3.x 不强制，但保留）。
+
+### 2. 字段类型映射表
+
+| 业务 | Java 类型 | DB 类型 | 注解 |
+|------|----------|---------|------|
+| 主键 | `Long` | `bigint` | `@TableId(type = IdType.AUTO)` |
+| 业务唯一标识 | `String` | `varchar(64)` | `@TableField("unique_value")` |
+| 名称 | `String` | `varchar(255)` | `@TableField(...)` |
+| 长文本 | `String` | `text` | `@TableField(...)` |
+| 金额 | `BigDecimal` | `decimal(18,4)` | `@TableField(...)` |
+| 日期 | `LocalDate` | `date` | `@DateTimeFormat` + `@JsonFormat(pattern = "yyyy-MM-dd")` |
+| 日期时间 | `LocalDateTime` | `datetime` | `@DateTimeFormat` + `@JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")` |
+| 状态码 | `String` | `varchar(32)` | `@TableField(...)` |
+| 数量 | `Integer` | `int` | `@TableField(...)` |
+| 布尔 | `Boolean` | `tinyint` | `@TableField(...)` |
+| 外键 ID | `Long` | `bigint` | `@TableField("xxx_id")` |
+
+### 3. 字段命名映射
+
+| 层面 | 命名规则 |
+|------|---------|
+| Java 字段 | `camelCase`（如 `accountNumber`） |
+| 数据库列 | `snake_case`（如 `account_number`） |
+| 关联外键 | `<entity>_id` 或 `<entity>_unique_value` |
+
+### 4. `@TableField` 必写
+
+即使 Java 字段名与数据库列名**完全相同**也建议写出来：
+
+```java
+@ApiModelProperty("账号")
+@TableField("account_number")  // 即使 accountNumber 与 account_number 转换后相同，也显式
+private String accountNumber;
+```
+
+**理由**：明确表达意图，避免后续修改字段名时遗漏更新 DB 列。
+
+### 5. 字段必含项
+
+每个字段必须有：
+
+```java
+@ApiModelProperty("中文注释")            // Swagger 文档
+@TableField("snake_case")              // 显式映射
+private Type fieldName;               // 驼峰
+```
+
+日期字段额外：
+
+```java
+@ApiModelProperty("开户日期")
+@DateTimeFormat(pattern = "yyyy-MM-dd")
+@JsonFormat(pattern = "yyyy-MM-dd")
+@TableField("open_date")
+private LocalDate openDate;
+```
+
+### 6. BaseEntity 继承字段
+
+`extends BaseEntity` 自动获得：
+
+- `id`（主键）
+- `createUser` / `updateUser`（操作人）
+- `createTime` / `updateTime`（操作时间）
+- `deleted`（软删除标志，0=未删，1=已删）
+- `tenantId`（多租户 ID）
+
+**不要**在 PO 中重复声明这些字段。
+
+### 7. 软删除字段
+
+统一 0/1：
+
+```java
+// 默认未删
+WHERE deleted = 0
+
+// 软删除
+this.lambdaUpdate().set(Xxx::getDeleted, 1).eq(Xxx::getId, id).update();
+```
+
+### 8. 表名命名
+
+`@TableName("cashier_{entity_snake_case}")`：
+
+| 实体 | 表名 |
+|------|------|
+| BankCard | `cashier_bank_card` |
+| Seal | `cashier_seal` |
+| Store | `cashier_store` |
+| StoreChangeInfo | `cashier_store_change_info` |
+| AuditApplication | `cashier_audit_application` |
+
+**规则**：`cashier_` 前缀 + 实体名（复数 → 单数）。
+
+### 9. 反例
+
+- ❌ Java 字段用 snake_case（`private String account_number`）
+- ❌ 字段没 `@TableField`（隐式映射易错）
+- ❌ 主键用 `String` 而非 `Long`
+- ❌ 金额用 `Double` 而非 `BigDecimal`
+- ❌ 字段类型用 `Date` 而非 `LocalDate`
+- ❌ 字段无 `@ApiModelProperty`（无 Swagger 中文文档）
+- ❌ 重复声明 BaseEntity 字段（`@TableField("create_user")` 在自己 PO 里）
+- ❌ 表名无 `cashier_` 前缀

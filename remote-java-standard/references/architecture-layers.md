@@ -301,3 +301,569 @@ src/main/java/com/obo/bi/cashier
 | 业务静态工具（导出、字典翻译） | `bi-cashier-service/.../utils/` |
 | Component 内部组件复用（Helper、Convert、TypeHandler） | `bi-cashier-component/.../{helper,convert,handler}/` |
 | Mapper XML | `bi-cashier-web/src/main/resources/mapper/` |
+
+---
+
+## Controller 模式规范（来自 BankCard/Seal/Store 三 Controller 实测）
+
+本节对照 3 个真实 Controller 提炼——按这些**实际写法**写新 Controller，不用猜测。
+
+### 1. 路由前缀
+
+全部 Controller 用统一业务前缀：
+
+```
+@RequestMapping("/cashier/{module}")
+```
+
+其中 `{module}` 为业务单数：bankCard、seal、store、company、operatingScope 等。**小写驼峰**，**单数**。
+
+### 2. HTTP 方法选择：全部 POST
+
+Controller 接口**一律用 `@PostMapping`**——即使分页查询、单字段查询也不例外：
+
+```java
+@ApiOperation("分页查询银行卡")
+@PostMapping("/pageBankCard")
+public Result<PageResult> pageBankCard(@RequestBody BankCardPageDTO dto) {
+    return Result.success(bankCardManageService.pageBankCard(dto));
+}
+```
+
+| 场景 | 用 POST 的原因 |
+|------|---------------|
+| 列表分页 | 入参复杂（条件多）→ `@RequestBody`；POST 不在 URL 暴露查询条件 |
+| 详情（按 uniqueValue） | 仍用 POST + `@RequestParam`；统一无 GET 的接口风格 |
+| 新增/更新 | 必有 `@RequestBody` |
+| 删除 | 仍用 POST + `@RequestParam("uniqueValue")`；POST 不暴露资源路径 |
+| 列表/下拉 | 用 `@PostMapping("/listAllXxx")` |
+| 导出 | `@PostMapping("/exportXxx")` → 返回 fileId，不直接给二进制 |
+
+> **反例**：`@GetMapping("/xxx")` 不要出现在业务接口。
+> 例外：文件下载接口可以用 `Content-Type: application/octet-stream` GET（不在本规则范围）。
+
+### 3. 入参方式
+
+三种入参模式严格分工：
+
+| 场景 | 注解 | 例子 |
+|------|------|------|
+| DTO 复合入参（多字段） | `@RequestBody XxxDTO dto` | `@RequestBody BankCardPageDTO dto` |
+| 单字段（业务唯一键） | `@RequestParam("accountNumber") String accountNumber` | **必须带参数名** |
+| 可选字段 | `@RequestParam(value = "x", required = false) String x` | 显式 `required = false` |
+
+```java
+// 必传：@RequestParam("accountNumber") — 必须带引号参数名
+public Result<BankCardVO> queryByAccountNumber(
+        @RequestParam("accountNumber") String accountNumber) { ... }
+
+// 可选：@RequestParam(value = "uniqueValue", required = false) 
+public Result<List<BankCardListVO>> listAllBankCard(
+        @RequestParam(value = "uniqueValue", required = false) String uniqueValue) { ... }
+```
+
+> **禁止**：`@RequestParam(required = false)` 但字符串缺 `value`（IDE 警告且不规范）。
+
+### 4. 返回包装：永远 `Result.success(...)`
+
+| 接口类型 | 返回泛型 |
+|---------|---------|
+| 分页查询 | `Result<PageResult<XxxVO>>` — **必须有 VO 泛型**，不能写 `Result<PageResult>` |
+| 详情 | `Result<XxxVO>` |
+| 列表（非分页） | `Result<List<XxxVO>>` |
+| 新增（返回业务 ID） | `Result<String>` — 业务唯一流水号 |
+| 更新/删除成功 | `Result<Boolean>` —— `return Result.success(true)` |
+| 异常流程 | `Result.error("中文提示")` —— **仅在业务上不可能成功的路径** 使用 |
+
+```java
+// 成功：Result.success(...)
+return Result.success(manageService.xxx(dto));
+
+// 业务不可能成功：Result.error
+String accountNumber = bankCardManageService.addBankCard(dto);
+return accountNumber != null
+        ? Result.success(accountNumber)
+        : Result.error("新增失败");
+```
+
+### 5. 方法命名（业务动词 + 业务对象）
+
+| 业务动作 | 方法名 | 路由前缀 |
+|---------|--------|---------|
+| 分页查询 | `pageXxx` 或 `pageXxxAll`（复合） | `/pageXxx` |
+| 详情（按 uniqueValue） | `queryXxxDetail` / `queryXxxByXxx` | `/queryXxxDetail` |
+| 详情（按业务 ID） | `queryByAccountNumber`（驼峰） | `/queryByAccountNumber` |
+| 新增 | `addXxx` 或 `addXxxAll`（复合入参） | `/addXxx` |
+| 更新 | `updateXxx` 或 `updateXxxAll` | `/updateXxx` |
+| 软删（按 uniqueValue） | `deleteXxx` | `/deleteXxx` |
+| 批量行编辑 | `batchUpdateXxxField` 或 `batchUpdateXxx` | `/batchUpdateField` |
+| 全量列表（含绑定/下拉） | `listAllXxx` / `listAllXxxWithBindStatus` | `/listAllXxx` |
+| 导出 | `exportXxx` | `/exportXxx` |
+| 按外键查（如按公司） | `listXxxByCompany` / `listXxxByCompanyUniqueValue` | `/listXxxByCompany` / `/listStoreByCompanyUniqueValue` |
+| 唯一性校验 | `isXxxExists` / `isXxxUsedAsXxx` | `/isXxxExists` |
+
+**复合主从表**用 `addXxxAll` / `updateXxxAll` —— `All` 后缀表示"主表+子表+附件一起"。
+
+### 6. 路由路径命名
+
+路由 = 方法名小驼峰：
+
+```
+pageBankCard()      → @PostMapping("/pageBankCard")
+addBankCard()       → @PostMapping("/addBankCard")
+listAllBankCard()   → `@PostMapping("/listAllBankCard")
+listStoreByCompanyUniqueValue() → `/listStoreByCompanyUniqueValue`
+batchUpdateField()  → `/batchUpdateField`（业务动词通用化）
+```
+
+### 7. 注入字段规范
+
+```java
+@Resource                                  // JSR-250 注入，不用 @Autowired
+private IBankCardManageService bankCardManageService;   // 接口类型，小写驼峰
+```
+
+| 字段名 | 例子 |
+|--------|------|
+| 类型 | `IXxxManageService`（**接口**，不是 Impl） |
+| 变量名 | `xxxManageService`，全部小写驼峰 |
+
+### 8. 类级 Javadoc（必备）
+
+每个 Controller 必须有详细类级 Javadoc：用 `<ul><li>` 枚举接口清单：
+
+```java
+/**
+ * 出纳-印章管理
+ * <p>
+ * 接口列表（N 个，对齐前端 Seal 模块实际使用）：
+ * <ul>
+ *   <li>pageSeal            - 列表分页（名称模糊 + 公司/类型多选）</li>
+ *   <li>querySealDetail     - 详情（回显表单）</li>
+ *   ...
+ * </ul>
+ * </p>
+ */
+@Api(tags = "出纳-印章管理")
+@RestController
+@RequestMapping("/cashier/seal")
+public class SealController { ... }
+```
+
+### 9. 类注解顺序（自上而下，固定）
+
+```java
+@Api(tags = "出纳-XXX管理")      // 1. Swagger 分类
+@RestController                 // 2. 容器注解
+@RequestMapping(...)            // 3. 框架注解
+public class XxxController { ... }
+```
+
+**禁止顺序**：`@RestController` 在 `@Api` 之前 → Swagger 文档分组错。
+
+### 10. 方法注解顺序
+
+```java
+@ApiOperation("方法中文描述")       // 1. Swagger 描述
+@PostMapping("/xxx")            // 2. 路由
+public Result<XxxVO> xxx(...) { ... }    // 3. 方法签名
+```
+
+> 禁止 `@PostMapping` 在 `@ApiOperation` 之前。
+
+### 11. 业务转发（一行原则）
+
+Controller **不写业务逻辑**——绝大部分方法 1 行：
+
+```java
+public Result<PageResult> pageBankCard(@RequestBody BankCardPageDTO dto) {
+    return Result.success(bankCardManageService.pageBankCard(dto));
+}
+```
+
+复杂 Controller 才允许 2-3 行处理（如 fallback 分支、参数默认值）：
+
+```java
+public Result<String> addBankCard(@RequestBody BankCardSaveDTO dto) {
+    String accountNumber = bankCardManageService.addBankCard(dto);
+    return accountNumber != null
+            ? Result.success(accountNumber)
+            : Result.error("新增失败");
+}
+```
+
+### 12. @ApiOperation 文案规范
+
+`@ApiOperation("...")` 文案要求：
+
+- **中文**（`description` 默认值）
+- 动词 + 业务对象，如 `分页查询银行卡`、`新增印章`
+- 复杂方法补充**括号说明参数语义**：`列表批量行编辑，按账号 account_number 列表定位`
+- 对齐前端模块名：可加 `（对齐前端 createSeal）` 帮助追溯
+
+### 13. 完整 Controller 模板
+
+```java
+package com.obo.bi.cashier.controller;
+
+import com.obo.bi.cashier.dto.XxxPageDTO;
+import com.obo.bi.cashier.dto.XxxSaveDTO;
+import com.obo.bi.cashier.service.IXxxManageService;
+import com.obo.bi.cashier.vo.XxxDetailVO;
+import com.obo.bi.cashier.vo.XxxListVO;
+import com.obo.core.common.entity.result.PageResult;
+import com.obo.core.common.entity.result.Result;
+import io.swagger.annotations.Api;
+import io.swagger.annotations.ApiOperation;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+import javax.annotation.Resource;
+import java.util.List;
+
+/**
+ * 出纳-XXX管理
+ * <p>接口列表（N 个，对齐前端 Xxx 模块实际使用）：</p>
+ * <ul>
+ *   <li>pageXxx       - 列表分页</li>
+ *   <li>queryXxxDetail - 详情</li>
+ *   <li>addXxx        - 新增</li>
+ *   <li>updateXxx     - 更新</li>
+ *   <li>deleteXxx     - 删除（按 uniqueValue 软删）</li>
+ * </ul>
+ */
+@Api(tags = "出纳-XXX管理")
+@RestController
+@RequestMapping("/cashier/xxx")
+public class XxxController {
+
+    @Resource
+    private IXxxManageService xxxManageService;
+
+    @ApiOperation("分页查询XXX")
+    @PostMapping("/pageXxx")
+    public Result<PageResult<XxxListVO>> pageXxx(@RequestBody XxxPageDTO dto) {
+        return Result.success(xxxManageService.pageXxx(dto));
+    }
+
+    @ApiOperation("查询XXX详情")
+    @PostMapping("/queryXxxDetail")
+    public Result<XxxDetailVO> queryXxxDetail(@RequestParam("uniqueValue") String uniqueValue) {
+        return Result.success(xxxManageService.queryXxxDetail(uniqueValue));
+    }
+
+    @ApiOperation("新增XXX")
+    @PostMapping("/addXxx")
+    public Result<String> addXxx(@RequestBody XxxSaveDTO dto) {
+        return Result.success(xxxManageService.addXxx(dto));
+    }
+
+    @ApiOperation("更新XXX")
+    @PostMapping("/updateXxx")
+    public Result<Boolean> updateXxx(@RequestBody XxxSaveDTO dto) {
+        xxxManageService.updateXxx(dto);
+        return Result.success(true);
+    }
+
+    @ApiOperation("删除XXX（按 uniqueValue 软删）")
+    @PostMapping("/deleteXxx")
+    public Result<Boolean> deleteXxx(@RequestParam("uniqueValue") String uniqueValue) {
+        xxxManageService.deleteXxx(uniqueValue);
+        return Result.success(true);
+    }
+}
+```
+
+### 14. 反例清单
+
+- `Result<PageResult>`（裸 PageResult）→ 必须 `Result<PageResult<XxxVO>>`
+- `@Autowired` → 必须 `@Resource`
+- `IxxxService` 注入 → 必须注入 `IXxxManageService`（聚合层接口）
+- `@RequestParam(required = false)` 不带 `value=` → 必须带 `value="x"`
+- `@PostMapping` 写在 `@ApiOperation` 之前 → 顺序反了
+- `getBankCard/{id}` 用 `@GetMapping` + `@PathVariable` → 业务接口必须 POST + `@RequestParam`
+- 路由前缀 `/api/...`（其它业务前缀）→ 必须 `/cashier/...`
+- 方法体超过 5 行 → 业务逻辑在 Controller 了，应该下沉到 ManageService
+- `@RequestMapping("/xxx")` 用非业务前缀 → 必须 `/cashier/{module}`
+
+---
+
+## 调用链规范（Controller → ManageService → Component Service → Mapper）
+
+本章对照实际调用链 BankCardController → IBankCardManageService → IBankCardService → BankCardMapper → BankCardMapper.xml 提炼。每一层职责、约束、接口契约都有明确写法。
+
+### 1. 调用链总览
+
+```
+HTTP POST /cashier/{module}/xxx
+   ↓
+┌─────────────────────────────────┐
+│ Controller（bi-cashier-web）    │  § 1.1 一行转发
+│ - BankCardController             │
+└──────────────┬──────────────────┘
+               │ bankCardManageService.pageBankCard(dto)
+               ↓
+┌─────────────────────────────────┐
+│ Service 聚合层（bi-cashier-service）│  § 1.2 业务编排
+│ - IBankCardManageService         │
+│ - BankCardManageServiceImpl     │
+└──────────────┬──────────────────┘
+               │ bankCardService.pageBankCard(dto)
+               ↓
+┌─────────────────────────────────┐
+│ Component 层（bi-cashier-component）│  § 1.3 数据访问
+│ - IBankCardService               │
+│ - BankCardServiceImpl        ─┐  │
+│   extends ServiceImpl          │  │
+└───────────────────────────────┼──┘
+                                │ baseMapper.pageBankCard(page, dto)
+                                ↓
+┌─────────────────────────────────┐
+│ Mapper 接口（bi-cashier-component）│  § 1.4 数据库 CRUD
+│ - BankCardMapper                 │
+└──────────────┬──────────────────┘
+               │ MyBatis 调度
+               ↓
+┌─────────────────────────────────┐
+│ Mapper XML（bi-cashier-web resources）│  § 1.5 SQL
+│ - BankCardMapper.xml             │
+└─────────────────────────────────┘
+```
+
+### 2. Controller → ManageService（一行原则）
+
+```java
+@ApiOperation("分页查询银行卡")
+@PostMapping("/pageBankCard")
+public Result<PageResult> pageBankCard(@RequestBody BankCardPageDTO dto) {
+    return Result.success(bankCardManageService.pageBankCard(dto));
+}
+```
+
+**约束**：
+- Controller 调的是 `IXxxManageService` 接口（**不是 Impl**）
+- 1 行 `return Result.success(manageService.xxx(dto))` 是绝大多数
+- 复杂 Controller 方法可以 2-3 行（处理 fallback 错误码等）
+- **绝不**写业务逻辑
+
+### 3. ManageService → Component Service（业务编排）
+
+```java
+// 简单查询：1 行转发
+@Override
+public PageResult pageBankCard(BankCardPageDTO dto) {
+    return bankCardService.pageBankCard(dto);
+}
+
+// 导出（复杂编排）：阶段化注释 + 跨 Component + 跨 Feign + 跨 Helper
+@Override
+public String exportBankCard(BankCardPageDTO dto) {
+    log.info("银行卡信息导出[开始]");
+    // 1. 创建下载中心记录
+    String userName = BaseContext.getUserName();
+    String fileName = CashierExportUtils.buildExportFileName("银行卡信息");
+    String fileId = CashierExportUtils.createDownloadRecord(fileClient, userName, fileName);
+    // 2. 复用列表查询拉取当前筛选下全部数据
+    BankCardPageDTO queryDTO = dto == null ? new BankCardPageDTO() : dto;
+    queryDTO.setPageNum(1);
+    queryDTO.setPageSize(CashierExportUtils.EXPORT_PAGE_SIZE);
+    PageResult pageResult = bankCardService.pageBankCard(queryDTO);
+    // 3. 转 VO、调用字典翻译、构造 Excel 数据
+    List<BankCard> bankCardList = (List<BankCard>) pageResult.getRecords();
+    // ... 略
+    return fileId;
+}
+```
+
+**约束**：
+- ManageService 注入 `IXxxService`（Component Service 接口，**不是** Impl）
+- 业务编排：阶段化注释（`// 1.`、`// 2.`）、方法体 ≤ 80 行
+- 跨 Component 调用 OK（@Transactional 范围内安全）
+- 跨 Feign 调用：`FileManageClient`、`DataDictionaryProvider` 等
+- 跨 Helper 调用：`CashierManageHelper.fileChange(...)` 等
+- 前置校验：业务规则校验放这里（DTO 注解校验 + 业务唯一性等）
+- 业务异常 `throw new BusinessException("中文提示")`
+- 日志：`@Slf4j` + `log.info("[开始]xxx")` + 阶段注释
+
+**依赖注入数量限制**：按 skills §2 阈值，`@Resource` 注入 ≤ 6 个。`BankCardManageServiceImpl` 实际有 9 个（多 Feign + Helper）—— 这是**反例**，应拆 Facade-Manager（按 `references/concerns-separation.md` §3.1）。
+
+### 4. Component Service → Mapper（数据访问）
+
+```java
+@Service
+public class BankCardServiceImpl
+        extends com.baomidou.mybatisplus.extension.service.impl.ServiceImpl<BankCardMapper, BankCard>
+        implements IBankCardService {
+
+    @Override
+    public PageResult pageBankCard(BankCardPageDTO dto) {
+        Page<BankCard> page = new Page<>(dto.getPageNum(), dto.getPageSize());
+        IPage<BankCard> result = baseMapper.pageBankCard(page, dto);
+        List<BankCard> records = result.getRecords();
+        // 业务逻辑（已选项前置）：写在 Component 内部
+        if (dto.getPageNum() != null && dto.getPageNum() == 1
+                && CollUtils.isNotEmpty(dto.getSelectedAccountNumbers())) {
+            // ... 已选项处理
+            records = exactList;
+        }
+        return new PageResult(result.getTotal(), records);
+    }
+}
+```
+
+**约束**：
+- 必须 `extends ServiceImpl<XxxMapper, Xxx>`
+- 调 Mapper 用 `baseMapper`（不是 `@Autowired XxxMapper mapper`）
+- 业务逻辑（**简单**）：合并、组装、过滤——可以在 Component 层
+- 复杂业务逻辑（事务、跨表、跨服务）必须**下沉到 ManageService**
+- 业务异常不要抛（Component 不做业务校验）
+- 软删除：`this.lambdaUpdate().set(Xxx::getDeleted, 1).eq(...).update()`
+- 不要 `new QueryWrapper<>()` / `new LambdaQueryWrapper<>()`（必须用 `this.lambdaQuery()` / `this.lambdaUpdate()` 链式）
+
+### 5. Mapper 接口（bi-cashier-component 包）
+
+```java
+@Mapper
+public interface BankCardMapper extends BaseMapper<BankCard> {
+
+    /**
+     * 分页查询银行卡。
+     *
+     * @param page MyBatis-Plus 分页对象
+     * @param dto 查询条件
+     * @return 分页结果
+     */
+    IPage<BankCard> pageBankCard(Page<BankCard> page, @Param("dto") BankCardPageDTO dto);
+
+    /**
+     * 根据账号统计数量。
+     *
+     * @param accountNumber 账号
+     * @param excludeId 排除的 ID
+     * @return 数量
+     */
+    int countByAccountNumber(@Param("accountNumber") String accountNumber, @Param("excludeId") Long excludeId);
+}
+```
+
+**约束**：
+- 必须 `extends BaseMapper<Xxx>`（即便无自定义方法）
+- `@Param` 必须显式（MyBatis 多参数要求）
+- 方法必须有 Javadoc（用途、`@param`、`@return`）
+- XML 方法顺序可以与接口方法不一致，但同名一一对应
+
+### 6. Mapper XML（bi-cashier-web/resources/mapper）
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.obo.bi.cashier.mapper.BankCardMapper">
+
+    <select id="pageBankCard" resultType="com.obo.bi.cashier.po.BankCard">
+        SELECT id AS id, account_number AS accountNumber, account_name AS accountName,
+               bank_code AS bankCode, bank_name AS bankName, ...
+        FROM cashier_bank_card
+        WHERE deleted = 0
+        <if test="dto.accountName != null and dto.accountName != ''">
+            AND account_name LIKE CONCAT('%', #{dto.accountName}, '%')
+        </if>
+        <if test="dto.bankCodes != null and dto.bankCodes.size() > 0">
+            AND bank_code IN
+            <foreach collection="dto.bankCodes" item="code" open="(" separator="," close=")">
+                #{code}
+            </foreach>
+        </if>
+        <if test="dto.openDateStart != null">
+            AND open_date &gt;= #{dto.openDateStart}
+        </if>
+        ...
+    </select>
+
+    <select id="countByAccountNumber" resultType="java.lang.Integer">
+        SELECT COUNT(*) FROM cashier_bank_card
+        WHERE deleted = 0 AND account_number = #{accountNumber}
+        <if test="excludeId != null">
+            AND id != #{excludeId}
+        </if>
+    </select>
+
+</mapper>
+```
+
+**关键约束**：
+- `namespace` 必须指向 Mapper 接口全限定类名
+- 列名一律别名 `snake_case AS camelCase`（保证与 PO 驼峰字段对应）
+- `WHERE deleted = 0` 软删除必备
+- `<if>` 判空：`!= null and != ''`（字符串）/ `!= null and size() > 0`（集合）
+- `<foreach>` IN 查询：必须有 `collection` `item` `open` `separator` `close`
+- `>=` `<=` 用 `&gt;=` `&lt;=` 转义
+- 模糊查询：`LIKE CONCAT('%', #{x}, '%')`
+- 返回值 `resultType`：`com.obo.bi.cashier.po.Xxx`（PO 路径）或 `java.lang.Integer`（count）
+
+### 7. 调用链各层的接口契约
+
+| 层 | 接口名 | 包路径 | 命名 |
+|---|--------|--------|------|
+| Controller | （无接口，直接 `@Resource`） | `com.obo.bi.cashier.controller` | `XxxController` |
+| ManageService | `IXxxManageService` | `com.obo.bi.cashier.service` | 接口 |
+| ManageService Impl | `XxxManageServiceImpl` | `com.obo.bi.cashier.service.impl` | 实现 |
+| Component Service | `IXxxService` extends `IService<T>` | `com.obo.bi.cashier.service` | 接口 |
+| Component Service Impl | `XxxServiceImpl` extends `ServiceImpl<M, T>` | `com.obo.bi.cashier.service.impl` | 实现 |
+| Mapper | `XxxMapper` extends `BaseMapper<T>` | `com.obo.bi.cashier.mapper` | 接口 |
+| Mapper XML | `XxxMapper.xml` | `resources/mapper/` | XML |
+
+### 8. 跨层调用 — 实战速查
+
+| 调用 | 写法 | 备注 |
+|------|------|------|
+| Controller 调 ManageService | `bankCardManageService.pageBankCard(dto)` | 1 行 |
+| Controller 调 ManageService（带 fallback） | `Result.success(...)` / `Result.error("...")` | 复杂业务 |
+| ManageService 调 Component Service | `bankCardService.pageBankCard(dto)` | 同包，直接调用 |
+| ManageService 调 Feign | `fileClient.queryFileUploadRecordMap(queryDTO)` | Feign 接口 |
+| Component Service 调 Mapper | `baseMapper.pageBankCard(page, dto)` | lambdaQuery / XML |
+| Component Service 调自身方法 | `this.lambdaQuery()...eq(...)` | 链式 |
+
+### 9. 异常传播
+
+| 层 | 抛什么 | 接什么 |
+|---|--------|--------|
+| Controller | `Result.error("...")` | 业务返回值 |
+| ManageService | `throw new BusinessException("中文提示")` | 由全局异常处理 |
+| Component Service | **不抛业务异常** | 仅抛系统异常（`IllegalArgumentException`） |
+| Mapper | 不抛 | 让 MyBatis 抛 `PersistenceException` |
+
+### 10. 事务边界
+
+| 场景 | 事务位置 | 注解 |
+|------|---------|------|
+| 单表 CRUD | 不需要 | 无 |
+| 跨 Component 写入（主从表） | ManageService | `@Transactional(rollbackFor = Exception.class)` |
+| 跨 Mapper 写入 | ManageService | `@Transactional(rollbackFor = Exception.class)` |
+| Component 内多步 `lambdaUpdate` | Component Service | `@Transactional(rollbackFor = Exception.class)` |
+| 跨服务（Feign + 本地） | ManageService | `@Transactional`（注意 Feign 不参与事务） |
+
+### 11. 反例清单（针对调用链）
+
+- Controller 调 `IXxxService`（不含 Manage）—— 越级
+- Controller 调 `XxxServiceImpl`（实现）—— 越级 + 绑实现
+- ManageService 调 `IXxxManageService`（同层）—— 同层依赖，应合并
+- Component Service 写 `@Transactional` 处理跨表写入 —— Component 只能单表事务
+- Component Service 抛 `BusinessException("...")` —— 业务逻辑混入数据层
+- ManageService 直接 `lambdaQuery()` 拼 SQL —— 应下沉到 Component
+- Mapper 接口与 XML 不在同一个工程模块（XML 在 web）—— 实际是对的，但确认 `namespace` 指向正确
+- Mapper 接口自定义方法没对应 XML —— 编译失败
+- Mapper 接口完全继承 BaseMapper 但没 XML —— 占位缺失（已修复成占位）
+- 跨表 JOIN 在 Service 聚合层用 `lambdaQuery.select("xxx AS xxx").groupBy(...)` —— 应写在 XML
+
+### 12. 调试调用链的 3 个标准问题
+
+```
+1. Controller 调谁？ → IXxxManageService（一行转发）
+2. ManageService 调谁？ → 多个 IXxxService + FeignClient + Helper（业务编排）
+3. Component Service 调谁？ → baseMapper.(Page<D>, DTO)（数据访问）
+```
+
+任何一层做错职责，立即红 — 按 §11 反例清单查。

@@ -20,9 +20,9 @@ hooks 是挂在 Claude Code 生命周期特定时点的自动命令（shell / HT
 | 触发方式 | 手动 / 场景匹配 | 生命周期自动触发 |
 | 适合 | 操作步骤、规范、知识参考 | 检查、注入上下文、拦截、日志 |
 | 生效范围 | 被加载时才占用上下文 | 每次事件都跑，注意开销 |
-| 示例 | `$basics-ts-es-check-vue` | codegraph 的 `UserPromptSubmit` |
+| 示例 | `$remote-ts-es-check` | codegraph 的 `UserPromptSubmit` |
 
-**同一个逻辑两种形态都有**：如"提交前扫描 TS&ESLint"既可做成手动 skill（`$basics-ts-es-check-vue`），也可做成 PreToolUse/Stop hook 自动跑。优先做 Skill（按需、省上下文）；只有"必须每次都拦/每次都注入"才升级成 Hook。
+**同一个逻辑两种形态都有**：如"提交前扫描 TS&ESLint"既可做成手动 skill（`$remote-ts-es-check`），也可做成 PreToolUse/Stop hook 自动跑。优先做 Skill（按需、省上下文）；只有"必须每次都拦/每次都注入"才升级成 Hook。
 
 ## 9 大生命周期事件速查
 

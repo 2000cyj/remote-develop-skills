@@ -1,6 +1,6 @@
 # Hook 事件完整规范
 
-本文件是 `basics-claude-hooks-vue` skill 的深度参考：每个事件的全字段、matcher 语法、退出码语义、配置作用域与 JSON 样例，以及本项目（cashier / ob_web 仓库）当前已生效的 hooks 实例。
+本文件是 `remote-claude-hooks` skill 的深度参考：每个事件的全字段、matcher 语法、退出码语义、配置作用域与 JSON 样例，以及本项目（cashier / ob_web 仓库）当前已生效的 hooks 实例。
 
 ## 1. 事件 → 触发时机
 

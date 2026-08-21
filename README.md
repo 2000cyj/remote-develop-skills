@@ -55,7 +55,7 @@ for d in remote-*/; do
   [ -f "$d/SKILL.md" ] || { echo "MISSING $d/SKILL.md"; continue; }
   name=$(grep -E "^name:" "$d/SKILL.md" | head -1 | sed 's/name: *//;s/"//g')
   [ "$name" = "${d%/}" ] || echo "MISMATCH $d vs $name"
-  desc=$(awk '/^description:/{getline; print}' "$d/SKILL.md")
+  desc=$(awk -F'description: *' '/^description:/{print $2; exit}' "$d/SKILL.md")
   echo "$desc" | grep -q "^Use when" || echo "BAD DESC $d"
 done
 ```

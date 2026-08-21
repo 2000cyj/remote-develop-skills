@@ -1,6 +1,6 @@
 # 文件职责、数据流与设计要点
 
-本文件是 `basics-list-page-directory-vue` 的补充参考：每个文件的职责、页面数据流、结构设计要点。
+本文件是 `remote-list-page-directory` 的补充参考：每个文件的职责、页面数据流、结构设计要点。
 
 ## 文件职责
 

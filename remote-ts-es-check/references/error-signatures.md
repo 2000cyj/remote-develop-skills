@@ -1,6 +1,6 @@
 # 错误签名 → 根因 → 修复
 
-本文件是 basics-ts-es-check-vue 的深度参考。先对照签名定位，再动手。
+本文件是 remote-ts-es-check 的深度参考。先对照签名定位，再动手。
 
 ## TS2554：renderDialog 参数个数
 
