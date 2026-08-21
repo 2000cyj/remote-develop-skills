@@ -1,0 +1,368 @@
+{
+  "_meta": {
+    "说明": "cashier 微应用字典（Dictionary）清单（按模块整理）。字典 typeId 需与后端菜单/字典下发的 type_id 逐字一致，主应用经 qiankun 把 dictionary 透传给子应用，子应用 setDictionary 后以 type_id 为 key 读取；缺失则下拉为空、getLabel 回退原值。",
+    "生成范围": "micro/cashier/src 下所有 DictionaryKey / PublicDictionaryKey 引用点（constants/dictionary.ts + 各模块 enum/index.ts）",
+    "数据结构": "DictionaryItem：type_id（字典类型）、one_id（值 value）、one_name（标签 label），两级字典用 two_id/two_name（如税费种 → 税目）",
+    "读取机制": "createDictionaryEnum(key) → buildDictionaryEnum(getDictionary(key))，产出 values/names/list/getLabel/getValue/options；getLabel(one_id) 命中 one_name 否则回退原值",
+    "字典总数": 25,
+    "其中公共字典": 5,
+    "模块数": 5,
+    "模块清单": "bankCard 银行卡管理 / employee 人员管理 / seal 印章管理 / store 店铺管理 / company 公司管理（businessScope 经营范围不使用字典）",
+    "常量定义": "micro/cashier/src/common/constants/dictionary.ts (DictionaryKey 枚举) + packages/share/constants/dictionary.ts (PublicDictionaryKey.BOOLEAN_LIST)",
+    "store与工具": "micro/cashier/src/pinia/stores/dictionary.ts (useDictionaryStore) + micro/cashier/src/common/utils/dictionary.ts (createDictionaryEnum)",
+    "透传入口": "micro/cashier/src/main.ts → mount 时 dictionaryStore.setDictionary(dictionary)",
+    "样例数据": "micro/cashier/src/pages/company/docs/enum/*.json（与后端字典结构一致的回显样例）",
+    "字段约定": "typeId=字典 type_id；location=消费位置（列表筛选/列格式化/表单/详情）；backendField=对齐后端字段；options=one_id→one_name 取值；sharedModules=跨模块共用"
+  },
+
+  "shared": {
+    "_meta": {
+      "groupName": "公共字典（跨模块共用）",
+      "说明": "被 ≥2 个模块引用的字典集中在此，避免在多个模块重复定义；各模块 enum 通过 createDictionaryEnum 引用同一 typeId"
+    },
+    "CASHIER_BELONGS_DEPARTMENT": {
+      "dictName": "所属部门",
+      "typeId": "CASHIER_BELONGS_DEPARTMENT",
+      "location": "列表筛选 · 所属部门 + 表单 · 部门 select",
+      "backendField": "department_id / department_name",
+      "options": "动态部门清单（value=部门编码，label=部门名称），无固定枚举值",
+      "sharedModules": ["employee", "bankCard", "company", "store"],
+      "note": "部门主数据字典，四个模块共用；各模块 enum 均各自 createDictionaryEnum 引用"
+    },
+    "CASHIER_SEAL_TYPE": {
+      "dictName": "印章类型",
+      "typeId": "CASHIER_SEAL_TYPE",
+      "location": "印章列表/表单 + 公司详情 · 印章信息 tab",
+      "backendField": "type（SealType）",
+      "options": [
+        { "value": "official", "label": "公章" },
+        { "value": "finance", "label": "财务章" },
+        { "value": "contract", "label": "合同章" },
+        { "value": "invoice", "label": "发票章" },
+        { "value": "legal", "label": "法人章" },
+        { "value": "other", "label": "其他" }
+      ],
+      "sharedModules": ["seal", "company"],
+      "optionsRef": "micro/cashier/src/pages/company/docs/enum/CASHIER_SEAL_TYPE.json",
+      "note": "公司详情「印章信息」tab 复用印章模块同一字典"
+    },
+    "CASHIER_DRAFT_STATUS": {
+      "dictName": "草稿状态（数据状态：草稿/已发布）",
+      "typeId": "CASHIER_DRAFT_STATUS",
+      "location": "列表筛选 + 列格式化（el-tag）",
+      "backendField": "draft_status",
+      "options": [
+        { "value": "0", "label": "已发布" },
+        { "value": "1", "label": "草稿" }
+      ],
+      "sharedModules": ["company", "seal"],
+      "optionsRef": "micro/cashier/src/pages/company/docs/enum/CASHIER_DRAFT_STATUS.json",
+      "note": "值为字符串 0/1，对齐后端 draft_status 字段；getLabel 时需 String(value)"
+    },
+    "CASHIER_PLATFORM_OPTIONS": {
+      "dictName": "入驻平台",
+      "typeId": "CASHIER_PLATFORM_OPTIONS",
+      "location": "列表筛选 · 入驻平台（多选）+ 列格式化",
+      "backendField": "platform（StorePlatform）",
+      "options": [
+        { "value": "pdd", "label": "拼多多" },
+        { "value": "tmall", "label": "天猫" },
+        { "value": "jd", "label": "京东" },
+        { "value": "amazon", "label": "Amazon" },
+        { "value": "temu", "label": "Temu" }
+      ],
+      "sharedModules": ["store", "company"]
+    },
+    "CASHIER_SHOP_STATUS_OPTIONS": {
+      "dictName": "店铺状态",
+      "typeId": "CASHIER_SHOP_STATUS_OPTIONS",
+      "location": "列表筛选 · 店铺状态 + 列格式化",
+      "backendField": "shop_status（ShopStatus）",
+      "options": [
+        { "value": "normal", "label": "正常运营" },
+        { "value": "abnormal", "label": "异常" },
+        { "value": "preparing_close", "label": "准备注销" }
+      ],
+      "sharedModules": ["store", "company"],
+      "note": "DictionaryKey 常量处注释误写为「入驻日期」，实为店铺状态（对齐 store/apis ShopStatus）"
+    }
+  },
+
+  "bankCard": {
+    "_meta": {
+      "moduleName": "银行卡管理",
+      "routePath": "/yhkgl",
+      "prefix": "yhkgl",
+      "page": "src/pages/bankCard/index.vue",
+      "enumFile": "src/pages/bankCard/enum/index.ts",
+      "utilsFile": "src/pages/bankCard/utils/index.ts"
+    },
+    "CASHIER_ACCOUNT_BANK_NAME": {
+      "dictName": "开户行名称",
+      "typeId": "CASHIER_ACCOUNT_BANK_NAME",
+      "location": "表单 · 开户行 select",
+      "backendField": "bank_code / bank_name",
+      "options": "开户行清单（value=bankCode，label=bankName），由后端字典下发",
+      "note": "type.ts 标注「暂无后端接口、本地静态兜底」，enum 已接字典缓存，待后端字典补齐后生效"
+    },
+    "CASHIER_BANK_ACCOUNT_TYPE": {
+      "dictName": "银行类型",
+      "typeId": "CASHIER_BANK_ACCOUNT_TYPE",
+      "location": "列表筛选 · 银行类型 + 列格式化（bankCard/utils）",
+      "backendField": "bankType（BankAccountType）",
+      "options": [
+        { "value": "basic", "label": "对公基本户" },
+        { "value": "general", "label": "一般户/专户" },
+        { "value": "tax_agreement", "label": "银税三方协议" }
+      ],
+      "note": "与后端 BankAccountType 对齐；el-tag 颜色在 bankCard/utils 手动维护"
+    },
+    "CASHIER_TAX_AGREEMENT_STATUS": {
+      "dictName": "银税三方协议状态",
+      "typeId": "CASHIER_TAX_AGREEMENT_STATUS",
+      "location": "列表筛选 · 银税协议状态 + 列格式化（bankCard/utils）",
+      "backendField": "taxAgreementStatus（TaxAgreementStatus）",
+      "options": [
+        { "value": "verified", "label": "验证通过" },
+        { "value": "unverified", "label": "未验证" },
+        { "value": "failed", "label": "验证失败" },
+        { "value": "terminated", "label": "已终止" }
+      ]
+    },
+    "CASHIER_CANCEL_STATUS_OPTIONS": {
+      "dictName": "销户状态",
+      "typeId": "CASHIER_CANCEL_STATUS_OPTIONS",
+      "location": "列表筛选 · 销户状态",
+      "backendField": "isCanceled（boolean，true=已销户 / false=未销户）",
+      "options": [
+        { "value": "true", "label": "已销户" },
+        { "value": "false", "label": "未销户" }
+      ],
+      "note": "字典下拉值提交时转 isCanceled 布尔；config 中 prop=isCanceled"
+    }
+  },
+
+  "employee": {
+    "_meta": {
+      "moduleName": "人员管理",
+      "routePath": "/ryxx",
+      "prefix": "ryxx",
+      "page": "src/pages/employee/index.vue",
+      "enumFile": "src/pages/employee/enum/index.ts",
+      "utilsFile": "src/pages/employee/utils/index.ts"
+    },
+    "CASHIER_DEPARTMENT_PROPERTIES": {
+      "dictName": "部门性质",
+      "typeId": "CASHIER_DEPARTMENT_PROPERTIES",
+      "location": "列格式化（employee/utils getDepartmentPropertiesText）",
+      "backendField": "department_nature（cashier_employee 表）",
+      "options": "部门性质枚举值待后端字典确认",
+      "note": "对应 SQL cashier_employee.department_nature（字典 CASHIER_DEPARTMENT_PROPERTIES）"
+    }
+  },
+
+  "seal": {
+    "_meta": {
+      "moduleName": "印章管理",
+      "routePath": "/yzgl",
+      "prefix": "yzgl",
+      "page": "src/pages/seal/index.vue",
+      "enumFile": "src/pages/seal/enum/index.ts",
+      "utilsFile": "src/pages/seal/utils/index.ts"
+    },
+    "CASHIER_SEAL_STATUS_OPTIONS": {
+      "dictName": "印章状态",
+      "typeId": "CASHIER_SEAL_STATUS_OPTIONS",
+      "location": "列表筛选 · 印章状态 + 列格式化（el-tag）",
+      "backendField": "status（SealStatus）",
+      "options": [
+        { "value": "active", "label": "启用" },
+        { "value": "inactive", "label": "停用" }
+      ],
+      "note": "对齐后端 status 枚举（active/inactive）"
+    }
+  },
+
+  "store": {
+    "_meta": {
+      "moduleName": "店铺管理",
+      "routePath": "/dpgl",
+      "prefix": "dpgl",
+      "page": "src/pages/store/index.vue",
+      "enumFile": "src/pages/store/enum/index.ts",
+      "utilsFile": "src/pages/store/utils/index.ts"
+    },
+    "CASHIER_GUARANTEE_RETURN_STATUS_OPTIONS": {
+      "dictName": "保证金退还状态",
+      "typeId": "CASHIER_GUARANTEE_RETURN_STATUS_OPTIONS",
+      "location": "列格式化（store/utils getGuaranteeReturnStatusText）",
+      "backendField": "guarantee_return_status（GuaranteeReturnStatus）",
+      "options": [
+        { "value": "pending_apply", "label": "待申请" },
+        { "value": "applied", "label": "已申请" },
+        { "value": "reviewing", "label": "审核中" },
+        { "value": "returned", "label": "已退回" },
+        { "value": "completed", "label": "已完成" },
+        { "value": "not_needed", "label": "无需退还" }
+      ]
+    },
+    "CASHIER_CAN_CLOSE_STORE_OPTIONS": {
+      "dictName": "关店条件下拉",
+      "typeId": "CASHIER_CAN_CLOSE_STORE_OPTIONS",
+      "location": "列表筛选 · 关店条件",
+      "backendField": "canCloseStore（boolean，true=已达到 / false=未达到）",
+      "options": [
+        { "value": "yes", "label": "已达到" },
+        { "value": "no", "label": "未达到" }
+      ],
+      "optionsRef": "micro/cashier/src/pages/company/docs/enumJson.json",
+      "note": "字典值 yes/no，提交时转 canCloseStore 布尔；config 中 prop=canCloseStore"
+    }
+  },
+
+  "company": {
+    "_meta": {
+      "moduleName": "公司管理",
+      "routePath": "/gsgl",
+      "prefix": "gsgl",
+      "page": "src/pages/company/index.vue",
+      "enumFile": "src/pages/company/enum/index.ts（列表筛选）+ src/pages/company/components/enum/index.ts（表单/详情）",
+      "utilsFile": "src/pages/company/utils/index.ts（列表）+ src/pages/company/components/utils/index.ts（详情）",
+      "note": "公司模块字典最多：列表筛选走外层 enum，新增/编辑/详情走 components/enum；省/国家/税费种有独立 JSON 样例"
+    },
+    "CASHIER_COMPANY_STATUS": {
+      "dictName": "公司经营状态",
+      "typeId": "CASHIER_COMPANY_STATUS",
+      "location": "列表筛选 + 列格式化（company/utils）",
+      "options": [
+        { "value": "opening", "label": "开业/正常营业/在业" },
+        { "value": "closed", "label": "停业/歇业" },
+        { "value": "preparing", "label": "筹建" },
+        { "value": "liquidating", "label": "清算" },
+        { "value": "cancelled", "label": "注销" },
+        { "value": "revoked", "label": "吊销" }
+      ],
+      "optionsRef": "micro/cashier/src/pages/company/docs/enum/CASHIER_COMPANY_STATUS.json"
+    },
+    "CASHIER_COMPANY_ATTRIBUTION_TYPE": {
+      "dictName": "公司归属类型（国内/国外）",
+      "typeId": "CASHIER_COMPANY_ATTRIBUTION_TYPE",
+      "location": "列表筛选 + 列格式化（company/utils）",
+      "options": [
+        { "value": "domestic", "label": "国内" },
+        { "value": "foreign", "label": "国外" }
+      ],
+      "optionsRef": "micro/cashier/src/pages/company/docs/enum/CASHIER_COMPANY_ATTRIBUTION_TYPE.json",
+      "note": "决定列表「省份/国家」筛选与表单「归属详情」省/国家 select 切换"
+    },
+    "CASHIER_TAXPAYER_TYPE": {
+      "dictName": "纳税人身份",
+      "typeId": "CASHIER_TAXPAYER_TYPE",
+      "location": "表单 · 税务信息 + 列格式化（components/utils）",
+      "options": [
+        { "value": "general", "label": "一般纳税人" },
+        { "value": "small", "label": "小规模纳税人" }
+      ],
+      "optionsRef": "micro/cashier/src/pages/company/docs/enum/CASHIER_TAXPAYER_TYPE.json"
+    },
+    "CASHIER_TAX_STATUS": {
+      "dictName": "税务状态",
+      "typeId": "CASHIER_TAX_STATUS",
+      "location": "表单 · 税务信息 + 列格式化（components/utils）",
+      "options": [
+        { "value": "normal", "label": "正常" },
+        { "value": "abnormal", "label": "非正常" },
+        { "value": "cancelled", "label": "注销" },
+        { "value": "unregistered", "label": "未登记" }
+      ],
+      "optionsRef": "micro/cashier/src/pages/company/docs/enum/CASHIER_TAX_STATUS.json"
+    },
+    "CASHIER_BUSINESS_STATUS": {
+      "dictName": "工商状态",
+      "typeId": "CASHIER_BUSINESS_STATUS",
+      "location": "表单 · 工商信息 + 列格式化（components/utils）",
+      "options": [
+        { "value": "normal", "label": "正常" },
+        { "value": "changed", "label": "已变更" },
+        { "value": "cancelled", "label": "已注销" },
+        { "value": "revoked", "label": "已吊销" }
+      ],
+      "optionsRef": "micro/cashier/src/pages/company/docs/enum/CASHIER_BUSINESS_STATUS.json"
+    },
+    "CASHIER_ARCHIVE_STATUS": {
+      "dictName": "归档状态",
+      "typeId": "CASHIER_ARCHIVE_STATUS",
+      "location": "表单 · 文件资料 + 列格式化（components/utils）",
+      "options": [
+        { "value": "completed", "label": "已完成" },
+        { "value": "pending", "label": "待归档" },
+        { "value": "partial", "label": "部分归档" }
+      ],
+      "optionsRef": "micro/cashier/src/pages/company/docs/enum/CASHIER_ARCHIVE_STATUS.json"
+    },
+    "CASHIER_TAX_PERIOD": {
+      "dictName": "纳税（费）期限",
+      "typeId": "CASHIER_TAX_PERIOD",
+      "location": "表单 · 税务信息（纳税期限 select）",
+      "options": [
+        { "value": "year", "label": "年" },
+        { "value": "quarter", "label": "季" },
+        { "value": "month", "label": "月" }
+      ],
+      "optionsRef": "micro/cashier/src/pages/company/docs/enum/CASHIER_TAX_PERIOD.json"
+    },
+    "CASHIER_ACCOUNTING_COMPANY": {
+      "dictName": "代理记账公司",
+      "typeId": "CASHIER_ACCOUNTING_COMPANY",
+      "location": "表单 · 税务信息（代理记账公司 select）+ 列格式化（components/utils）",
+      "options": [
+        { "value": "company1", "label": "杭州财务代理有限公司" },
+        { "value": "company2", "label": "上海财税服务有限公司" },
+        { "value": "company3", "label": "北京代理记账中心" },
+        { "value": "company4", "label": "深圳财务咨询有限公司" },
+        { "value": "company5", "label": "广州财税代理有限公司" },
+        { "value": "company6", "label": "成都财务服务有限公司" },
+        { "value": "company7", "label": "武汉代理记账有限公司" },
+        { "value": "company8", "label": "南京财税咨询中心" },
+        { "value": "company9", "label": "杭州云账房财务管理有限公司" },
+        { "value": "company10", "label": "浙江企赢财务管理有限公司" }
+      ],
+      "optionsRef": "micro/cashier/src/pages/company/docs/enum/CASHIER_ACCOUNTING_COMPANY.json",
+      "note": "value 为占位 companyN，需以公司主数据实际编码为准"
+    },
+    "TAX_TYPE_OPTIONS": {
+      "dictName": "税（费）种",
+      "typeId": "TAX_TYPE_OPTIONS",
+      "location": "表单 · 税务信息（税费种 select，二级联动税目）",
+      "backendField": "two_id = 税目（taxItem）",
+      "options": "多级字典：one_id=税费种（如 enterprise_income_tax 企业所得税、disability_employment_fund 残疾人就业保障金 …），two_id=税目",
+      "optionsRef": "micro/cashier/src/pages/company/docs/enum/TAX_TYPE_OPTIONS.json",
+      "note": "两级字典，two_id 用于展开「税目」二级"
+    },
+    "DOMESTIC_PROVINCE_OPTIONS": {
+      "dictName": "国内省份",
+      "typeId": "DOMESTIC_PROVINCE_OPTIONS",
+      "location": "列表筛选 · 省份/国家 + 表单 · 归属详情（省份 select）",
+      "options": "国内 31 省/直辖市/自治区（value=省份编码，label=省份名）",
+      "optionsRef": "micro/cashier/src/pages/company/docs/enum/DOMESTIC_PROVINCE_OPTIONS.json"
+    },
+    "FOREIGN_COUNTRY_OPTIONS": {
+      "dictName": "国外国家",
+      "typeId": "FOREIGN_COUNTRY_OPTIONS",
+      "location": "列表筛选 · 省份/国家 + 表单 · 归属详情（国家 select）",
+      "options": "国外国家清单（value=国家编码，label=国家名）",
+      "optionsRef": "micro/cashier/src/pages/company/docs/enum/FOREIGN_COUNTRY_OPTIONS.json",
+      "note": "归属类型=国外时启用，与 DOMESTIC_PROVINCE_OPTIONS 二选一"
+    },
+    "BOOLEAN_LIST": {
+      "dictName": "是否（全局通用）",
+      "typeId": "BOOLEAN_LIST",
+      "location": "表单 · 是否类字段（如是否法人/股东/公关/黑名单等开关映射）",
+      "options": [
+        { "value": "1", "label": "是" },
+        { "value": "0", "label": "否" }
+      ],
+      "note": "来自 @ob-web/share 的 PublicDictionaryKey.BOOLEAN_LIST（非 cashier 私有）"
+    }
+  }
+}

@@ -1,0 +1,287 @@
+{
+  "_meta": {
+    "说明": "cashier 微应用按钮操作权限码清单（按模块整理）。权限码需与后端菜单下发的码逐字一致，命中即按钮可见；全无权限时对应容器（操作列/下拉触发器/tab 页签）隐藏。",
+    "生成范围": "micro/cashier/src/pages 下所有 checkPermission 调用点",
+    "操作类型说明": "新增=Insert / 查看=Check / 编辑=Change / 删除=Delete / 特殊=敏感数据等独立操作",
+    "权限码总数": 31,
+    "模块数": 6,
+    "配套规范": "micro/cashier/docs/skills/cashier-button-permission-skill.md",
+    "权限机制": "主应用经 qiankun 透传 buttonPermissions[]，子应用 setButtonPermissions 存储，页面用 checkPermission('码') 匹配"
+  },
+
+  "bankCard": {
+    "_meta": {
+      "moduleName": "银行卡管理",
+      "routePath": "/yhkgl",
+      "prefix": "yhkgl",
+      "page": "src/pages/bankCard/index.vue"
+    },
+    "yhkglInsert": {
+      "buttonName": "新增银行卡",
+      "permissionCode": "yhkglInsert",
+      "operation": "新增",
+      "location": "列表页 · 顶部工具栏",
+      "description": "点击跳转新增页 /yhkgl/insert"
+    },
+    "yhkglCheck": {
+      "buttonName": "查看",
+      "permissionCode": "yhkglCheck",
+      "operation": "查看",
+      "location": "列表页 · 行操作",
+      "description": "跳转详情页 /yhkgl/check（mode=view，只读）"
+    },
+    "yhkglChange": {
+      "buttonName": "编辑",
+      "permissionCode": "yhkglChange",
+      "operation": "编辑",
+      "location": "列表页 · 行操作",
+      "description": "跳转编辑页 /yhkgl/change（mode=change）"
+    },
+    "yhkglDelete": {
+      "buttonName": "删除",
+      "permissionCode": "yhkglDelete",
+      "operation": "删除",
+      "location": "列表页 · 行操作",
+      "description": "二次确认后按账号删除该银行卡"
+    }
+  },
+
+  "employee": {
+    "_meta": {
+      "moduleName": "人员管理",
+      "routePath": "/ryxx",
+      "prefix": "ryxx",
+      "page": "src/pages/employee/index.vue",
+      "note": "工作区已将原 ygxx 前缀统一改为 ryxx（对齐路由 /ryxx），需后端菜单同步下发 ryxx* 码"
+    },
+    "ryxxInsert": {
+      "buttonName": "添加人员",
+      "permissionCode": "ryxxInsert",
+      "operation": "新增",
+      "location": "列表页 · 顶部工具栏",
+      "description": "点击跳转新增页 /ryxx/insert"
+    },
+    "ryxxCheck": {
+      "buttonName": "查看",
+      "permissionCode": "ryxxCheck",
+      "operation": "查看",
+      "location": "列表页 · 行操作",
+      "description": "跳转详情页 /ryxx/check（mode=view）"
+    },
+    "ryxxChange": {
+      "buttonName": "编辑",
+      "permissionCode": "ryxxChange",
+      "operation": "编辑",
+      "location": "列表页 · 行操作",
+      "description": "跳转编辑页 /ryxx/change（mode=change）"
+    },
+    "ryxxDelete": {
+      "buttonName": "删除",
+      "permissionCode": "ryxxDelete",
+      "operation": "删除",
+      "location": "列表页 · 行操作",
+      "description": "二次确认后移除该人员"
+    },
+    "ryxxIdCard": {
+      "buttonName": "查看（身份证完整号）",
+      "permissionCode": "ryxxIdCard",
+      "operation": "特殊",
+      "location": "列表页 · 身份证号单元格",
+      "description": "点击弹窗展示并支持复制完整身份证号；无权限时仅显示脱敏号、不出现「查看」入口。属敏感数据独立管控，与 ryxxCheck 解耦"
+    }
+  },
+
+  "seal": {
+    "_meta": {
+      "moduleName": "印章管理",
+      "routePath": "/yzgl",
+      "prefix": "yzgl",
+      "page": "src/pages/seal/index.vue"
+    },
+    "yzglInsert": {
+      "buttonName": "新增印章",
+      "permissionCode": "yzglInsert",
+      "operation": "新增",
+      "location": "列表页 · 顶部工具栏",
+      "description": "点击跳转新增页 /yzgl/insert"
+    },
+    "yzglCheck": {
+      "buttonName": "查看",
+      "permissionCode": "yzglCheck",
+      "operation": "查看",
+      "location": "列表页 · 行操作",
+      "description": "跳转详情页 /yzgl/check"
+    },
+    "yzglChange": {
+      "buttonName": "编辑",
+      "permissionCode": "yzglChange",
+      "operation": "编辑",
+      "location": "列表页 · 行操作",
+      "description": "跳转编辑页 /yzgl/change"
+    },
+    "yzglDelete": {
+      "buttonName": "删除",
+      "permissionCode": "yzglDelete",
+      "operation": "删除",
+      "location": "列表页 · 行操作",
+      "description": "二次确认后按 uniqueValue 删除该印章"
+    }
+  },
+
+  "store": {
+    "_meta": {
+      "moduleName": "店铺管理",
+      "routePath": "/dpgl",
+      "prefix": "dpgl",
+      "page": "src/pages/store/index.vue"
+    },
+    "dpglInsert": {
+      "buttonName": "新增店铺",
+      "permissionCode": "dpglInsert",
+      "operation": "新增",
+      "location": "列表页 · 顶部工具栏",
+      "description": "点击跳转新增页 /dpgl/insert"
+    },
+    "dpglCheck": {
+      "buttonName": "查看",
+      "permissionCode": "dpglCheck",
+      "operation": "查看",
+      "location": "列表页 · 行操作",
+      "description": "跳转详情页 /dpgl/check（mode=view）"
+    },
+    "dpglChange": {
+      "buttonName": "编辑",
+      "permissionCode": "dpglChange",
+      "operation": "编辑",
+      "location": "列表页 · 行操作",
+      "description": "跳转编辑页 /dpgl/change（mode=change）"
+    },
+    "dpglDelete": {
+      "buttonName": "删除",
+      "permissionCode": "dpglDelete",
+      "operation": "删除",
+      "location": "列表页 · 行操作",
+      "description": "二次确认后按 uniqueValue 删除该店铺"
+    }
+  },
+
+  "company": {
+    "_meta": {
+      "moduleName": "公司管理",
+      "routePath": "/gsgl",
+      "prefix": "gsgl",
+      "page": "src/pages/company/index.vue",
+      "detailPage": "src/pages/company/components/editOrCheck.vue",
+      "tabPermMap": "src/pages/company/utils/companyEventBus.ts (COMPANY_TAB_PERM)",
+      "note": "「查看」已按 8 个板块拆分为 gsglCheck{Tab}；原整下拉共用的 gsglCheck 已弃用（前端不再引用）。板块映射 COMPANY_TAB_PERM 在列表下拉项与编辑/详情页 tab 两处共用"
+    },
+    "gsglInsert": {
+      "buttonName": "新增公司",
+      "permissionCode": "gsglInsert",
+      "operation": "新增",
+      "location": "列表页 · 顶部工具栏",
+      "description": "点击跳转新增页 /gsgl/insert"
+    },
+    "gsglChange": {
+      "buttonName": "编辑",
+      "permissionCode": "gsglChange",
+      "operation": "编辑",
+      "location": "列表页 · 行操作",
+      "description": "跳转编辑页 /gsgl/change（mode=change）"
+    },
+    "gsglDelete": {
+      "buttonName": "删除",
+      "permissionCode": "gsglDelete",
+      "operation": "删除",
+      "location": "列表页 · 行操作",
+      "description": "二次确认后按 uniqueValue 删除该公司"
+    },
+    "gsglCheckBasic": {
+      "buttonName": "查看 · 基础信息",
+      "permissionCode": "gsglCheckBasic",
+      "operation": "查看",
+      "location": "列表「查看」下拉项 + 编辑/详情页 tab",
+      "description": "控制「基础信息」板块可见性：无权限时列表下拉项隐藏、编辑/详情页对应 tab 页签隐藏（数据不可见不可编辑）"
+    },
+    "gsglCheckCapital": {
+      "buttonName": "查看 · 注册资本信息",
+      "permissionCode": "gsglCheckCapital",
+      "operation": "查看",
+      "location": "列表「查看」下拉项 + 编辑/详情页 tab",
+      "description": "控制「注册资本信息」板块可见性"
+    },
+    "gsglCheckBankcard": {
+      "buttonName": "查看 · 银行卡信息",
+      "permissionCode": "gsglCheckBankcard",
+      "operation": "查看",
+      "location": "列表「查看」下拉项 + 编辑/详情页 tab",
+      "description": "控制「银行卡信息」板块可见性"
+    },
+    "gsglCheckBusiness": {
+      "buttonName": "查看 · 工商信息",
+      "permissionCode": "gsglCheckBusiness",
+      "operation": "查看",
+      "location": "列表「查看」下拉项 + 编辑/详情页 tab",
+      "description": "控制「工商信息」板块可见性"
+    },
+    "gsglCheckTax": {
+      "buttonName": "查看 · 税务信息",
+      "permissionCode": "gsglCheckTax",
+      "operation": "查看",
+      "location": "列表「查看」下拉项 + 编辑/详情页 tab",
+      "description": "控制「税务信息」板块可见性"
+    },
+    "gsglCheckCancellation": {
+      "buttonName": "查看 · 注销信息",
+      "permissionCode": "gsglCheckCancellation",
+      "operation": "查看",
+      "location": "列表「查看」下拉项 + 编辑/详情页 tab",
+      "description": "控制「注销信息」板块可见性"
+    },
+    "gsglCheckSeal": {
+      "buttonName": "查看 · 印章信息",
+      "permissionCode": "gsglCheckSeal",
+      "operation": "查看",
+      "location": "列表「查看」下拉项 + 编辑/详情页 tab",
+      "description": "控制「印章信息」板块可见性"
+    },
+    "gsglCheckFiles": {
+      "buttonName": "查看 · 文件资料",
+      "permissionCode": "gsglCheckFiles",
+      "operation": "查看",
+      "location": "列表「查看」下拉项 + 编辑/详情页 tab",
+      "description": "控制「文件资料」板块可见性"
+    }
+  },
+
+  "businessScope": {
+    "_meta": {
+      "moduleName": "经营范围管理（经营类型与经营范围）",
+      "routePath": "(待定)",
+      "prefix": "jyfwgl",
+      "page": "src/pages/businessScope/index.vue",
+      "note": "树形 + 单页 CRUD；查看由选中节点内联展示，无独立 Check 码；无路由，前缀 jyfwgl 需后端菜单核对"
+    },
+    "jyfwglInsert": {
+      "buttonName": "新增根级别经营类型 / 新增子节点 / 空状态新增",
+      "permissionCode": "jyfwglInsert",
+      "operation": "新增",
+      "location": "左侧树 · 顶部按钮 + 节点「更多」下拉项 + 空状态按钮（三处共用一码）",
+      "description": "三个新增入口共用 jyfwglInsert：新增根级别经营类型、在节点下新增子节点、空状态新增经营类型"
+    },
+    "jyfwglChange": {
+      "buttonName": "保存",
+      "permissionCode": "jyfwglChange",
+      "operation": "编辑",
+      "location": "右侧编辑区 · 顶部",
+      "description": "保存选中经营类型节点的名称/备注/经营范围描述"
+    },
+    "jyfwglDelete": {
+      "buttonName": "删除节点",
+      "permissionCode": "jyfwglDelete",
+      "operation": "删除",
+      "location": "左侧树 · 节点「更多」下拉项",
+      "description": "删除经营类型节点（存在下级节点时禁止删除）"
+    }
+  }
+}
