@@ -9,6 +9,8 @@ Read references/directory-structure.md first.
 
 ## Workflow
 
+> 历史版本对照见 `docs/beforeSkills/cashier-list-page-directory-skill.md`。
+
 1. **建 7 项固定目录**：新建页面时先建 `index.vue`、`addOrEdit`、`apis`、`components`、`config`、`enum`、`utils`，结构一致。
 2. **新增 / 修改 / 详情都放 `addOrEdit`**：列表页只保留 `index.vue`。
 3. **决定 addOrEdit 内文件形态**：一个文件承载三模式（按 `mode` 区分）/ 三个独立（`add.vue` / `edit.vue` / `detail.vue`）/ 某两在一起（任意组合）。
