@@ -1,6 +1,6 @@
 ---
-name: "bi-cashier-java-standard"
-description: "OBO BI 出纳模块 Java 开发规范。适用于 bi-cashier 模块的新增功能、代码审查、DTO/VO/PO 字段调整、Mapper SQL 编写。"
+name: "remote-java-standard"
+description: Use when 新建或审查 BI/OBO Java 后端代码、调整 DTO/VO/PO 字段、编写 Mapper SQL、分层调用违反规范、Service 聚合层与 Component 层职责混淆、跨服务 Feign 调用边界不清晰。
 ---
 
 # bi-cashier Java 开发规范
