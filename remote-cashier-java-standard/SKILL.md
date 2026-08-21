@@ -1,11 +1,22 @@
 ---
-name: "remote-java-standard"
-description: Use when 新建或审查 BI/OBO Java 后端代码、调整 DTO/VO/PO 字段、编写 Mapper SQL、分层调用违反规范、Service 聚合层与 Component 层职责混淆、跨服务 Feign 调用边界不清晰。
+name: remote-cashier-java-standard
+description: Use when 在 bi-cashier-api、bi-cashier-component、bi-cashier-service 或 bi-cashier-web 中新建、修改或审查 Java 后端代码及关联 Mapper XML/SQL，包括 DTO/VO/PO、分层调用、Service 与 Component 职责、Feign 和数据访问规范；不要用于其他 BI/OBO 模块。
 ---
 
-# bi-cashier Java 开发规范
+# bi-cashier 模块 Java 开发规范
 
-本模块继承 OBO BI Java 开发规范，针对出纳模块的特性做了补充说明。
+本模块继承 OBO BI Java 开发规范，针对出纳模块的特性做了补充说明。本 skill 只约束 `bi-cashier` 模块组，不是通用 BI/OBO Java 规范。
+
+## 适用范围
+
+仅在目标属于以下 Maven 模块之一时使用本 skill：
+
+- `bi-cashier-api`、`bi-cashier-component`、`bi-cashier-service` 或 `bi-cashier-web`。
+
+模块归属是唯一判断维度。包名 `com.obo.bi.cashier` 只是模块内的进一步验证条件，不能脱离模块单独触发；包名一致但所在 Maven 模块不是上述四个之一的，本规范不适用。
+同时适用于与上述模块 Java 实现直接关联的 Mapper XML、`bi-cashier` SQL 和代码评审。
+
+不得把本规范套用到 `bi-file`、`bi-user` 或其他 BI/OBO Java 模块，即使它们采用相似分层或命名、包名相近或复用本规范的辅助类。跨模块任务只对其中明确属于 `bi-cashier` 模块组的文件使用本规范；无法从 Maven 模块确认归属时，不要推断适用。
 
 ## 核心规范
 

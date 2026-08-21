@@ -11,7 +11,7 @@ BI/OBO 远程开发技能仓库，对齐 [jetlinks-develop-skills](https://githu
 ## Skill 索引
 
 ### 后端规范
-- $remote-java-standard — BI/OBO Java 后端分层与编码规范
+- $remote-cashier-java-standard — bi-cashier 模块 Java 后端分层与编码规范
 
 ### 前端规范
 - $remote-button-permission — 按钮操作权限（适用于 cashier 等子应用）
@@ -29,7 +29,7 @@ BI/OBO 远程开发技能仓库，对齐 [jetlinks-develop-skills](https://githu
 ## 目录约定
 
 - 每个 skill 一个目录，直接放仓库根
-- 命名：`remote-<领域>`，如 `remote-java-standard`
+- 命名：`remote-<领域>`，如 `remote-cashier-java-standard`
 - 子目录：`references/`（按需深度参考）、`agents/`（Codex openai.yaml）、`scripts/`、`assets/`
 
 ## 文档归档
@@ -51,7 +51,6 @@ BI/OBO 远程开发技能仓库，对齐 [jetlinks-develop-skills](https://githu
 
 ```bash
 for d in remote-*/; do
-  case "$d" in remote-cashier-*) echo "RESIDUAL cashier $d"; continue;; esac
   [ -f "$d/SKILL.md" ] || { echo "MISSING $d/SKILL.md"; continue; }
   name=$(grep -E "^name:" "$d/SKILL.md" | head -1 | sed 's/name: *//;s/"//g')
   [ "$name" = "${d%/}" ] || echo "MISMATCH $d vs $name"

@@ -1,6 +1,6 @@
 # 错误签名 → 根因 → 修复
 
-本文件是 remote-ts-es-check 的深度参考。先对照签名定位，再动手。
+本文件是 remote-ts-es-check 的深度参考。先对照签名定位，再动手。只有签名位于本次任务的编辑文件和 changed hunks 内时才修复；根因或修复点落在范围外时只报告，不扩大修改范围。
 
 ## TS2554：renderDialog 参数个数
 
@@ -22,7 +22,7 @@
 
 vite.config.ts 的 alias 用的是 `resolve(__dirname, "../../share")`，tsconfig 必须与之一致。
 
-**修复**：tsconfig.json 里
+**修复**：如果 `tsconfig.json` 本身就在本次任务编辑清单内，修正为：
 ```json
 "paths": {
   "@/*": ["src/*"],
@@ -32,7 +32,7 @@ vite.config.ts 的 alias 用的是 `resolve(__dirname, "../../share")`，tsconfi
 }
 ```
 
-**别乱修调用处**：`renderDialog(Content, props, { ... }, { brand: slots.brand, tags: slots.tags })` 的第 4 参是刻意的插槽转发，不是写错。根因在 tsconfig，不在调用。
+**别乱修调用处**：`renderDialog(Content, props, { ... }, { brand: slots.brand, tags: slots.tags })` 的第 4 参是刻意的插槽转发，不是写错。根因在 tsconfig，不在调用。若 `tsconfig.json` 不在编辑清单内，只报告根因，不修改调用处或配置。
 
 ## style/member-delimiter-style
 
@@ -61,10 +61,10 @@ onSave: (data: { file: Record<string, any>, tagNameList: string[] }) => emit("sa
 - `unused-imports/no-unused-imports`：删除未使用的 import。
 - 未使用 `eslint-disable`：多半是规则在 eslint.config.js 里被 `off` 了（如 `perfectionist/sort-imports: "off"`），直接删注释行。
 
-## 格式类 warning（自动可修）
+## 格式类 warning（手工修复）
 
 - `vue/singleline-html-element-content-newline` / `vue/multiline-html-element-content-newline`：元素内容换行。
-- 这些是纯格式，`npx eslint <file> --fix` 即可清掉。**只对目标文件跑**，别对整仓跑，避免混入其他文件的改动。
+- 这些是纯格式，按 ESLint 报告手工修正对应 changed hunk。不要使用 `--fix`；它可能改写同一文件中的未编辑代码。
 
 ## packages/share 既有类型错误（不在本目录职责内）
 

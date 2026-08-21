@@ -1,64 +1,86 @@
 ---
 name: remote-ts-es-check
-description: Use when 改动前后批量扫描 src/、定位 vue-tsc 或 eslint 报错根因（TS2554、member-delimiter、valid-template-root、unused-imports 等），区分 cashier 自身问题与 packages/share 既有问题。
+description: Use when a frontend task changes a limited set of Vue, TypeScript, or JavaScript files and linting or repair must stay within the current task's edited files and changed hunks, without IDE/MCP or project-wide scans.
 ---
 
-# Cashier TS & ESLint Check
+# Edited TS & ESLint Check
 
-对本子应用做 TypeScript / ESLint 静态检查，按错误签名定位根因并修复。**默认只扫描、不改文件**；确认后再修。
+只检查本次任务实际编辑的前端文件，只修复本次任务产生的代码行。**任务编辑清单是范围边界**；工作区里的其他改动、同文件其他行和全项目诊断都不自动纳入。
 
-## Hook 检查配置（实时生效）
+## Scope Contract
 
-> 下面的配置块会被 `.claude/hooks/ts-es-check-gate.sh` 读取执行。**改这里即可调整 hook 的检查行为**，无需改脚本。当前会话若没有改动 `src/` 代码，hook 会自动跳过检查。
+检查前列出本次任务的编辑清单：文件路径及对应的 changed hunks。范围来源按优先级排列：
 
-<!-- HOOK CONFIG START
-HOOK_ESLINT_ARGS="--format stylish"
-HOOK_TSC_ARGS="--noEmit"
-HOOK_MAX_ATTEMPTS=3
-HOOK_SRC_REGEX='^src/.*\.(vue|ts|tsx|js|jsx|mjs|cjs)$'
-HOOK CONFIG END -->
+1. 当前任务实际执行过的编辑记录。
+2. 用户明确指定的文件或代码范围。
+3. `git diff --unified=0 -- <task-files...>`，仅用于确认上述范围。
 
-| 配置项 | 作用 | 默认值 |
-|---|---|---|
-| `HOOK_ESLINT_ARGS` | eslint 额外参数（追加在变更文件列表后） | `--format stylish` |
-| `HOOK_TSC_ARGS` | vue-tsc 参数 | `--noEmit` |
-| `HOOK_MAX_ATTEMPTS` | 自动修复最大尝试次数，超过转人工审核 | `3` |
-| `HOOK_SRC_REGEX` | 要扫描的变更文件正则 | `^src/.*\.(vue\|ts\|tsx\|js\|jsx\|mjs\|cjs)$` |
+`<task-files...>` 包含本次任务编辑的全部文件，包括配置文件；`<lint-files...>` 只是其中可交给 ESLint 的 `.vue`、`.ts`、`.tsx`、`.js`、`.jsx`、`.mjs`、`.cjs` 子集。ESLint 不支持的配置文件（如 `tsconfig.json`）可以保留在手工修复范围内，但不能传给 ESLint；`vite.config.ts` 等受支持文件仍可属于 lint files。
+
+不要从整个 `git status`、全仓 diff 或目录扫描推导范围，它们可能包含用户原有改动。新建文件的全部内容视为本次编辑范围。
+
+ESLint 必须解析完整文件才能正确理解 Vue/TS 语法，因此检查命令的最小可靠粒度是文件；**可修复范围仍然是 changed hunks**。同文件其他行的诊断只记录为范围外问题，不修复。
 
 ## Workflow
 
-1. **ESLint 扫描（报告模式）**：`npx eslint src --format stylish`
-   - ⚠️ 不要用 `pnpm lint`——脚本是 `eslint . --fix`，会**直接改写文件**。先报告、后修复。
-   - 报告出的 warning 多为纯格式问题，可对单个文件跑 `npx eslint <file> --fix` 自动清理。
-2. **TypeScript 检查**：`npx vue-tsc --noEmit`
-   - 全量 check 较慢（含 `packages/share` 源码），仅改某个文件时可只信该文件的报错。
-3. **按错误签名定位**：对照 `references/error-signatures.md` 的「签名 → 根因 → 修复」表，逐条处理。
-4. **收尾复查**：重新跑 `npx eslint src --format stylish` 与 `npx vue-tsc --noEmit`，确认 0 error。
+1. **确认范围**：记录全部 task files 及 changed hunks，再从中筛出 lint files。
+2. **只读检查目标文件**：
+
+   ```bash
+   npx eslint <lint-files...> --format stylish
+   ```
+
+   不传目录、`.`、glob 或整个工作区文件列表。
+3. **筛选诊断**：只有“文件在编辑清单内且报错行与 changed hunk 相交”的诊断属于本次修复范围。其他诊断单独报告，不处理。
+4. **手工最小修复**：只编辑对应 changed hunk。不要使用 `--fix`；即使只传一个文件，ESLint 也可能改写该文件的其他行。
+5. **复查同一范围**：
+
+   ```bash
+   npx eslint <lint-files...> --format stylish
+   git diff --check -- <task-files...>
+   git diff --unified=0 -- <task-files...>
+   ```
+
+   最后确认没有新增范围外 hunk。ESLint 若只剩同文件其他行的既有问题，应明确说明，不能宣称整个文件通过。
+
+## TypeScript / Vue Type Checking
+
+默认不运行 `vue-tsc --noEmit`、`tsc --noEmit` 或项目级 `type-check` 脚本。它们依赖完整 `tsconfig` 和跨文件类型图，不能可靠地限制到单个 Vue/TS 文件或 changed hunks；直接传文件会丢失项目配置，过滤全量输出仍属于全局扫描。
+
+没有 IDE/MCP 时，不用不准确的单文件 TypeScript 命令冒充类型检查。如果项目已配置 type-aware ESLint 规则，这些规则可以继续生效，但不能等同于完整类型检查。
+
+只有用户明确要求全量类型验证时才运行项目级类型检查，并必须标注其范围是全项目；仍只修复任务编辑清单内的问题，不处理其他文件。
 
 ## Quick Reference
 
-| 命令 | 用途 | 注意 |
+| 操作 | 是否允许 | 范围 |
 |---|---|---|
-| `npx eslint src --format stylish` | 扫描 src，只报告不改 | 默认方式 |
-| `npx eslint <file> --fix` | 自动修复单个文件格式问题 | 只对目标文件跑，避免误伤其他改动 |
-| `pnpm lint` | 全仓 eslint + fix | ⚠️ 会改文件，扫描时禁用 |
-| `npx vue-tsc --noEmit` | TS 类型检查 | 慢，含 share 源码 |
+| `npx eslint <lint-files...> --format stylish` | 允许 | 只读解析编辑源码文件；只处理 changed hunks 的诊断 |
+| 手工修改 changed hunks | 允许 | 只修改本次编辑代码 |
+| `git diff --check -- <task-files...>` | 允许 | 只检查本任务目标文件补丁 |
+| `npx eslint src` / `npx eslint .` | 禁止 | 会扫描目录或全项目 |
+| `pnpm lint` / `npm run lint` | 禁止 | 可能展开为全仓扫描或自动修复 |
+| `npx eslint <file> --fix` | 禁止 | 可能改写目标文件中的未编辑代码 |
+| `npx vue-tsc --noEmit` | 默认禁止 | 只能可靠地做项目级检查 |
 
-## 常见错误速查
+## Error Signatures
 
-| 报错 | 根因 | 修复 |
-|---|---|---|
-| `TS2554 Expected 1-3 arguments, but got 4`（renderDialog） | `@ob-web/share` 解析到 node_modules 过期类型 | 修 tsconfig paths（见 references） |
-| `style/member-delimiter-style: Expected a comma` | 单行内联类型字面量用了 `;` | 改成 `,` |
-| `vue/valid-template-root` | `<template>` 里只有注释，无根元素 | 无渲染需求则删掉 `<template>` 块 |
-| `unused-imports/no-unused-imports` | 导入了没用的符号 | 删掉 |
-| `style/no-multiple-empty-lines` | 连续多个空行 | 合并为 1 个 |
-| `vue/singleline-html-element-content-newline` | 元素内容该换行没换行 | `eslint --fix` 自动修 |
-| 未使用的 `eslint-disable` | 对应规则已关闭（如 `perfectionist/sort-imports: off`） | 删掉该注释 |
+需要定位已编辑行中的常见错误时，读取 `references/error-signatures.md`。错误签名只帮助判断根因，不会扩大允许修改的文件或行范围；根因落在范围外时，只报告，不修复。
 
 ## Required Constraints
 
-- **扫描不改文件**：报告模式跑 ESLint；只有确认要修时才改，或用 `--fix` 精确到文件。
-- **只修 cashier 的 `src/`**：`packages/share` 里报的类型错误是 share 包自身问题（见 references），不在本目录职责内，不要顺手改共享包。
-- **报错先对签名**：同一个错误签名的根因往往是固定的（尤其 TS2554），先查表再动手，不要瞎改调用处。
-- 修完必须重跑两个检查验证，别口头宣称通过。
+- 不用 `eslint-disable`、`@ts-ignore`、`any` 或修改全局配置来隐藏诊断。
+- 不顺手清理同文件其他行、其他脏文件或 `packages/share` 的既有问题。
+- 验证结果必须区分“本次 changed hunks 无相关诊断”和“整个文件/项目通过”。未运行全量类型检查时明确标注未验证跨文件类型关系。
+
+## Legacy Hook Compatibility
+
+已有安装可能通过 `.claude/hooks/ts-es-check-gate.sh` 读取下面的配置块，因此保留原有字段。它不属于本技能的严格局部工作流，也不授权执行全量命令。本仓库没有该 hook 脚本，无法验证外部 hook 是否遵守 changed-hunk 边界。
+
+<!-- HOOK CONFIG START
+HOOK_ESLINT_ARGS="--format stylish"
+# ponytail: legacy hook 没有可验证的禁用开关；--version 保留字段兼容性且不扫描项目。
+HOOK_TSC_ARGS="--version"
+HOOK_MAX_ATTEMPTS=3
+HOOK_SRC_REGEX='^src/.*\.(vue|ts|tsx|js|jsx|mjs|cjs)$'
+HOOK CONFIG END -->
