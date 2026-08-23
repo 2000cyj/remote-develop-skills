@@ -91,11 +91,13 @@ private String sealName;
 
 ## 3. 错误处理与统一返回
 
+### 3.1 异常类型与抛出位置
+
 - Controller 用 `Result.success(...)`；失败由 Service 抛 `BusinessException`：
 
 ```java
-throw new BusinessException("账号不能为空");
-throw new BusinessException("印章业务唯一流水号不能为空");
+throw new BusinessException("请填写账号");
+throw new BusinessException("请先选择要操作的印章");
 ```
 
 - 业务校验失败统一抛业务异常，不要吞异常、不要 `e.printStackTrace()`。
@@ -110,9 +112,68 @@ Map<String, List<FileUploadRecordVO>> data = RemoteResultUtils.checkAndGetData(r
 
 ```java
 if (result == null || !Boolean.TRUE.equals(result.getSuccess())) {
-    throw new BusinessException("查询现有附件失败：" + ...);
+    throw new BusinessException("附件加载失败，请稍后再试");
 }
 ```
+
+### 3.2 业务异常提示语必须大白话（面向最终用户）
+
+**硬性规则**：`throw new BusinessException(...)` 里的中文提示是**最终用户在前端弹窗 / Toast 上看到的文字**，必须写成大白话——让非技术用户一眼看懂、能采取下一步动作。
+
+**禁止**程序员腔 / 内部术语（出现即视为不合格）：
+
+| 反例（程序员腔，不要写） | 反例原因 |
+|------|------|
+| `上架申请编号不能为空` | 「编号」「不能为空」是程序员话术 |
+| `上架申请不存在或已被删除，请刷新页面` | "刷新页面"过于程序化 |
+| `当前申请状态不允许编辑` | "当前状态"是数据状态术语 |
+| `请稍后重试` | "重试"是技术动作 |
+| `店铺编码已存在，请更换店铺编码后重试` | "编码""重试"都是技术词 |
+| `taskId 不能为空` | 暴露内部 RPC 字段名 |
+| `CAS 冲突` / `乐观锁失败` / `version 不一致` | 暴露分布式锁细节 |
+| `幂等键缺失` | "幂等"是后端概念 |
+| `Flowable 流程启动失败` | 暴露流程引擎名 |
+| `bi-file 返回为空` | 暴露内部服务名 |
+| `Druid / MyBatis-Plus / Feign / Nacos` 等中间件名 | 暴露技术栈 |
+
+**改写**为「做什么 / 怎么操作」的用户腔：
+
+| 大白话（正确写法） | 说明 |
+|------|------|
+| `请先选择要查看的申请` | 提示用户做哪个动作 |
+| `没找到这条申请，可能已被删除，请稍后再试` | 状态 + 可执行动作 |
+| `这条申请已不能再编辑了` | 直接说明结果 |
+| `请稍后再试一次` | 等价的"重试"但用日常语言 |
+| `这个店铺编码系统里已经有了，换一个试试` | 用业务语言说"重复" |
+| `审批任务信息缺失，请刷新后再试` | 解释为何失败 + 动作 |
+| `这条申请刚刚被别人改过，请刷新页面后再操作` | 状态解释 + 操作建议 |
+| `操作没成功，请联系管理员` | 不暴露底层 |
+
+**反例 / 正例（对照）**：
+
+```java
+// ❌ 反例 1 — 程序员腔直接给用户看
+throw new BusinessException("上架申请编号不能为空");
+throw new BusinessException("上架申请已被其他人修改，请刷新页面后重试");
+throw new BusinessException("opertionId 不能为空");
+
+// ✅ 正例 — 用户能看懂、能采取行动
+throw new BusinessException("请先选择要查看的申请");
+throw new BusinessException("这条申请刚刚被别人改过，请刷新页面后再操作");
+throw new BusinessException("操作编号缺失，请稍后再试一次");
+```
+
+**特别说明**：
+
+1. **业务键定位交给 log**：`uniqueValue` / `taskId` / `idempotencyKey` 等程序员定位字段**只**放在 `log.warn` / `log.info` 中，**绝不**放进 `BusinessException` 文案——前端只展示给用户的部分。
+2. **业务服务名不暴露**：禁止把 `bi-file` / `bi-flowable` / `Nacos` 等内部服务名 / 中间件名写进用户提示。如果一定要指明故障方，写作"文件服务"、"流程服务"即可。
+3. **错误码 ≠ 用户提示**：错误码（`SEAL_NAME_EXISTS`）是给程序员排障用的，可以暴露内部语义；用户提示（前端展示的）必须大白话。
+4. **远程失败 ≠ 重试**：当远程 RPC 失败时，前端提示"系统忙，请稍后再试"即可，不要写"Feign 调用失败 / 超时"。
+5. **枚举错误码优先**：长期复用的错误优先抽成枚举（`BusinessErrorCode.SEAL_NAME_EXISTS`）+ i18n 字典，比一个个改文案统一；新增 / 改动枚举时同步改文案。
+6. **改文案要测**：业务 Service 改动提示文案时，连同前端 toast / dialog 一起回归，确认用户看到的就是改后的字。
+
+**集中沉淀文档**：跨模块共用的用户提示文案放 `bi-cashier/docs/prompts/user-tips.md`，避免 Service 与前端散落硬编码。
+
 
 ## 4. 日志与注释
 

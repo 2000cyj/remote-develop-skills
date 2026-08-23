@@ -194,7 +194,150 @@ if (CollUtil.isNotEmpty(list)) {
 | 改了几次名还没想清楚 | 继续用主流程里的临时变量，别抽 |
 | 跨多个类需要的能力 | 提到 `helper/` 包做 `@Component` |
 
+### 8.5 未使用代码剔除（提交前必查）
+
+每次新增 / 修改 Service 与 Component 都要过一遍诊断中的"未使用"项；规则按"真无引用才剔，告警不等于死代码"。
+
+**真未使用 → 必剔**：
+
+| 类别 | 检测方法 | 处置 |
+|------|---------|------|
+| 接口方法 0 调用方 | `Grep "interfaceMethodName\("` 全工程 | 接口 + 实现同步删（如 `add()` / `update()` / `deleteByUniqueValue()` / `queryByUniqueValue()` 4 个死方法） |
+| 私有 helper 0 调用方 | 同上 | 直接删 |
+| 私有 helper 仅被"另一未使用 helper"内部调用 | 形成死链 | 两个一起删（如 `findAuthorizedTask` + `containsHandler`） |
+| private 形参内部从不引用 | `findField` / 阅读方法体确认 | 删形参 + 调用方传入的实参 |
+| 未使用的 `import xxx;` | IDE `get_file_problems(errorsOnly=true)` | 删整行 |
+
+**告警 ≠ 未使用 → 保留**：
+
+| 告警 | 看似冗余的真实原因 |
+|------|------|
+| 形参 `variables` 始终为 `null` | Feign 客户端契约预留（后续真要传流程变量） |
+| 形参 `twoLevelId` 始终为 `TWO_LEVEL_ID_CWSH` 常量 | 当前业务只一个二级别；预留支持多模块（如 `TWO_LEVEL_ID_CGGL`） |
+| 形参 `uniqueValue` 在 RPC wrapper 里未用 | 帮助上层调用语义对齐，被 helper 一层转给底层，**helper 自己的形参可删**，但底层"流程要传"的位置不能删 |
+| 集合变量 `tasks == null` 始终为 false | `RemoteResultUtils.unwrap()` 已保证非 null，业务冗余 guard 是 idempotency 安全网 |
+| `completeResult = null` 初始值"冗余" | lambda 闭包捕获需要 final 形参 / 重新赋值可能 |
+| `.replace("A", "A")` 同值替换 | 业务约束占位符，未来新增"销售财务_改版"以备 |
+| switch 增强 / try-with-resources / 长方法拆解 | 风格建议，**不动**（避免越界做无关重构） |
+
+**操作顺序**：
+
+1. `Grep` 反查每个标识符的所有引用面
+2. 真 0 引用 → 同步删：接口 + 实现 + 调用方；编译校验
+3. 形参被删但调用方仍传 → 调用方同步删对应实参（IDE 会标红没传够 / 类型不匹配）
+4. 用 `get_file_problems(errorsOnly=true)` 而非 `build_project`（IDEA MCP 全量编译会超时，按单文件 errors 检查已足够）
+
+**反面案例**（2026-08 已整改）：
+
+`OnboardingManageServiceImpl` 与 `IOnboardingApplicationService` 早期有 4 个未使用接口方法（`add()` / `update()` / `deleteByUniqueValue()` / `queryByUniqueValue()`），3 个未使用私有 helper（`returnToNode` 6 参重载、`findAuthorizedTask`、`containsHandler`），1 个未使用的 `import java.util.Objects;`，2 个 `completeTask` / `completeOpenTask` 的未引用形参 `uniqueValue`。本次整改共**清理 4 接口方法 + 3 helper + 1 import + 2 形参**，调用方同步调整。
+
 参考 `coding-quality.md §9 DRY 与可读性` 中的细则。
+
+### 8.6 方法简化（"一判断 / 一调用 / 0 调用" 反例）
+
+提交前除 §8.5 "未使用" 外，还应专门扫一轮**方法简化**反例。新增 / 修改 Service 与 Component Service 实现类必查；三类处置：
+
+**反例三类 + 处置**：
+
+| 反例类型 | 表现 | 判定方法 | 处置 |
+|----------|------|---------|------|
+| **一判断一抛异常** | `assertCurrentHandler(X)` / `validateFooIsBlank(x)` 等 "检查 + 抛" 单用途 helper | 调用方 1 处 + 方法体只有 `if (xxx) throw new BusinessException(...)` | **内联到调用点** |
+| **一判断一返回** | `normalizePageNum` / `normalizePageSize` 等 "判 + 返回默认值" | 调用方 1 处 + 方法体 ≤ 3 行 | **内联为三元表达式** |
+| **取列表第一个 / 拼接字符串** | `firstTask(List)` / `firstTaskName(List)` 等 1-3 行"小工具" | 调用方 ≤ 2 处 + 方法体 1-3 行 | **删除 + 内联**（用 `CollectionUtils.isEmpty(x) ? null : x.get(0)`） |
+| **wrapper（≥3 形参私有 helper）** | `completeTask(op, two, task, out, comment, vars)` 这种 6 形参 RPC 拼接 helper | 形参 ≥ 3（含 RPC 字段）/ 全部字段为调用方已知 | **封 DTO** + `private xxx(Req req)` + 内部走 `SecurityContextHolder` |
+| **wrapper（一调用一方法 = 1 行）** | `private void deleteStores(String s) { storeService.deleteByApplicationUniqueValue(s); }` 单行调 Component Service | Component Service 已有同名方法 + helper 仅 1 行 | **删除 helper + 调用方直接调 Component Service** |
+| **死方法 0 调用** | `static boolean isOpenAuditNode(...)` 整段 0 引用 | `Grep "isOpenAuditNode\("` | **直接删** |
+
+**内联示例（"一判断一返回"）**：
+
+```java
+// ❌ 反例：单行 + 单调用方
+private int normalizePageNum(Integer pageNum) {
+    return pageNum == null || pageNum < 1 ? 1 : pageNum;
+}
+// 调用方：int pageNum = normalizePageNum(dto.getPageNum());
+
+// ✅ 正例：内联三元
+int pageNum = dto.getPageNum() == null || dto.getPageNum() < 1 ? 1 : dto.getPageNum();
+```
+
+**"取列表第一个" 内联示例**：
+
+```java
+// ❌ 反例：3 行 helper
+private TaskItemSnapshotDTO firstTask(List<TaskItemSnapshotDTO> tasks) {
+    return tasks == null || tasks.isEmpty() ? null : tasks.get(0);
+}
+
+// ✅ 正例：调用方内联
+TaskItemSnapshotDTO returnedTask = CollectionUtils.isEmpty(returnedTasks) ? null : returnedTasks.get(0);
+```
+
+**wrapper 内联示例（≥3 形参 → DTO）**：
+
+```java
+// ❌ 反例：6 形参私有 helper + 两个 wrapper 实现完全一样
+private CompleteTaskResultDTO completeTask(String operationId, String twoLevelId,
+                                           String taskId, String outcome, String comment,
+                                           Map<String, Object> variables) { ... }
+private CompleteTaskResultDTO completeOpenTask(...) { ... }  // 与 completeTask 实现完全一致
+private CompleteTaskResultDTO completeTaskInternal(..., String userId) { ... }  // 把 userId 硬塞
+
+// ✅ 正例：DTO 单形参 + 内部 SecurityContextHolder 取 userId
+@Data
+public class CompleteFlowableTaskReq {
+    private String operationId, twoLevelId, taskId, outcome, comment;
+    private Map<String, Object> variables;
+}
+
+private CompleteTaskResultDTO doCompleteTask(CompleteFlowableTaskReq req) {
+    // 内部 SecurityContextHolder.getUserName() 取 userId，不再走形参
+    ...
+}
+
+// 调用方 4 处：构造 req + setX + 调 doCompleteTask(req)
+```
+
+**wrapper 一调用一方法**：
+
+```java
+// ❌ 反例：单行 wrapper（仅调一次 Component Service）
+private void deleteStores(String u) { onboardingStoreService.deleteByApplicationUniqueValue(u); }
+private void deleteGroundings(String u) { onboardingGroundingService.deleteByApplicationUniqueValue(u); }
+private void deleteFiles(String u) { onboardingFileRelService.deleteByApplicationUniqueValue(u); }
+
+// ✅ 正例：调用方直接调 Component Service
+onboardingStoreService.deleteByApplicationUniqueValue(uniqueValue);
+onboardingGroundingService.deleteByApplicationUniqueValue(uniqueValue);
+onboardingFileRelService.deleteByApplicationUniqueValue(uniqueValue);
+```
+
+**不该简化的（合规 helper）**：
+
+- `validateForSubmit(...)`（§7 `validateXxx` 一档，多判断聚合）
+- `containsAssignee(...)` / `resolveNodeByTaskName(...)`（多判断聚合或业务规则解析）
+- `applyListCapabilities(...)`（能力映射 19 行）
+- `assigneesOf(...)`（真有拼接逻辑，非单纯 wrapper）
+- `applyFields / findField / convertIfNeeded`（反射三件套，互相调用）
+- `findOpenAuditTask / findTaskById`（3 处真搜任务工具）
+- `sameReturnableNode / sameNodeLabel / normalizeNodeLabel`（环节名归一链式调用）
+
+判定信号：方法体 ≤ 5 行 + 调用方 ≤ 2 处 + 没有"业务规则解析"语义 → 反例可简化；方法体 ≥ 5 行 / 多判断聚合 / 反射 / 搜索类工具 → 保留。
+
+**反面案例**（2026-08 已整改）：
+
+`OnboardingManageServiceImpl` 早期有 8 个反例 helper：
+
+- `assertCurrentHandler`（一判断+throw，1 处调用 → 内联到 `update()`）
+- `firstTask` / `firstTaskName`（取列表第一个，1 处调用 → 删除 + 调用方内联）
+- `normalizePageNum` / `normalizePageSize`（一判断+默认，1 处调用 → 内联三元）
+- `isOpenAuditNode`（static boolean，0 调用 → 直接删）
+- `deleteStores` / `deleteGroundings` / `deleteFiles`（wrapper 一调用一方法，2/2/1 处调用 → 删除 + 调用方直接调 Component Service）
+- `completeTask` / `completeOpenTask` / `completeTaskInternal`（两个 wrapper + 一底层，3 个 6/7 形参 → 合并为 `doCompleteTask(CompleteFlowableTaskReq)` 一个 DTO 形参）
+
+本次整改共**清理 8 个反例 helper**，合并 3 个 RPC wrapper 为 1 个，所有调用方同步调整。
+
+---
 
 ## 9. 常用固定结构模板
 

@@ -49,8 +49,14 @@ description: Use when 在 bi-cashier-api、bi-cashier-component、bi-cashier-ser
 3. **Web 层** 只能调用 Service 聚合层，禁止越级调用 Component。
 4. **DTO/VO** 字段使用驼峰命名（数据库列名下划线由 `@TableField("snake_case")` 显式映射）。
 5. **分页返回**：`Result<PageResult<XxxVO>>`（不能是裸 `Result<PageResult>`）。
-6. **Controller** 必须标注 `@Api`、`@ApiOperation`（中文）。
-7. **Mapper XML** 必须与 Mapper 接口同名共存（无自定义 SQL 时也建占位 XML）。
+6. **Controller** 必须标注 `@Api`、`@ApiOperation`（中文）。**禁止**标注 `@BusLogs`——切面已废弃（`BusLogAop.java` 全注释，无生效切面），加注解会给读者错误的"必须添加"预期（详见 `references/architecture-layers.md` §1.2）。
+7. **API 入参对象化**：≥ 2 个独立变量的 Controller 入参**必须**收进一个 DTO 用 `@RequestBody` 收，禁止 `@RequestParam` 与 `@RequestBody` 混用同一个业务键（`uniqueValue` / `nodeCode`），也禁止业务键塞进 URL 路径段（`@PathVariable`）。`@RequestParam` 仅服务于"单变量且不会再扩"接口（详见 `references/architecture-layers.md` §15）。
+8. **Service / Helper 入参对象化**：Service 聚合层、Component Service、私有 helper 等**任意方法**形参 ≥ 3 个时，必须封装 DTO / Req 收参，禁止多形参并列。常见例外：固定 2-3 个 RPC 字段（`operationId / taskId / outcome`）的内部 helper 可保留为形参（详见 `references/architecture-layers.md` §15.3）。
+9. **同名字段对象赋值用 BeanCopyUtils**：两个对象 / 集合互转，**同名字段 ≥ 3 条**时必须使用 `com.obo.core.common.utils.BeanCopyUtils.copy(src, Xxx::new)` 或 `BeanCopyUtils.copyList(src, Xxx::new)`，禁止 20 行手动 `setX`。**仅** DTO / PO 都不含的派生字段、`null` 兜底字段、跨表外键字段允许手动补写（详见 `references/architecture-layers.md` §15.4）。
+10. **关键位置日志**：业务校验失败、CAS 冲突、远端 RPC 调用返回 null、字段反射写入数、子资源创建数等关键位置必须打 `log.warn` / `log.info`，输出业务键（`uniqueValue` / `nodeCode` / `taskId` / `idempotencyKey`）。Controller 不打日志（一行转发），日志责任在 Service 聚合层（详见 `references/architecture-layers.md` §15.5）。
+11. **Mapper XML** 必须与 Mapper 接口同名共存（无自定义 SQL 时也建占位 XML）。
+12. **提交前剔除未使用代码**：新增 / 修改 Service 与 Component 时，真 0 引用的接口方法、私有 helper、未引用形参、未使用 import 必须随本次改动同步删掉（接口 + 实现 + 调用方一起动）。"诊断告警"（形参恒为 null / switch 升级 / 重复代码段）**不等于死代码**，是 Feign 契约 / 业务约束 / 风格建议，**保留**（详见 `references/code-structure.md` §8.5）。
+13. **方法简化（提交前必查）**：除"未使用代码"外，新增 / 修改 Service 与 Component Service 实现类时，对私有 helper 做一轮反例扫：一判断一抛异常 → 内联调用点；一判断一返回 → 内联三元；取列表第一个 / 拼接字符串 → 删除 + 调用方内联；≥3 形参 wrapper → 封 DTO；一调用一方法 wrapper（仅调 1 次 Component Service）→ 删除 + 调用方直接调 Component Service；0 调用 dead method → 直接删。合规 helper（业务规则解析 / 反射 / 搜索工具 / 链式调用）必须保留（详见 `references/code-structure.md` §8.6）。
 
 ### 代码生成范围
 
@@ -64,6 +70,69 @@ description: Use when 在 bi-cashier-api、bi-cashier-component、bi-cashier-ser
 ## 代码规范
 
 > 完整规则在 `references/code-structure.md` 与 `references/coding-quality.md`。本节是最关键的 8 条速查。
+
+### 0. 接口（interface）注释规范
+
+interface 内的方法、常量、字段变量**必须带有 Javadoc 注释**，不允许只写签名不写注释。注释要写清**业务语义**（做什么、为什么、入参/出参约束），不能用空壳 `/** xxx */` 蒙混过关。
+
+**适用范围**：本规范覆盖 `bi-cashier-api`、`bi-cashier-component`、`bi-cashier-service`、`bi-cashier-web` 内所有 Java interface，包括但不限于：
+
+- Service 接口（`IXxxManageService` / `IXxxService`）
+- Feign Client 接口（`*Client.java`，位于 `bi-cashier-api`）
+- DTO/VO 字段、`enum` 常量
+- 自定义 SPI / 回调接口
+
+**强制要求**：
+
+| 元素 | 必须带注释 | 注释要求 |
+|------|----------|---------|
+| interface 方法（含 default / static） | ✅ | 业务语义 + 入参约束 + 返回值含义 + 异常场景；若有 Feign 语义需注明调用方、超时、重试策略 |
+| interface 常量（`String XXX = "..."` / 枚举值） | ✅ | 含义、合法取值、引用方 |
+| interface 字段变量（极少使用，必须配 Javadoc） | ✅ | 含义、单位、合法范围 |
+| interface 自身 | ✅ | 接口目的、归属模块、典型实现或调用方 |
+
+**正例**：
+
+```java
+/**
+ * 银行卡管理服务：聚合银行卡主档与关联附件的增删改查。
+ *
+ * @author cashier-team
+ * @since 2024-01-01
+ */
+public interface IBankCardManageService {
+
+    /**
+     * 新增银行卡主档并级联写入文件到期记录与标签库。
+     *
+     * @param req 新增请求（含主档字段 + 附件 ID 列表 + 标签名列表），主档字段非空
+     * @return 新增成功后的业务唯一流水号 uniqueValue
+     * @throws BusinessException 当银行账号重复或附件缺失时抛出
+     */
+    String addBankCard(AddBankCardDTO req);
+
+    /**
+     * 银行账号字段名前缀：DB 列 `bank_account_no` 在 DTO 中的驼峰名。
+     */
+    String BANK_ACCOUNT_NO_FIELD = "bankAccountNo";
+}
+```
+
+**反例（禁止）**：
+
+```java
+// ❌ 方法无注释
+String addBankCard(AddBankCardDTO req);
+
+// ❌ 常量无注释
+String BANK_ACCOUNT_NO_FIELD = "bankAccountNo";
+
+// ❌ 空壳 Javadoc
+/** 新增银行卡 */
+String addBankCard(AddBankCardDTO req);
+```
+
+> 历史存量代码可豁免，但新代码、改动行（包含新增 / 修改的方法、常量）必须遵守本节。
 
 ### 1. 类文件布局（自上而下）
 
@@ -145,6 +214,7 @@ private Long localCacheSize;                  ← 实例字段（按业务相关
 ### 8. 错误处理与判空
 
 - **错误处理**：业务异常一律 `throw new BusinessException("中文提示")`，**禁止吞异常**、**禁止 `e.printStackTrace()`**、**禁止 `catch (X) {}`**
+- **提示语必须大白话（硬性）**：`BusinessException` 的提示文案是前端直接展示给用户的，**禁止**程序员腔（"不能为空" / "请刷新页面重试" / "刷新失败" 等），**禁止**暴露内部术语（`uniqueValue` / `taskId` / `CAS` / `bi-file` / `Flowable` / `Redis` 等中间件名）。业务键定位只放在 `log.warn` / `log.info` 中。详见 `references/coding-quality.md` §3.2。
 - **判空**：集合用 `CollUtils.isEmpty(x)` / `CollUtils.isNotEmpty(x)`；字符串用 `StringUtils.isBlank(x)` / `StringUtils.isNotBlank(x)`；包装类型运算前必须判空
 - **空集合返回**：用 `Collections.emptyList()` / `Collections.emptyMap()`，**禁止 `new ArrayList<>()`** 作为返回值
 
@@ -174,12 +244,13 @@ private Long localCacheSize;                  ← 实例字段（按业务相关
 | 任务类型 | 参考文档 |
 |---------|---------|
 | 类文件内代码布局（import 分组、字段/方法顺序、guard clauses、私有 helper）、**DTO/VO 设计规范** | `references/code-structure.md` |
-| 命名、**注释规范**、注解、**异常处理完整规约**、**日志格式细化**、**安全性规约**、**错误码/错误信息规范**、**Feign 客户端使用规约** | `references/coding-quality.md` |
+| 命名、**注释规范（覆盖 interface 方法 / 常量 / 字段 Javadoc）**、注解、**异常处理完整规约**、**日志格式细化**、**安全性规约**、**错误码/错误信息规范**、**Feign 客户端使用规约** | `references/coding-quality.md` |
 | PO 基类、uniqueValue 生成、软删除、复合主从表、SQL 归档、**PO 字段映射规约** | `references/data-model-sql.md` |
 | 性能红线、批量查库、异步导出、敏感字段权限 | `references/performance.md` |
 | 本模块字典/系统数据翻译做法（不使用 AOP 注解） | `references/translation-aop.md` |
 | 类间结构（业务/数据分离、Manager 拆分、Impl 膨胀阈值、Facade 模式）、**业务-数据归属精确规则** | `references/concerns-separation.md` |
 | 分层、**Controller 模式规范**、Service 聚合、Component、Mapper、Helper、Convert、**调用链规范** | `references/architecture-layers.md` |
+| **Interface 注释规范完整版**（方法/常量/字段变量 Javadoc、Feign Client、DTO/VO 字段） | `references/coding-quality.md`（"注释规范"章节） |
 | **MP Lambda vs 手写 XML 决策、动态条件、聚合查询** | `references/mybatis-vs-xml.md` |
 | **文件附件联合写入（FileExpiryRecord + bi-file + 标签库）** | `references/file-attachment-pattern.md` |
 | **调用链 4 层逐行模板** | `references/call-chain-templates.md` |
@@ -198,3 +269,4 @@ private Long localCacheSize;                  ← 实例字段（按业务相关
 - 禁止在业务表建表 SQL 中遗漏 `deleted` 字段（除非明确说明不软删）。
 - 禁止将**数据访问层**（`IXxxService` / 不含 `Manage` 的 Service 类）写到 `bi-cashier-service` 模块（参见本文档"目录归属规则"）。
 - 禁止用空壳 Javadoc（`/** xxx */` 一句话 + `@param xxx` 参数）蒙混过关——Javadoc 必须写出业务语义。
+- **禁止 interface 内方法、常量、字段变量无注释**——必须按本文档"代码规范 §0 接口注释规范"逐项加 Javadoc；新增 / 改动行不允许出现无注释的方法签名或常量定义。

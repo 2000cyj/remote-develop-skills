@@ -588,6 +588,189 @@ public class XxxController {
 - 路由前缀 `/api/...`（其它业务前缀）→ 必须 `/cashier/...`
 - 方法体超过 5 行 → 业务逻辑在 Controller 了，应该下沉到 ManageService
 - `@RequestMapping("/xxx")` 用非业务前缀 → 必须 `/cashier/{module}`
+- `/{uniqueValue}/xxx` 业务键塞路径段 → 必须拍扁成静态路径
+- `query + body` 混用同一个业务键（`@RequestParam("unique_value")` + `@RequestBody DTO`） → 入参必须对象化，`uniqueValue` 合进 DTO
+- `≥2 个独立变量` 走 `@RequestParam` 拆参 → 必须合进 DTO 用 `@RequestBody`
+- 单变量接口（仅 `uniqueValue` / `employeeId`）强行新建 `XxxDetailQueryDTO`（1 字段）→ 浪费，走 `@RequestParam` 即可
+- `Service / Helper` 形参 ≥ 3 个却用并列参数列表 → 必须封 DTO（§15.3）
+- DTO ↔ PO 同名字段 ≥ 3 条仍手写 `setX` → 必须 `BeanCopyUtils.copy`（§15.4）
+- 业务校验失败 / CAS 冲突 / 远端 RPC 返回 null / 反射写入完成等关键位置不打日志 → 必须补 `log.warn` / `log.info` 输出业务键（§15.5）
+- `Controller` 写日志 → 责任在 Service 聚合层
+- `catch (e) { e.printStackTrace(); }` 吞错 → 必须 `log.warn` + `throw new BusinessException`
+
+### 15. API 入参对象化（≥2 变量入参必须 DTO；不要 query + body 混用）
+
+**总规则**：业务接口入参的"独立变量" ≥ 2 个时，**必须**收进一个 DTO 用 `@RequestBody` 接住，**禁止** `@RequestParam` 与 `@RequestBody` 同时出现，也禁止业务标识塞进 URL 路径段（`@PathVariable`）。`@RequestParam` 仅服务于"单变量且不会再扩"接口（如唯一详情查、唯一软删）。
+
+```java
+// ✅ 正确（≥2 变量）—全部进 DTO
+@PostMapping("/updateOnboarding")
+public Result<OnboardingSaveVO> update(@RequestBody OnboardingUpdateDTO dto) {
+    return Result.success(onboardingManageService.update(dto.getUniqueValue(), dto));
+}
+
+// ✅ 正确（单变量）—可以用 @RequestParam
+@PostMapping("/queryCashierOnboardingDetail")
+public Result<OnboardingDetailVO> detail(
+        @RequestParam("unique_value") String uniqueValue) { ... }
+
+// ❌ 错误：query + body 混用（重复表达同一个业务键）
+@PostMapping("/{uniqueValue}/update")
+public Result<OnboardingSaveVO> update(
+        @PathVariable("uniqueValue") String uniqueValue,
+        @RequestBody OnboardingUpdateDTO dto) { ... }
+
+// ❌ 错误：把"对 uniqueValue 的操作"硬拆成两个入参
+@PostMapping("/updateOnboarding")
+public Result<OnboardingSaveVO> update(
+        @RequestParam("unique_value") String uniqueValue,
+        @RequestBody OnboardingUpdateDTO dto) { ... }
+```
+
+**判定标准（写新接口时按这个问自己）**：
+
+| 场景 | 入参形态 | 取舍 |
+|------|---------|------|
+| 单变量（仅 `uniqueValue`、`employeeId` 这类唯一键） | `@RequestParam("xxx_id") String xxxId` | ✅ 单变量可以保留 query，路径拍扁 |
+| 单变量 + DTO 不存在或纯复 1 字段 | 新建 `XxxDetailQueryDTO`（1 字段） | ❌ 不必建，复 1 字段直接走 query 即可 |
+| ≥ 2 变量（含"唯一键 + 业务字段"或"两个业务键"） | 全部 `@RequestBody`，DTO 内含 `uniqueValue` 字段 | ✅ 唯一选择 |
+| 路径段里出现 `uniqueValue` / `businessKey` / `nodeCode` | 一律搬到 query 或 DTO | ❌ 任何路径段都不允许 |
+
+**反面典型（2026-08，三次返工沉淀）**：`OnboardingController` 的最早实现是 `/cashier/store/audit/onboarding/{uniqueValue}/detail|update|submit|approve|reject|nodes/{nodeCode}|delete` 7 个路径段表达"按 uniqueValue 操作"，后改为 query 携带 `unique_value=&node_code=`，最终形态：**`unique_value` 收进 DTO 内 `@RequestBody`**，只有 detail / delete 这两个单变量接口才保留 `@RequestParam`。最终 URL 全部拍扁：
+
+| 最终路径 | 入参 |
+|---------|------|
+| `POST /cashier/store/audit/onboarding/pageOnboarding` | `@RequestBody OnboardingPageDTO` |
+| `POST /cashier/store/audit/onboarding/createOnboarding` | `@RequestBody OnboardingCreateDTO` |
+| `POST /cashier/store/audit/onboarding/queryCashierOnboardingDetail` | `@RequestParam("unique_value") String uniqueValue`（单变量） |
+| `POST /cashier/store/audit/onboarding/updateOnboarding` | `@RequestBody OnboardingUpdateDTO`（含 `uniqueValue`） |
+| `POST /cashier/store/audit/onboarding/submitCashierOnboarding` | `@RequestBody OnboardingSubmitDTO`（含 `uniqueValue`） |
+| `POST /cashier/store/audit/onboarding/approveCashierOnboarding` | `@RequestBody OnboardingApproveDTO`（含 `uniqueValue`） |
+| `POST /cashier/store/audit/onboarding/rejectCashierOnboarding` | `@RequestBody OnboardingRejectDTO`（含 `uniqueValue`） |
+| `POST /cashier/store/audit/onboarding/saveCashierOnboardingNodeData` | `@RequestBody OnboardingNodeDataSaveDTO`（含 `uniqueValue` + `nodeCode`） |
+| `POST /cashier/store/audit/onboarding/deleteCashierOnboarding` | `@RequestParam("unique_value") String uniqueValue`（单变量） |
+
+**为什么不允许 `query` + `body` 混用，也不允许业务标识进 URL 路径段**：
+
+1. **同语义单形态**：同一个业务键（`uniqueValue`），要么走 query、要么走 body body 字段，**不要两种形态并存**——避免前端怕显式（`params: { unique_value }`）、混用改 path 时漏改的隐患。
+2. **入参对象化**：≥ 2 变量时走 DTO，新增字段不影响接口签名；只改 DTO 内部即可，不再撞接口契约、Swagger 文档、Feign Client 三处。
+3. **路径段污染**：路径里的业务键会污染反向代理 / CDN / API 网关缓存键，让"按 uniqueValue 操作"在缓存层无法复用。
+4. **审计 / `@PreAuthorize`**：统一 `@RequestBody` 后，操作日志、权限校验、Flowable 任务关联都从同一个 DTO 取值，没有"路径里的 `uniqueValue` vs body 里的 `uniqueValue` 是否一致"的二次校验。
+5. **复盘教训**：先拍成 query、再拍扁成 body（中间状态）——两次返工比一次返工更费时；新写接口直接判定"≥2 变量 → 走 DTO"，避免来回改。
+
+**对前端 & Feign Client 的影响**：
+
+- 前端 `apis/index.ts`：从 `params: { unique_value }` 改成 `data: { ...data, uniqueValue }`（DTO 原生字段名驼峰）；request 工具支持的 `data` / `params` 形态都在（参考 `src/pages/employee/apis/index.ts`）。
+- 同步脚本（`scripts/onboarding-flow.mjs`）：把 `request(path, "POST", { unique_value })` 改为 `request(path, "POST", { uniqueValue, ...body })`，删掉 `onboardingParams()` 这种过渡 helper。
+- Feign Client 的 `@RequestBody` 入参定义不要回退到 `@PathVariable` / `@RequestParam` 上，否则上游调用方和 `@RequestBody` 入参又有两份签名。
+
+**Service 实现层的入参**：仍然保留 `(String uniqueValue, DTO dto)`（双变量）——这样 Controller 用 `dto.getUniqueValue()` 取出来传入，与"业务键 + 业务载荷"的语义一致；不要为了避免双形参，把 DTO 的 `uniqueValue` 字段删掉。
+
+### 15.3 Service / Helper 入参对象化（≥3 形参必须封 DTO）
+
+**规则**：Service 聚合层、Component Service、私有 helper 等**任意方法**形参 ≥ 3 个时，必须封装 DTO / Req 收参。`com.obo.bi.cashier.flowable.dto.*` 已经定义好 `CompleteTaskResultDTO` / `StartProcessResultDTO` / `TaskItemSnapshotDTO` 等快照类，沿用即可。
+
+```java
+// ✅ 正确：返回快照 / RPC DTO 封装
+private StartProcessResultDTO startProcess(String uniqueValue, String initiator, Map<String, Object> variables) { ... }
+
+// ✅ 正确：私有 helper 3 形参，封装为 Req
+record CompleteTaskReq(String operationId, String taskId, String outcome, String comment, ...) { }
+private CompleteTaskResultDTO completeTask(CompleteTaskReq req) { ... }
+
+// ❌ 反例：私有 helper 4-7 个并列形参
+private CompleteTaskResultDTO completeTaskInternal(String operationId, String twoLevelId,
+        String taskId, String outcome, String comment,
+        Map<String, Object> variables, String userId) { ... }
+```
+
+**例外**（私有 RPC 拼接 helper，保留 3-4 形参 OK）：
+
+- `completeTaskInternal(operationId, taskId, outcome, comment)`：核心 RPC 字段集合，调用方全部固定本模块常量（`TWO_LEVEL_ID_CWSH`），新增字段概率低。这是底层 RPC 拼接 helper，不算业务方法，**允许**继续走形参列表。
+- 形参数量 ≤ 3 且语义相关、可一眼读懂的 helper。
+
+不允许把"5+ 形参的复杂业务方法"伪装成"helper"绕过规则——业务方法必须用 DTO。
+
+### 15.4 同名字段对象赋值用 BeanCopyUtils
+
+**规则**：两个对象（DTO ↔ PO、PO ↔ VO、DTO ↔ VO）或两个集合互转，**同名字段 ≥ 3 条**时必须使用 `com.obo.core.common.utils.BeanCopyUtils.copy(src, Xxx::new)` / `BeanCopyUtils.copyList(src, Xxx::new)`，禁止手写 5+ 行 `setX` 块。
+
+```java
+// ✅ 正确：批量赋值 + 兜底
+OnboardingStore store = BeanCopyUtils.copy(row, OnboardingStore::new);
+store.setApplicationId(application.getId());                 // PO 独有 / 跨表外键
+store.setApplicationUniqueValue(application.getUniqueValue());// PO 独有 / 跨表外键
+store.setRowNo(row.getRowNo() != null ? row.getRowNo() : rowNo++); // 默认值兜底
+store.setRowVersion(0);                                     // 默认值兜底
+
+// ✅ 正确：集合整体转换
+List<OnboardingListItemVO> list = BeanCopyUtils.copyList(records, OnboardingListItemVO::new);
+
+// ❌ 错误：20+ 行手动 setX（同名字段全部重复）
+OnboardingStore store = new OnboardingStore();
+store.setApplicationId(application.getId());
+store.setApplicationUniqueValue(application.getUniqueValue());
+store.setRowNo(...);
+store.setStoreUniqueValue(...);
+store.setStoreCode(...);   // 10+ 个 set 全部与 row 对应字段同名
+store.setStoreName(...);
+// ... 18 行 ...
+```
+
+**字段少的场景**：同名字段 ≤ 2 条的手写 setX 仍允许（不值得为兜底字段再引入 copy）。
+
+**字段名错位的解决方案**：不要因为 DTO 与 PO 字段名"略有差异"就拒绝 BeanCopyUtils——先 copy，再对**字段名不一致的少数字段**手动 set：
+
+```java
+// 字段名对齐：DTO.platform → PO.platform（一致字段全拷贝）
+// 字段名错位：DTO.accountName → PO.bankAccountName（不一致字段手动补）
+bankCard = BeanCopyUtils.copy(dto, BankCard::new);
+bankCard.setBankAccountName(dto.getAccountName());
+bankCard.setBankCode(dto.getBankCode());   // 不一致的也手动补
+```
+
+**反面典型（2026-08，已重构）**：`OnboardingManageServiceImpl` 早期 `create()` / `update()` 内对 `OnboardingStore` 做了 20 行 `setX`；`savePreparations()` 内对 `OnboardingGrounding` 做了 15 行 `setX`。整改后用 `BeanCopyUtils.copy(row, OnboardingStore::new)` / `BeanCopyUtils.copy(preparation, OnboardingGrounding::new)`，每个循环体由 20+ 行降到 7 行。
+
+### 15.5 关键位置日志补全
+
+**规则**：Service 聚合层在以下"业务关键位置"必须打日志，输出业务键便于问题定位。Controller 不打日志（一行转发）。
+
+| 场景 | 日志级别 | 输出字段 |
+|------|----------|---------|
+| 业务开始（`page` / `create` / `update` / 流程编排开始） | `log.info` | `uniqueValue` / `applicantId` / `operator` / `itemCount` / `saveMode` |
+| CAS 冲突（乐观锁失败） | `log.warn` | `uniqueValue` / `operator` / `expectedVersion` / `fromNodeNo` / `idempotencyKey` |
+| 业务校验失败（拼装到 throw 前） | `log.warn` | `uniqueValue` / `storeCode` / `taskId` / 不通过原因 |
+| 远端 RPC 调用前 | `log.info` | `operationId` / `taskId` / `targetActivityId` / `userId` |
+| 远端 RPC 返回 null | `log.warn` | `uniqueValue` / `taskId` / `operator` / `idempotencyKey` |
+| 字段反射 / 子资源写入数 | `log.info` | `uniqueValue` / `applicationStoreId` / `fieldCount` / `subAccountCreated` |
+| 业务结束 | `log.info` | `uniqueValue` / `fromNodeNo` / `toNodeNo` / `newStatus` / `handler` |
+
+```java
+// ✅ 正确：在关键 throw 之前先 warn 留痕（业务可重放错误码与入参）
+if (flowResult == null) {
+    log.warn("上架申请驳回-远端返回空：uniqueValue={}, taskId={}, targetActivityId={}, operator={}, idempotencyKey={}",
+            uniqueValue, taskId, targetActivityId,
+            SecurityContextHolder.getUserName(), dto.getIdempotencyKey());
+    throw new BusinessException("驳回处理失败，请稍后重试");
+}
+
+// ✅ 正确：循环内每次子资源创建都计数
+int subAccountCreated = 0;
+for (SubAccount sub : items) {
+    ... storeSubAccountService.addSubAccount(sa);
+    subAccountCreated++;
+}
+log.info("上架节点 10 子账号保存完成：uniqueValue={}, storeUniqueValue={}, subAccountCreated={}",
+        uniqueValue, storeUniqueValue, subAccountCreated);
+```
+
+**反面典型（2026-08，已补全）**：`OnboardingManageServiceImpl` 早期 `approve()` 远端返回 null 时只抛 `BusinessException`，无前置 `log.warn`，事后审计日志里看不到是哪个 `uniqueValue` / `taskId` 触发。`saveNodeData` 反射写入 / 子账号保存完成没有统计日志。整改后以上日志均在。
+
+**禁止**：
+
+- 业务校验失败用 `try { ... } catch (e) { e.printStackTrace(); }` 吞错 —— 必须 `log.warn` + `throw`。
+- Controller 里写日志 —— Controller 只做"一行转发"，日志责任在 Service。
+- 日志输出长度无限制（拼一大段 JSON）—— 只输出业务键：`uniqueValue` / `taskId` / `idempotencyKey` / `count`，不要把 DTO 整个打印。
 
 ---
 
