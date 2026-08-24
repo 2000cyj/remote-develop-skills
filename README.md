@@ -14,11 +14,8 @@ BI/OBO 远程开发技能仓库，对齐 [jetlinks-develop-skills](https://githu
 - $remote-cashier-java-standard — bi-cashier 模块 Java 后端分层与编码规范
 
 ### 前端规范
-- $remote-button-permission — 按钮操作权限（适用于 cashier 等子应用）
 - $remote-list-page-directory — 列表页目录结构
-- $remote-permission-summary — 权限汇总导出
 - $remote-ts-es-check — TS & ESLint 静态检查
-- $remote-claude-hooks — Claude Code hooks 说明
 
 ### 工作流
 - $remote-flowable-task-with-next — Flowable completeTaskWithNext 规范
@@ -31,6 +28,14 @@ BI/OBO 远程开发技能仓库，对齐 [jetlinks-develop-skills](https://githu
 - 每个 skill 一个目录，直接放仓库根
 - 命名：`remote-<领域>`，如 `remote-cashier-java-standard`
 - 子目录：`references/`（按需深度参考）、`agents/`（Codex openai.yaml）、`scripts/`、`assets/`
+
+### 弃用目录 `deprecated/`
+
+不再维护、仅作历史归档的 skill 放进 `deprecated/`，整体规则见 [`deprecated/README.md`](deprecated/README.md)：
+
+- 完整目录搬入（原 `remote-<name>/` 不拆散），目录名保持 `remote-<name>`
+- `SKILL.md` 顶部加弃用说明并指向替代 skill
+- 不被 cc-switch / Codex installer 同步分发
 
 ## 文档归档
 

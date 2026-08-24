@@ -1,7 +1,9 @@
 ---
 name: remote-permission-summary
-description: Use when 把某目录下所有按钮操作权限汇总成结构化清单、扫描 checkPermission 调用点、补齐动态权限码、生成可执行 SQL，按模板产出 docs/权限/ 下的三个文件。
+description: Use when 已弃用、不再更新。仅作历史归档参考，不要再用于新任务。
 ---
+
+> **弃用状态**：本 skill 已归档、不再维护。请勿用于新任务。
 
 # Cashier Permission Summary
 

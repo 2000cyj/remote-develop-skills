@@ -1,7 +1,9 @@
 ---
 name: remote-claude-hooks
-description: Use when 判断某个自动化任务该用 Skill 还是 Hook、选择哪个生命周期事件（SessionStart/UserPromptSubmit/PreToolUse/Stop 等）、排查 hook 不生效或误拦截、向新人解释 hook 生命周期。
+description: Use when 已弃用、不再更新。仅作历史归档参考，不要再用于新任务。
 ---
+
+> **弃用状态**：本 skill 已归档、不再维护。请勿用于新任务。
 
 # Claude Code Hooks 使用说明
 

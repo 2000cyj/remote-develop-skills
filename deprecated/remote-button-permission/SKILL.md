@@ -1,7 +1,9 @@
 ---
 name: remote-button-permission
-description: Use when 给 cashier 等子应用页面按钮添加操作权限控制、改造现有按钮权限写法、规范权限码命名、处理下拉菜单空菜单兜底、列表页操作列按权限隐藏，确保全模块权限写法一致。
+description: Use when 已弃用、不再更新。仅作历史归档参考，不要再用于新任务。
 ---
+
+> **弃用状态**：本 skill 已归档、不再维护。请勿用于新任务。
 
 # Cashier Button Permission
 
