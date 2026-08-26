@@ -1,0 +1,382 @@
+# =============================================================================
+# Orca 工作组配置示例（目前是设计契约，暂不能直接执行）
+# =============================================================================
+#
+# 用途：描述一个“经理 + 多名组员”的协作工作组。
+# 经理通过 Orca orchestration 分派任务、接收消息和汇总阶段交付；
+# 组员可以按白名单直接协作，也可以经经理协调。
+#
+# 注意：
+# 1. 当前没有读取本文件的启动器；不能用 workflow-runner.mjs 执行本文件。
+# 2. 本文件不负责创建项目目录、仓库、分支或其他版本控制资源。
+# 3. 每个终端必须配置自己的 command；组员命令绝不继承经理命令。
+# 4. 组员目录未配置时才继承：组员 startDirectory > 经理 startDirectory > 启动器 process.cwd()。
+# =============================================================================
+
+# 配置版本：用于未来的工作组启动器识别本配置结构。
+apiVersion: orca.workgroup/v1alpha1
+# 配置类型：固定为 Workgroup。
+kind: Workgroup
+
+# 工作组的基础信息，仅用于展示、识别和说明。
+metadata:
+  # 工作组唯一 ID。成员、阶段、任务等 ID 均应在本配置内保持稳定。
+  name: cashier-delivery
+  # 给用户阅读的名称。
+  displayName: 出纳全链路交付工作组
+  # 简短说明此工作组的目标和组织方式。
+  description: 经理统一协调前端、后端、联调、测试和产品验收成员的示例工作组。
+
+spec:
+  # ---------------------------------------------------------------------------
+  # 一、用户要交付什么
+  # ---------------------------------------------------------------------------
+
+  # 本次工作组的总目标。经理据此拆分阶段和任务。
+  objective: |
+    按阶段完成出纳模块的需求分析、开发、联调、测试与产品验收，
+    由经理统一汇总验证证据、风险与待决事项并向用户交付。
+
+  # 最终或每阶段交付应满足的总体条件。
+  acceptanceCriteria:
+    # 每个阶段都必须能说明完成了什么、如何验证、还有什么遗留项。
+    - 每个阶段均有明确的任务结果、验证证据和遗留项。
+    # 成员完成任务不自动代表用户验收通过，经理必须先汇总验证。
+    - 经理在用户决策前不将成员 worker_done 直接视为阶段验收通过。
+    # 启动目录或命令异常时，成员不启动，不能擅自替换路径或命令。
+    - 成员启动目录或启动命令不可用时，必须停止该成员启动并交由用户决策。
+
+  # 所有成员和经理都要遵守的业务边界。
+  businessConstraints:
+    # 用户只需要与经理沟通；经理负责把业务方向转成组员任务。
+    - 用户通过经理调整业务方向和阶段目标。
+    # 组员只执行经理分派的任务，不自行扩大任务范围。
+    - 成员只执行经理分发的任务。
+    # 需要业务决定或无法自行处理的风险，仍必须通知经理。
+    - 需要经理或用户决定的问题通过 question 或 escalation 上报经理。
+    # 成员之间的直接消息只用于协作，不改变经理的调度和验收权。
+    - 成员直接通信不授予任务分配、阶段验收或用户决策权限。
+
+  # ---------------------------------------------------------------------------
+  # 二、经理终端
+  # ---------------------------------------------------------------------------
+  # 一个工作组只有一名经理。经理是用户唯一的对接入口。
+  manager:
+    # 经理唯一 ID；不允许写入 memberCommunication.allowedPairs。
+    id: delivery-manager
+    # 经理职责名，仅用于说明该角色的工作内容。
+    role: delivery-manager
+    terminal:
+      # 经理终端的启动目录。
+      # 若本字段未设置，经理从未来启动器运行时的 process.cwd() 启动。
+      startDirectory: D:/OB/ob_web/packages/micro/cashier
+      # 经理终端启动命令。必须明确配置，不从任何其他字段推导。
+      # 可替换为本机实际可运行的 Agent CLI 命令及其参数。
+      command: claude
+
+  # ---------------------------------------------------------------------------
+  # 三、组员终端
+  # ---------------------------------------------------------------------------
+  # 每项代表一名可被经理按阶段启动的成员。
+  # 组员 terminal.command 必填且不继承经理 command。
+  members:
+    # ---- 前端成员 -----------------------------------------------------------
+    - id: frontend-engineer
+      # 角色用于让经理识别任务适合交给谁。
+      role: frontend-engineer
+      terminal:
+        # 显式配置：前端成员从该目录启动。
+        startDirectory: D:/OB/ob_web/packages/micro/cashier
+        # 显式配置：前端成员自己的启动命令，不继承经理命令。
+        command: claude
+
+    # ---- 后端成员 -----------------------------------------------------------
+    - id: backend-engineer
+      role: backend-engineer
+      terminal:
+        # 未配置 startDirectory：后端成员继承经理的最终目录。
+        # 若经理也未配置，则使用启动器 process.cwd()。
+        # 如需在其他目录启动，取消下面一行的注释并改成真实路径。
+        # startDirectory: D:/OB/bi-FOB/bi-cashier
+        # 即使目录继承，命令也必须独立配置，绝不继承经理命令。
+        command: codex
+
+    # ---- 联调成员 -----------------------------------------------------------
+    - id: integration-engineer
+      role: integration-engineer
+      terminal:
+        # 联调成员示例：从不同目录启动。
+        startDirectory: D:/OB/ob_web
+        command: claude
+
+    # ---- 测试成员 -----------------------------------------------------------
+    - id: qa-engineer
+      role: qa-engineer
+      terminal:
+        # 未配置 startDirectory：继承经理最终目录。
+        command: claude
+
+    # ---- 产品验收成员 -------------------------------------------------------
+    - id: product-acceptance
+      role: product-acceptance
+      terminal:
+        # 未配置 startDirectory：继承经理最终目录。
+        command: claude
+
+  # ---------------------------------------------------------------------------
+  # 四-bis、经理私人邮箱（成员消息汇总接收器）
+  # ---------------------------------------------------------------------------
+  # 经理私人邮箱是经理专属的消息收件箱，只接收组员发来的消息，本身不调度、不纠偏、不巡视、不向用户汇报。
+  # 经理按需手动读取邮箱内容，再决定下一步动作。
+  # 配置位置与 members 平级；不是成员、不是协作方，也不计入 memberCommunication.allowedPairs。
+  managerInbox:
+    # 邮箱唯一 ID；用于未来启动器分配 Orca 终端 / 收件终端等运行时资源。
+    id: manager-inbox
+    # 角色名仅用于说明，便于经理在 YAML 中快速识别。
+    role: manager-inbox
+    terminal:
+      # 邮箱终端的启动目录。
+      # 字段未设置时：沿用经理最终目录；经理也未设置时：使用启动器 process.cwd()。
+      # 字段已设置但目录不存在 / 不可访问 / 不可启动：邮箱启动失败，经理汇报用户决策，不得静默回退。
+      startDirectory: D:/OB/ob_web/packages/micro/cashier
+      # 邮箱终端的启动命令。必须显式给出，不继承 manager.terminal.command。
+      # 必须保证可以承载一个"只接收消息、不主动派发"的进程；具体实现交给未来启动器。
+      command: claude
+
+    # 消息等级：组员在发往经理邮箱时必须打上以下之一。邮箱只按等级过滤和展示，不做决策。
+    # 等级名称、数量、含义都在这里声明；不在这里固化任何"优先级策略"。
+    # 数组声明顺序必须与 order 升序一致：order 越小越靠前，邮箱视图从顶到底展示，经理手动处理。
+    messageLevels:
+      # blocker：成员因启动目录 / 命令不可用、被阻塞等原因发出阻塞信号，等级最高。
+      - name: blocker
+        # 来源事件名。
+        sourceEvent: blocker
+        # 显示顺序：数字越小越靠前。
+        order: 0
+      # question：成员需要经理或用户做决定时提问。
+      - name: question
+        sourceEvent: question
+        order: 10
+      # escalation：成员遇到无法自行处理的风险、冲突或阻塞时升级。
+      - name: escalation
+        sourceEvent: escalation
+        order: 20
+      # worker_done：成员完成一次执行后回报结果，等级最低。
+      - name: worker_done
+        sourceEvent: worker_done
+        order: 30
+
+  # ---------------------------------------------------------------------------
+  # 五、成员之间的直接通信白名单
+  # ---------------------------------------------------------------------------
+  # 经理与任何组员之间默认可以通信；本段只限制“组员 -> 组员”的直接消息。
+  memberCommunication:
+    # 默认拒绝：未列出的组员不能直接互相发协作消息，需经经理中转。
+    default: deny
+
+    # 白名单中的每一项都是双向授权：members 中两个成员可互相通信。
+    # 这只允许协作信息同步，不会改变经理的任务分发、验证和用户交付职责。
+    allowedPairs:
+      - members:
+          # 前端与后端可相互确认接口字段与联调细节。
+          - frontend-engineer
+          - backend-engineer
+        # 必填：说明为什么需要允许这一对成员直接通信。
+        reason: 接口字段与联调问题确认
+
+      - members:
+          # 联调与测试可相互同步缺陷、复测条件和验证结果。
+          - integration-engineer
+          - qa-engineer
+        reason: 联调缺陷与复测同步
+
+    # 配置规则（由未来启动器在启动前校验）：
+    # - allowedPairs.members 必须恰好包含两个已声明的成员 ID。
+    # - 不能把经理 ID 写入 members；该策略只控制组员之间的消息。
+    # - 不允许成员与自身配对，也不允许重复配置同一对成员。
+    # - A <-> B 与 B <-> C 不代表 A 可以直接联系 C（无传递授权）。
+    # - worker_done / question / escalation 仍必须让经理可见，不能被本白名单替代。
+
+  # ---------------------------------------------------------------------------
+  # 五、用户可做的决策
+  # ---------------------------------------------------------------------------
+  userControl:
+    # true：每阶段交付后，经理必须等待用户确认才进入下一阶段。
+    stageApprovalRequired: true
+    # true：用户可随时通过经理纠正业务理解、范围和优先级。
+    allowBusinessDirectionCorrection: true
+
+    # 正常阶段交付后的可选决策。
+    allowedDecisions:
+      # 用户接受本阶段结果，经理可调度下一阶段任务。
+      - approve
+      # 用户要求返工或补充工作，经理创建对应任务。
+      - rework
+      # 用户暂时停止后续任务，保留当前工作组状态。
+      - pause
+      # 用户终止后续任务，经理汇总当前成果和未完成项。
+      - terminate
+
+    # 某成员目录不可用、command 缺失、command 为空或命令启动失败时的可选决策。
+    unavailableMemberDecisions:
+      # 暂缓该成员及其相关任务，继续不依赖该成员的任务。
+      - defer
+      # 用户修正目录或命令配置后，仅重新校验受影响成员和下游任务。
+      - correct_configuration
+      # 保留当前结果，重新初始化一套新工作流。
+      - start_new_workflow
+
+  # ---------------------------------------------------------------------------
+  # 六、Orca orchestration 的协作约定
+  # ---------------------------------------------------------------------------
+  orchestration:
+    # 协作通信平台；当前设计只说明语义，不代表已实现调用代码。
+    provider: orca
+    # 一个 Run 对应一次工作组协作会话。
+    runScope: workgroup
+    # 一个 Task 对应经理拆出的阶段内任务。
+    taskScope: stage
+    # 一个 Dispatch 对应某成员执行某个任务的一次尝试。
+    dispatchScope: member-task-attempt
+    events:
+      # 成员任务执行完成或失败时的结果事件；经理必须接收并验证。
+      completion: worker_done
+      # 成员需要经理或用户决定时的提问事件。
+      question: question
+      # 成员发现无法自行解决的风险、冲突或阻塞时的升级事件。
+      escalation: escalation
+    # true：经理按固定间隔巡视正在运行的成员任务；巡视基线来自当前 session 上用户与经理已确认的执行计划、需求、技术方案和验收标准。
+    # 这些基线应随 Task / Dispatch 注入成员上下文，不在本 YAML 固化文档路径。
+    patrol:
+      # 是否启用经理定期巡视。
+      enabled: true
+      # 巡视间隔：600000 毫秒 = 10 分钟。
+      intervalMs: 600000
+      # 每次巡视从成员执行记录中读取的最大新增行数；使用上次 worker-read 返回的 cursor 只读取增量。
+      transcriptReadLimit: 100
+      deviationHandling:
+        # 发现成员偏离当前 session 基线时，经理直接向该成员 Dispatch 发纠偏指令，不通知用户。
+        managerCorrectsDirectly: true
+        # 经理发出纠偏后，下一轮巡视必须核验成员是否已回到既定计划和技术方案。
+        verifyAfterCorrection: true
+        # 技术执行偏差、任务拆分、组员协作和执行顺序调整由经理在已确认上下文内自行处理。
+        notifyUserForExecutionDeviation: false
+        # 只有这三类“已确认基线本身需要变更”的情况，经理才向用户询问。
+        notifyUserOnlyWhen:
+          # 需求目标需要改变。
+          - requirement_change_needed
+          # 验收标准需要改变。
+          - acceptance_criteria_change_needed
+          # 业务优先级需要改变。
+          - business_priority_change_needed
+
+  # ---------------------------------------------------------------------------
+  # 七、阶段与任务
+  # ---------------------------------------------------------------------------
+  # stages 按顺序描述整个交付过程。任务的 dependsOn 用任务 ID 表示前置依赖。
+  stages:
+    # ---- 阶段 1：分析 -------------------------------------------------------
+    - id: analysis
+      name: 需求分析与技术拆解
+      objective: 明确范围、依赖、验收标准和角色分工。
+      tasks:
+        - id: product-scope
+          title: 确认业务范围与验收标准
+          # assignee 必须引用上面 members 中已有的成员 ID。
+          assignee: product-acceptance
+          description: 输出本阶段范围、非范围、验收条件和业务风险。
+          # 空数组代表此任务没有前置依赖，可作为本阶段起始任务。
+          dependsOn: []
+          acceptanceCriteria:
+            - 已确认本阶段业务目标和非范围。
+            - 已列出可验证的验收标准。
+
+        - id: frontend-analysis
+          title: 前端影响分析
+          assignee: frontend-engineer
+          description: 分析受影响页面、接口契约、组件和验证方式。
+          dependsOn:
+            # 只有 product-scope 完成后，才能开始前端影响分析。
+            - product-scope
+          acceptanceCriteria:
+            - 已列出前端改动范围和依赖。
+            - 已识别前后端联调约束。
+
+    # ---- 阶段 2：开发与联调 -------------------------------------------------
+    - id: implementation
+      name: 开发与联调
+      objective: 按确认后的任务边界完成实现和联调。
+      tasks:
+        - id: backend-implementation
+          title: 后端实现
+          assignee: backend-engineer
+          description: 在已解析的成员终端目录中完成后端任务并提供验证证据。
+          dependsOn:
+            - product-scope
+          acceptanceCriteria:
+            - 已完成经理分派的后端工作。
+            - 已提供测试或可复核的验证证据。
+
+        - id: frontend-implementation
+          title: 前端实现
+          assignee: frontend-engineer
+          description: 在已解析的成员终端目录中完成前端任务并提供验证证据。
+          dependsOn:
+            - frontend-analysis
+          acceptanceCriteria:
+            - 已完成经理分派的前端工作。
+            - 已提供测试或可复核的验证证据。
+
+        - id: integration
+          title: 前后端联调
+          assignee: integration-engineer
+          description: 核对接口契约并执行联调验证。
+          dependsOn:
+            # 联调必须等待前端和后端实现均完成。
+            - backend-implementation
+            - frontend-implementation
+          acceptanceCriteria:
+            - 已验证关键交互和接口契约。
+            - 已记录联调问题及其处理状态。
+
+    # ---- 阶段 3：验证与验收 -------------------------------------------------
+    - id: verification
+      name: 测试与产品验收
+      objective: 汇总验证证据、风险与遗留项，形成阶段交付结论。
+      tasks:
+        - id: qa-verification
+          title: 测试验证
+          assignee: qa-engineer
+          description: 根据验收标准完成测试并上报缺陷、风险和结果。
+          dependsOn:
+            - integration
+          acceptanceCriteria:
+            - 已执行约定的测试范围。
+            - 已提供通过、失败和风险证据。
+
+        - id: product-acceptance-review
+          title: 产品验收复核
+          assignee: product-acceptance
+          description: 依据业务验收标准复核本阶段产物。
+          dependsOn:
+            - qa-verification
+          acceptanceCriteria:
+            - 已给出通过、打回或待决的验收意见。
+
+  # ---------------------------------------------------------------------------
+  # 八、经理提交给用户的阶段报告最少应包含什么
+  # ---------------------------------------------------------------------------
+  stageDelivery:
+    requiredSections:
+      # 已完成、失败、阻塞、暂缓的任务及其状态。
+      - completedTasks
+      # 测试结果、命令输出、检查记录等验证材料。
+      - verificationEvidence
+      # 代码、文档、报告或其他已生成成果。
+      - producedArtifacts
+      # 已知风险、限制条件和需要注意的问题。
+      - knownRisks
+      # 尚未完成、被阻塞或被暂缓的工作。
+      - remainingItems
+      # 经理建议用户选择 approve、rework、pause、terminate 等哪种决策。
+      - recommendedUserDecision

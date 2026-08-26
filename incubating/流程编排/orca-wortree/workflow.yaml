@@ -1,0 +1,172 @@
+# 配置文件格式版本，用于后续兼容不同版本的工作流脚本。
+version: 1
+
+# 通用 Orca 多 Agent 工作流配置。
+# 本文件只描述协作拓扑和任务，不绑定具体项目或业务模块。
+
+workflow:
+  # 工作流稳定 ID，用作状态文件名；重复执行时依靠它复用历史状态。
+  id: generic-orca-workflow
+  # 工作流显示名称，仅用于识别和展示。
+  displayName: 通用 Orca 工作流
+  # 是否启用该工作流。false 时执行器应拒绝创建或同步资源。
+  enabled: true
+
+project:
+  # 项目路径。可填写绝对路径或相对路径；填写 . 表示当前项目。
+  path: .
+  # Orca 仓库选择器。可使用 name:<名称>、id:<仓库ID> 或 path:<绝对路径>。
+  # null 表示由 Orca 根据项目路径自动识别仓库。
+  repo: null
+  # 创建 Worktree 时使用的 Git 基线分支或引用，例如 origin/dev、main。
+  # null 表示使用 Orca 仓库默认基线。
+  baseBranch: null
+
+coordinator:
+  worktree:
+    # 总协调工作台模式：current 使用当前工作区，new 创建新的总工作台。
+    mode: current
+    # 总协调工作台名称。mode 为 new 时使用；current 模式下可为 null。
+    name: null
+    # 总协调工作台分支名。mode 为 new 时可指定；null 表示自动生成。
+    branch: null
+    # 总协调工作台的父工作台选择器。null 表示无父工作台。
+    parent: null
+  agent:
+    # 总协调 Agent 类型，例如 codex、claude、opencode。
+    type: opencode
+    # 总协调 Agent 使用的模型。null 表示使用 Agent 默认模型。
+    model: null
+    # 总协调 Agent 的推理强度。null 表示使用 Agent 默认设置。
+    effort: null
+
+run:
+  # 本次 Orca 编排运行的总目标，会作为协调上下文。
+  objective: "在这里填写总工作目标"
+  # 等待 Worker 消息的超时时间，单位为毫秒。
+  waitTimeoutMs: 900000
+  # Worker 完成后是否自动释放对应的 Agent 终端。
+  autoReleaseWorkers: true
+
+defaults:
+  worktree:
+    # Worker 默认工作台模式：
+    # current 复用当前工作台；new-child 创建子工作台；
+    # new-top-level 创建独立顶层工作台。
+    mode: new-child
+    # 创建新 Worktree 时是否执行项目初始化钩子：run、skip 或 inherit。
+    setup: run
+  agent:
+    # Worker 默认 Agent 类型。单个 Worker 可覆盖此值。
+    type: codex
+    # Worker 默认模型。null 表示使用 Agent 默认模型。
+    model: null
+    # Worker 默认推理强度。null 表示使用 Agent 默认设置。
+    effort: null
+  task:
+    # 单个任务默认超时时间，单位为毫秒。
+    timeoutMs: 900000
+    # 是否向 Agent 注入 Orca 任务上下文和生命周期说明。
+    inject: true
+
+workers:
+  # Worker 列表。每一项代表一个 Task、Agent 和执行工作台。
+  - id: worker-a
+    # Worker 的唯一标识，只能在当前配置文件中唯一。
+    name: task-a
+    # 当前 Worker 的 Agent 配置；未填写的字段继承 defaults.agent。
+    agent:
+      # 当前 Worker 使用的 Agent 类型。
+      type: codex
+      # 当前 Worker 使用的模型；null 表示继承默认值。
+      model: null
+      # 当前 Worker 的推理强度；null 表示继承默认值。
+      effort: null
+    # 当前 Worker 的 Worktree 配置；未填写的字段继承 defaults.worktree。
+    worktree:
+      # 当前 Worker 的工作台模式。
+      mode: new-child
+      # 当前 Worker 创建出的 Worktree 名称，同时通常作为目录和分支名称。
+      name: task-a
+      # 当前 Worker 使用的 Git 基线；null 表示继承 project.baseBranch。
+      baseBranch: null
+      # 父工作台选择器。coordinator 表示挂在总协调工作台下。
+      parent: coordinator
+    # 当前 Worker 的任务配置。
+    task:
+      # 任务标题，用于 Orca 任务列表和状态展示。
+      title: "任务 A"
+      # 发给 Agent 的详细任务说明，建议包含范围、限制和验证要求。
+      description: |
+        描述任务 A 的具体目标。
+        说明允许修改的范围、禁止修改的范围和验证要求。
+      # 依赖的 Worker ID 列表。列表为空表示可立即执行。
+      dependsOn: []
+
+  - id: worker-b
+    # Worker 的唯一标识，只能在当前配置文件中唯一。
+    name: task-b
+    # 当前 Worker 的 Agent 配置；未填写的字段继承 defaults.agent。
+    agent:
+      # 当前 Worker 使用的 Agent 类型。
+      type: claude
+      # 当前 Worker 使用的模型；null 表示继承默认值。
+      model: null
+      # 当前 Worker 的推理强度；null 表示继承默认值。
+      effort: null
+    # 当前 Worker 的 Worktree 配置；未填写的字段继承 defaults.worktree。
+    worktree:
+      # 当前 Worker 的工作台模式。
+      mode: new-child
+      # 当前 Worker 创建出的 Worktree 名称，同时通常作为目录和分支名称。
+      name: task-b
+      # 当前 Worker 使用的 Git 基线；null 表示继承 project.baseBranch。
+      baseBranch: null
+      # 父工作台选择器。coordinator 表示挂在总协调工作台下。
+      parent: coordinator
+    # 当前 Worker 的任务配置。
+    task:
+      # 任务标题，用于 Orca 任务列表和状态展示。
+      title: "任务 B"
+      # 发给 Agent 的详细任务说明，建议包含范围、限制和验证要求。
+      description: |
+        描述任务 B 的具体目标。
+        说明允许修改的范围、禁止修改的范围和验证要求。
+      # 依赖的 Worker ID 列表。列表为空表示可立即执行。
+      dependsOn: []
+
+  - id: reviewer
+    # Worker 的唯一标识，只能在当前配置文件中唯一。
+    name: review
+    # 当前 Worker 的 Agent 配置；未填写的字段继承 defaults.agent。
+    agent:
+      # 当前 Worker 使用的 Agent 类型。
+      type: codex
+      # 当前 Worker 使用的模型；null 表示继承默认值。
+      model: null
+      # 当前 Worker 的推理强度；null 表示继承默认值。
+      effort: null
+    # 当前 Worker 的 Worktree 配置；未填写的字段继承 defaults.worktree。
+    worktree:
+      # 当前 Worker 的工作台模式。
+      mode: new-child
+      # 当前 Worker 创建出的 Worktree 名称，同时通常作为目录和分支名称。
+      name: review
+      # 当前 Worker 使用的 Git 基线；null 表示继承 project.baseBranch。
+      baseBranch: null
+      # 父工作台选择器。coordinator 表示挂在总协调工作台下。
+      parent: coordinator
+    # 当前 Worker 的任务配置。
+    task:
+      # 任务标题，用于 Orca 任务列表和状态展示。
+      title: "统一审查"
+      # 发给 Agent 的详细任务说明，建议包含范围、限制和验证要求。
+      description: |
+        审查前置任务的代码、测试和风险。
+        默认只读审查；如需修改代码，请在任务说明中明确授权范围。
+      # 依赖的 Worker ID 列表。所有依赖完成后，该任务才可执行。
+      dependsOn:
+        # 依赖 worker-a 完成。
+        - worker-a
+        # 依赖 worker-b 完成。
+        - worker-b

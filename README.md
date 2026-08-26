@@ -37,6 +37,14 @@ BI/OBO 远程开发技能仓库，对齐 [jetlinks-develop-skills](https://githu
 - `SKILL.md` 顶部加弃用说明并指向替代 skill
 - 不被 cc-switch / Codex installer 同步分发
 
+### 孵化目录 `incubating/`
+
+正在开发、尚未发布的 skill 放进 `incubating/`，整体规则见 [`incubating/README.md`](incubating/README.md)：
+
+- 完整目录存放（原 `remote-<name>/` 不拆散），目录名保持 `remote-<name>`
+- `SKILL.md` frontmatter 加 `status:` 字段（`draft` / `wip` / `review` / `ready`）
+- 毕业后整目录挪到根并在 Skill 索引加条目；放弃则挪到 `deprecated/`
+
 ## 文档归档
 
 非 skill 资产在 `docs/`：
