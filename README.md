@@ -22,6 +22,7 @@ BI/OBO 远程开发技能仓库，对齐 [jetlinks-develop-skills](https://githu
 
 ### 工具链
 - $remote-idea-mcp-usage — IDEA MCP 使用规范
+- $remote-commit-git — conventional commits 拆批提交 + 多仓库推送
 
 ## 目录约定
 
