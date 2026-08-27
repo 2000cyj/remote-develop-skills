@@ -52,6 +52,10 @@ description: Use when 在 bi-cashier-api、bi-cashier-component、bi-cashier-ser
 6. **Controller** 必须标注 `@Api`、`@ApiOperation`（中文）。**禁止**标注 `@BusLogs`——切面已废弃（`BusLogAop.java` 全注释，无生效切面），加注解会给读者错误的"必须添加"预期（详见 `references/architecture-layers.md` §1.2）。
 7. **API 入参对象化**：≥ 2 个独立变量的 Controller 入参**必须**收进一个 DTO 用 `@RequestBody` 收，禁止 `@RequestParam` 与 `@RequestBody` 混用同一个业务键（`uniqueValue` / `nodeCode`），也禁止业务键塞进 URL 路径段（`@PathVariable`）。`@RequestParam` 仅服务于"单变量且不会再扩"接口（详见 `references/architecture-layers.md` §15）。
 8. **Service / Helper 入参对象化**：Service 聚合层、Component Service、私有 helper 等**任意方法**形参 ≥ 3 个时，必须封装 DTO / Req 收参，禁止多形参并列。常见例外：固定 2-3 个 RPC 字段（`operationId / taskId / outcome`）的内部 helper 可保留为形参（详见 `references/architecture-layers.md` §15.3）。
+   - **新增（V20260827）**：方法形参 ≥ 3 个**必须**用对象封装（同原 §8 规则）。
+     - 反例：`completeNode8(application, items, operatorId)` ❌（3 形参并列）
+     - 正例：`completeNode8(CompleteNodeContext context)` ✅
+   - **Controller 端唯一例外**：URL 路径段 `@PathVariable("uniqueValue") String uniqueValue` + `@RequestBody DTO dto` 视为合规，详见 §7。
 9. **同名字段对象赋值用 BeanCopyUtils**：两个对象 / 集合互转，**同名字段 ≥ 3 条**时必须使用 `com.obo.core.common.utils.BeanCopyUtils.copy(src, Xxx::new)` 或 `BeanCopyUtils.copyList(src, Xxx::new)`，禁止 20 行手动 `setX`。**仅** DTO / PO 都不含的派生字段、`null` 兜底字段、跨表外键字段允许手动补写（详见 `references/architecture-layers.md` §15.4）。
 10. **关键位置日志**：业务校验失败、CAS 冲突、远端 RPC 调用返回 null、字段反射写入数、子资源创建数等关键位置必须打 `log.warn` / `log.info`，输出业务键（`uniqueValue` / `nodeCode` / `taskId` / `idempotencyKey`）。Controller 不打日志（一行转发），日志责任在 Service 聚合层（详见 `references/architecture-layers.md` §15.5）。
 11. **Mapper XML** 必须与 Mapper 接口同名共存（无自定义 SQL 时也建占位 XML）。
