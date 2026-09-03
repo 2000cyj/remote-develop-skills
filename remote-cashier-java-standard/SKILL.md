@@ -56,6 +56,11 @@ description: Use when 在 bi-cashier-api、bi-cashier-component、bi-cashier-ser
      - 反例：`completeNode8(application, items, operatorId)` ❌（3 形参并列）
      - 正例：`completeNode8(CompleteNodeContext context)` ✅
    - **Controller 端唯一例外**：URL 路径段 `@PathVariable("uniqueValue") String uniqueValue` + `@RequestBody DTO dto` 视为合规，详见 §7。
+8.1. **多参数扫描是必做检查项**：审查或修改 Controller 调用链时，必须对 `ManageService`、Component Service、接口、实现类、私有 helper 及本次新建/下沉/复制的方法逐一统计形参数量，并在结论中列出所有 ≥ 3 参数的方法及处理结果。不得因为方法是历史代码、已存在、刚从其它实现复制，或“当前调用只有一次”而跳过检查。
+   - `casAdvance`、`advanceStatus`、`completeNode`、`updateAndSubmit` 等业务编排、CAS 更新、状态推进、复合写入方法默认按业务参数处理，**不属于**“固定 RPC 字段”例外；12 个参数等明显超限方法必须判定为违规。
+   - 只有方法全部参数确实是固定 RPC 传输字段，且数量不超过 3 个时，才可记录为例外；必须在报告中写明例外依据，不能只写“内部 helper”。
+   - A1 架构下沉、重命名或复制方法后，必须重新执行本条扫描；下沉不等于合规，原方法不合规时必须同步 DTO 化。
+   - **合规报告门槛**：未提供参数统计表，或未明确覆盖接口声明、实现类和全部调用方时，不得输出“调用链符合规范”或“无需整改”。
 9. **同名字段对象赋值用 BeanCopyUtils**：两个对象 / 集合互转，**同名字段 ≥ 3 条**时必须使用 `com.obo.core.common.utils.BeanCopyUtils.copy(src, Xxx::new)` 或 `BeanCopyUtils.copyList(src, Xxx::new)`，禁止 20 行手动 `setX`。**仅** DTO / PO 都不含的派生字段、`null` 兜底字段、跨表外键字段允许手动补写（详见 `references/architecture-layers.md` §15.4）。
 10. **关键位置日志**：业务校验失败、CAS 冲突、远端 RPC 调用返回 null、字段反射写入数、子资源创建数等关键位置必须打 `log.warn` / `log.info`，输出业务键（`uniqueValue` / `nodeCode` / `taskId` / `idempotencyKey`）。Controller 不打日志（一行转发），日志责任在 Service 聚合层（详见 `references/architecture-layers.md` §15.5）。
 11. **Mapper XML** 必须与 Mapper 接口同名共存（无自定义 SQL 时也建占位 XML）。
