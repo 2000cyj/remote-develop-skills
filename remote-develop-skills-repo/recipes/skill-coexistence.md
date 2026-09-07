@@ -1,6 +1,6 @@
 # 与其它 skill / sub-skill 的边界
 
-`remote-orca-skill-repo` 不应与以下三类能力重叠：
+`remote-develop-skills-repo` 不应与以下三类能力重叠：
 
 1. **Orca CLI 自带的 8 个 sub-skill**（`orca skills list` 输出）。
 2. **`remote-claude-hooks`** —— 同仓库的 hooks 配置规范 skill。
@@ -22,7 +22,7 @@
 
 **关键边界**：
 
-- **不要**在 `remote-orca-skill-repo` 里复述 Orca 自带 sub-skill 的命令细节；只引用 `remote-orca-cli` 与 `references/sub-skills.md` 即可。
+- **不要**在 `remote-develop-skills-repo` 里复述 Orca 自带 sub-skill 的命令细节；只引用 `remote-orca-cli` 与 `references/sub-skills.md` 即可。
 - **不要**用 `orca skills install` / `update` / `share` 来安装本仓库 `remote-*` skill——它们只装 Orca 自带 sub-skill。
 - **不要**给本仓库 skill 起名撞 Orca 自带 sub-skill 的前缀（如 `linear-*`）；它们触发词相同会重复加载。
 
@@ -30,7 +30,7 @@
 
 `remote-claude-hooks` 已经在仓库里，约束 Claude Code hooks 的生命周期选择与配置样式。
 
-| 维度 | `remote-claude-hooks` | `remote-orca-skill-repo` |
+| 维度 | `remote-claude-hooks` | `remote-develop-skills-repo` |
 |---|---|---|
 | 对象 | Claude Code 生命周期事件（SessionStart / UserPromptSubmit / PreToolUse / ...） | `remote-develop-skills` 仓库的 `remote-*/` skill 运营 |
 | 决定什么 | 自动化任务该用 Skill 还是 Hook | 新增 skill 怎么写、怎么同步 |
@@ -45,7 +45,7 @@
 
 ## 3. 与 `remote-orca-cli` 的边界（互为姊妹）
 
-| 维度 | `remote-orca-cli` | `remote-orca-skill-repo` |
+| 维度 | `remote-orca-cli` | `remote-develop-skills-repo` |
 |---|---|---|
 | 角色 | 消费者：在 Orca 环境里调 `orca` 命令 | 运营者：维护本仓库 `remote-*` skill |
 | 何时触发 | "跑 orca 命令开 worktree" "查 orca 内置 sub-skill 怎么选" | "新增 / 修改 / 发布一个 remote-* skill" |
@@ -54,8 +54,8 @@
 
 **互引但不互相覆盖**：
 
-- `remote-orca-skill-repo` 的「同步路径」节会引用 `remote-orca-cli` 的 `references/commands.md`（解释 `orca skills install` 装的是什么）。
-- `remote-orca-cli` 的「不要做的事」节会引用 `remote-orca-skill-repo`（解释本仓库 skill 怎么启用）。
+- `remote-develop-skills-repo` 的「同步路径」节会引用 `remote-orca-cli` 的 `references/commands.md`（解释 `orca skills install` 装的是什么）。
+- `remote-orca-cli` 的「不要做的事」节会引用 `remote-develop-skills-repo`（解释本仓库 skill 怎么启用）。
 - 两个 skill 都不复述对方的细节。
 
 ## 4. 与业务侧 8 个 `remote-*` skill 的边界

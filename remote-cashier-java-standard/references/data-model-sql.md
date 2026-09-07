@@ -275,25 +275,27 @@ public class BankCard extends BaseEntity implements Serializable {
 | 数据库列 | `snake_case`（如 `account_number`） |
 | 关联外键 | `<entity>_id` 或 `<entity>_unique_value` |
 
-### 4. `@TableField` 必写
+### 4. `@TableField` 仅 PO 必写（DTO/VO 禁止）
+
+> **适用范围：本节「@TableField 必写」**只针对 `bi-cashier-component/.../po/Xxx.java`（PO 数据库实体）。DTO / VO / Req / Resp 一律**不得**标注 `@TableField` / `@TableName` / `@TableId`（与主 SKILL §4.1 配套）。VO 上的列名映射完全由 Mapper XML 的 `column AS camelCase` 别名承担。
 
 即使 Java 字段名与数据库列名**完全相同**也建议写出来：
 
 ```java
 @ApiModelProperty("账号")
-@TableField("account_number")  // 即使 accountNumber 与 account_number 转换后相同，也显式
+@TableField("account_number")  // PO 上即使 accountNumber 与 account_number 转换后相同，也显式
 private String accountNumber;
 ```
 
 **理由**：明确表达意图，避免后续修改字段名时遗漏更新 DB 列。
 
-### 5. 字段必含项
+### 5. PO 字段必含项
 
-每个字段必须有：
+**PO 字段**（`Xxx.java`）必须同时具备三件套：
 
 ```java
 @ApiModelProperty("中文注释")            // Swagger 文档
-@TableField("snake_case")              // 显式映射
+@TableField("snake_case")              // 显式映射（仅 PO 可写）
 private Type fieldName;               // 驼峰
 ```
 

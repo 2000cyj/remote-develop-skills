@@ -387,19 +387,95 @@ public Boolean deleteXxx(String uniqueValue) {
 
 ### 9.4 枚举
 
+bi-cashier 内部枚举（`bi-cashier-component/enums/`）采用**薄注释模板**。类 Javadoc 一句话点题，枚举值靠字段名 + 字典值天然可读，不在每个枚举值上贴 Javadoc；`fromValue` 提供 `@param`/`@return` 即可。
+
+**简单枚举（value + msg 两字段，对应 `MatchTypeEnum` / `CashierSensitiveFieldEnum` / `StoreSubAccountStatusEnum`）**：
+
 ```java
+package com.obo.bi.cashier.enums;
+
+import lombok.Getter;
+
+/**
+ * 标签匹配方式枚举
+ */
 @Getter
-public enum XxxEnum {
-    A("a-中文", "a"),
-    B("b-中文", "b"),
+public enum MatchTypeEnum {
+
+    ALL("all", "全部匹配"),
+    ANY("any", "任一匹配");
+
+    private final String value;
+    private final String msg;
+
+    MatchTypeEnum(String value, String msg) {
+        this.value = value;
+        this.msg = msg;
+    }
+
+    /**
+     * 根据 value 获取枚举
+     *
+     * @param value 枚举值
+     * @return 匹配的枚举，未匹配返回 null
+     */
+    public static MatchTypeEnum fromValue(String value) {
+        if (value == null) {
+            return null;
+        }
+        for (MatchTypeEnum e : values()) {
+            if (e.value.equalsIgnoreCase(value)) {
+                return e;
+            }
+        }
+        return null;
+    }
+}
+```
+
+**多字段枚举（value + msg + 业务字段，对应 `SourceModuleEnum`）**：字段可按需加 `@Getter`；类 Javadoc 可用 `<ul>` 列出每字段含义与引用方。
+
+```java
+package com.obo.bi.cashier.enums;
+
+import lombok.Getter;
+
+/**
+ * 文件来源模块枚举
+ * <p>
+ * 单一数据源，承载三类信息：
+ * <ul>
+ *   <li>{@code msg}          —— 中文名称（前端展示）</li>
+ *   <li>{@code value}        —— 蛇形短码（写入 cashier_file_expiry_record.source_module 字段的历史值，勿改）</li>
+ *   <li>{@code skuCodePrefix}—— 驼峰前缀（bi-file 服务 sku_code 拼接前缀，= 原 IxxxManageService.stringList 元素）</li>
+ * </ul>
+ */
+public enum SourceModuleEnum {
+
+    COMPANY_FILE_LIST("公司管理-公司文件列表", "company_file_list", "companyFile"),
+    ...
     ;
 
-    @Getter private final String msg;
-    @Getter private final String value;
+    @Getter
+    private final String msg;
+    @Getter
+    private final String value;
+    @Getter
+    private final String skuCodePrefix;
 
-    XxxEnum(String msg, String value) {
-        this.msg = msg;
+    SourceModuleEnum(String msg, String value, String skuCodePrefix) {
         this.value = value;
+        this.msg = msg;
+        this.skuCodePrefix = skuCodePrefix;
+    }
+
+    public static SourceModuleEnum fromValue(String value) {
+        for (SourceModuleEnum e : values()) {
+            if (e.value.equals(value)) {
+                return e;
+            }
+        }
+        return null;
     }
 }
 ```

@@ -47,9 +47,25 @@ ESLint 必须解析完整文件才能正确理解 Vue/TS 语法，因此检查�
 
 默认不运行 `vue-tsc --noEmit`、`tsc --noEmit` 或项目级 `type-check` 脚本。它们依赖完整 `tsconfig` 和跨文件类型图，不能可靠地限制到单个 Vue/TS 文件或 changed hunks；直接传文件会丢失项目配置，过滤全量输出仍属于全局扫描。
 
-没有 IDE/MCP 时，不用不准确的单文件 TypeScript 命令冒充类型检查。如果项目已配置 type-aware ESLint 规则，这些规则可以继续生效，但不能等同于完整类型检查。
+没有 IDE/MCP 时，不用不准确的单文件 TypeScript 命令冒充类型检查。如果项目已配置 type-aware ESLint 规则（如 `@typescript-eslint/no-unsafe-member-access`、`parserOptions.project`），这些规则可以继续生效，但不能等同于完整类型检查。
 
-只有用户明确要求全量类型验证时才运行项目级类型检查，并必须标注其范围是全项目；仍只修复任务编辑清单内的问题，不处理其他文件。
+只有用户明确要求全量类型验证时才运行项目级类型检查（命令形如 `npx vue-tsc --noEmit`），并必须标注其范围是全项目；仍只修复任务编辑清单内的问题，不处理其他文件。
+
+## Type-aware 缺失场景的兜底
+
+ESLint 单跑 `eslint --format stylish` **不会暴露**：
+- 字段访问死代码（如 `file.fileName` 在 `FileUploadRecord` 类型上不存在）
+- 类型不匹配（如 `attachments: FileUploadRecord[]` 实际为 `FileUploadRecordList[]`）
+- 跨文件导入的导出成员缺失
+
+发现这类嫌疑时（如成员链含 `||` 兜底、参数类型来自跨文件 interface），必须：
+
+1. 主动读 `git diff` 对应行的上下文，确认表达式是否真"字段不在类型上"
+2. 用 `Read` 工具读相关 `type.ts` / `*.d.ts` 找定义
+3. **不擅自修**——按 changed-hunk 范围约束，应记录为"预存问题、不在本任务范围"
+4. 若用户要求全面验证，临时跑 `npx vue-tsc --noEmit` 全项目类型检查，按 grep 过滤本次任务文件，把过滤后的报错清单交给用户决策
+
+参考签名见 `references/error-signatures.md` 中 `TS2551`（字段不存在）、`TS2339`（成员访问）、`TS2322`（类型不匹配）。
 
 ## Quick Reference
 
@@ -61,7 +77,7 @@ ESLint 必须解析完整文件才能正确理解 Vue/TS 语法，因此检查�
 | `npx eslint src` / `npx eslint .` | 禁止 | 会扫描目录或全项目 |
 | `pnpm lint` / `npm run lint` | 禁止 | 可能展开为全仓扫描或自动修复 |
 | `npx eslint <file> --fix` | 禁止 | 可能改写目标文件中的未编辑代码 |
-| `npx vue-tsc --noEmit` | 默认禁止 | 只能可靠地做项目级检查 |
+| `npx vue-tsc --noEmit` | 默认禁止（仅用户明确要求全量类型验证时可跑，必须标注全项目范围） | 项目级检查，依赖完整 tsconfig |
 
 ## Error Signatures
 
@@ -71,7 +87,8 @@ ESLint 必须解析完整文件才能正确理解 Vue/TS 语法，因此检查�
 
 - 不用 `eslint-disable`、`@ts-ignore`、`any` 或修改全局配置来隐藏诊断。
 - 不顺手清理同文件其他行、其他脏文件或 `packages/share` 的既有问题。
-- 验证结果必须区分“本次 changed hunks 无相关诊断”和“整个文件/项目通过”。未运行全量类型检查时明确标注未验证跨文件类型关系。
+- 验证结果必须区分”本次 changed hunks 无相关诊断”和”整个文件/项目通过”。未运行全量类型检查时明确标注未验证跨文件类型关系。
+- **类型嫌疑表达式**：成员链出现 `||` 兜底、字段名与 `*type.ts` / `*.d.ts` 定义不一致时，不擅自删，按 changed-hunk 约束报告为”预存问题”，由用户决定是否作为独立任务处理。
 
 ## Legacy Hook Compatibility
 

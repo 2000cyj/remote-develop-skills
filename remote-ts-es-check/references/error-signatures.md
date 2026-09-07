@@ -66,6 +66,76 @@ onSave: (data: { file: Record<string, any>, tagNameList: string[] }) => emit("sa
 - `vue/singleline-html-element-content-newline` / `vue/multiline-html-element-content-newline`：元素内容换行。
 - 这些是纯格式，按 ESLint 报告手工修正对应 changed hunk。不要使用 `--fix`；它可能改写同一文件中的未编辑代码。
 
+## TS2551：字段不存在（死代码兜底表达式）
+
+**签名**：
+```
+src/pages/.../index.vue(NN,COL): error TS2551: Property 'xxx' does not exist on type 'FileUploadRecord'. Did you mean 'file_name'?
+```
+
+**根因**：前端代码用 `file.file_name || file.fileName || ""` 这种"snake + camel 双兜底"表达式——但 `FileUploadRecord` 类型只声明了 `file_name` 一种字段，`fileName` 是死代码。
+
+**为什么会写兜底**：历史经验里后端字段命名混乱，既返 snake 又返 camel，于是前端写了双兜底。但**当前类型已经对齐后端 PO（只有 snake_case）**，所以 camel 部分永远走不到。
+
+**ESLint 为什么没报**：cashier 的 `package.json` 没有 `type-check` 脚本，`pnpm dev / build` 走 esbuild 不做类型检查；ESLint 也不带 `parserOptions.project`，无法跑 type-aware 规则（如 `@typescript-eslint/no-unsafe-member-access`）。
+
+**skill 默认行为**：成员链出现 `||` 兜底、字段名与 `*type.ts` 定义不一致时，**按 changed-hunk 约束不擅自删**，记录为"预存问题、不在本任务范围"。如用户要求全面验证：
+```bash
+cd <project>
+npx vue-tsc --noEmit 2>&1 | grep <task-file-pattern>
+```
+把过滤后的清单交用户决策。
+
+**修复示例**（仅当表达式**全部位于 changed hunk 内**时）：
+```ts
+// ❌ 死代码
+const fileName = file.file_name || file.fileName || ""
+
+// ✅ 只保留类型已声明的字段
+const fileName = file.file_name || ""
+```
+若 `fileName` 兜底是真有兜底必要（如后端真有时只返 camel），说明 `FileUploadRecord` 类型定义与后端实际不符，应改 `*type.ts` 而不是删兜底——但改类型定义又可能扩散影响，按 changed-hunk 范围应单独立任务。
+
+## TS2322 / TS2345：跨文件类型不匹配
+
+**签名**：
+```
+index.vue(NN,COL): error TS2322: Type 'FileUploadRecordList[]' is not assignable to type 'CompanyAuditItem["attachments"]'
+```
+其中 `CompanyAuditItem["attachments"]` 是 `FileUploadRecord[]`，实际传入 `FileUploadRecordList[]`（多了一层 `unName / tagNameList / effectiveTime`）。
+
+**根因**：DTO/VO 类型与目标位置不匹配。可能是：
+- 字段在重构中下/上沉了一级
+- 类型定义在 `*type.ts` 与 `@/common/types/shared` 之间漂移
+
+**skill 默认行为**：与 TS2551 同——按 changed-hunk 不修，记录预存问题。但**这种错误必须报告**给用户，因为它往往意味着整条数据流不通（不只是字段名）。
+
+## TS2305：跨文件 import 成员缺失
+
+**签名**：
+```
+apis/type.ts(1,15): error TS2305: Module '"@/common/types/shared"' has no exported member 'AuditNode'.
+```
+
+**根因**：`type.ts` 从 `@/common/types/shared` 导入 `AuditNode / AuditPermissionSet`，但 `shared.ts` 没导出这两个。可能：
+- share 类型定义在重构中被删/移走
+- tsconfig paths 解析到 node_modules 过期 dist-types（见下文"tsconfig paths 陷阱"）
+
+**skill 默认行为**：报告给用户，不擅改 `type.ts` 的 import 列表（删 import 等于改业务契约）。
+
+## tsconfig paths 陷阱
+
+`tsconfig.json` 的 `paths` 相对 `baseUrl`（= cashier 目录）解析。
+
+| 写法 | 实际解析路径 | 结果 |
+|---|---|---|
+| `"@ob-web/share": ["../../share/index.ts"]` ✅ | `packages/share/index.ts` | 本地源码（对） |
+| `"@ob-web/share": ["../../packages/share/index.ts"]` ❌ | `packages/packages/share/index.ts`（不存在） | TS 回落 node_modules 过期类型 |
+| vite.config.ts 用 `resolve(__dirname, "../../share")` 解析 | 与 tsconfig 一致 | ✅ |
+| tsconfig paths 与 vite alias 写法**不一致** | dev/build 能跑、类型解析到过期 dist | ❌ |
+
+**症状**：本地已删除/重命名的类型成员，`tsc` 仍报"已声明但未使用"或反过来"找不到声明"。
+
 ## packages/share 既有类型错误（不在本目录职责内）
 
 修正 tsconfig paths 后，`vue-tsc` 会把 share 本地源码自身的问题也带出来，**不要顺手改共享包**：

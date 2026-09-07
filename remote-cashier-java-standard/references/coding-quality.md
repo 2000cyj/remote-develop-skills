@@ -248,30 +248,40 @@ String display = hasPwd ? rawPassword : "******";
 
 ### 8.1 枚举写法
 
+bi-cashier 内部枚举采用**薄注释**风格：类 Javadoc 一句话点题，不在每个枚举值上贴 Javadoc（字段名 + 字典值已天然可读）；`fromValue` 含 `@param`/`@return` 即可。详见 `references/code-structure.md` §9.4。
+
+**简单枚举（两字段）**：
+
 ```java
+/**
+ * 标签匹配方式枚举
+ */
 @Getter
-public enum SourceModuleEnum {
+public enum MatchTypeEnum {
 
-    COMPANY_FILE_LIST("公司管理-公司文件列表", "company_file_list", "companyFile"),
-    ...
-    ;
+    ALL("all", "全部匹配"),
+    ANY("any", "任一匹配");
 
-    @Getter
-    private final String msg;
-    @Getter
     private final String value;
-    @Getter
-    private final String skuCodePrefix;
+    private final String msg;
 
-    SourceModuleEnum(String msg, String value, String skuCodePrefix) {
+    MatchTypeEnum(String value, String msg) {
         this.value = value;
         this.msg = msg;
-        this.skuCodePrefix = skuCodePrefix;
     }
 
-    public static SourceModuleEnum fromValue(String value) {
-        for (SourceModuleEnum e : values()) {
-            if (e.value.equals(value)) {
+    /**
+     * 根据 value 获取枚举
+     *
+     * @param value 枚举值
+     * @return 匹配的枚举，未匹配返回 null
+     */
+    public static MatchTypeEnum fromValue(String value) {
+        if (value == null) {
+            return null;
+        }
+        for (MatchTypeEnum e : values()) {
+            if (e.value.equalsIgnoreCase(value)) {
                 return e;
             }
         }
@@ -279,6 +289,8 @@ public enum SourceModuleEnum {
     }
 }
 ```
+
+**多字段枚举**（如 `SourceModuleEnum` 三字段）：按需给字段加 `@Getter`，类 Javadoc 用 `<ul>` 描述每字段含义。
 
 - 提供 `value`、`msg` 两个字段，附加字段（如 `skuCodePrefix`）按需扩展。
 - 提供 `fromValue` / `getByValue` 方法便于按值反查。

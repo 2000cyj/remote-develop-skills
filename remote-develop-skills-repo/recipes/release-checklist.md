@@ -28,7 +28,7 @@
 
 - [ ] SKILL.md 中所有 `Use references/<file>.md when ...` 引用的文件**真实存在**（自检脚本不校验这一项，必须人工核对）。
 - [ ] `references/` 是唯一被实际使用的子目录；`agents/` / `scripts/` / `assets/` **目前 0 个 skill 用过**，新 skill 不必为这三者强建文件，除非真有 Codex openai.yaml / 可执行脚本 / 静态资源。
-- [ ] `recipes/` 子目录按需使用（如本仓库的 `remote-orca-skill-repo/recipes/`）。
+- [ ] `recipes/` 子目录按需使用（如本仓库的 `remote-develop-skills-repo/recipes/`）。
 
 ## 5. 自检脚本
 

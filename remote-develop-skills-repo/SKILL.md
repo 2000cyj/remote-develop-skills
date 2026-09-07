@@ -1,5 +1,5 @@
 ---
-name: remote-orca-skill-repo
+name: remote-develop-skills-repo
 description: Use when 在 C:\Users\20614\orca\remote-develop-skills 仓库新增、修改、发布 remote-* skill，写 SKILL.md frontmatter、维护 references 目录、跑 README 自检脚本，或在 cc-switch / Codex installer / Orca CLI / 手动复制 之间选择本仓库 skill 的同步路径；不要用于消费 orca CLI 调用本身——那是 remote-orca-cli 的活。
 ---
 

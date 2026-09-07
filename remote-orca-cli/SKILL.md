@@ -29,7 +29,7 @@ Use `references/sub-skills.md` when 需要在 8 个内置 sub-skill 中选型。
 - **agent handle 来源**：用 `orca worktree create --agent --json` 时，新 agent handle 在 `result.agentTerminalHandle`；老 runtime 只返 `result.startupTerminal.handle`；folder-based repo 可能两者都不返——按 runtime 版本取对应字段。
 - **selector vs handle**：selector 用于一次性查询（name / path / active / branch / id:），handle 用于重复操作（terminal id、tab pageId）。混用会导致 selector 误命中同名对象（如 `cashier` 双 repo）。
 - **远程运行时走环境变量**：CI 或 SSH 场景不要交互 `orca environment add`，用 `ORCA_PAIRING_CODE=...` 或 `ORCA_ENVIRONMENT=<id-or-name>` 让命令自动连。
-- **不要手动装 Orca 内置 skill**：`orca skills install` / `orca skills update` 装的是 Orca **自带**的 8 个 sub-skill，**不是本仓库**的 remote-*；本仓库 skill 的启用走 cc-switch / Codex installer / 手动复制（见 `remote-orca-skill-repo`）。
+- **不要手动装 Orca 内置 skill**：`orca skills install` / `orca skills update` 装的是 Orca **自带**的 8 个 sub-skill，**不是本仓库**的 remote-*；本仓库 skill 的启用走 cc-switch / Codex installer / 手动复制（见 `remote-develop-skills-repo`）。
 
 ## Response Shape
 
