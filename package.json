@@ -1,0 +1,21 @@
+{
+  "name": "remote-develop-skills",
+  "version": "1.1.0",
+  "private": true,
+  "keywords": [
+    "pi-package"
+  ],
+  "pi": {
+    "skills": [
+      "./remote-cashier-java-standard/SKILL.md",
+      "./remote-commit-git/SKILL.md",
+      "./remote-develop-skills-repo/SKILL.md",
+      "./remote-flowable-task-with-next/SKILL.md",
+      "./remote-idea-mcp-usage/SKILL.md",
+      "./remote-list-page-directory/SKILL.md",
+      "./remote-orca-agent-communication/SKILL.md",
+      "./remote-orca-cli/SKILL.md",
+      "./remote-ts-es-check/SKILL.md"
+    ]
+  }
+}
