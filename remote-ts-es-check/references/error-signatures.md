@@ -66,9 +66,52 @@ onSave: (data: { file: Record<string, any>, tagNameList: string[] }) => emit("sa
 - `vue/singleline-html-element-content-newline` / `vue/multiline-html-element-content-newline`：元素内容换行。
 - 这些是纯格式，按 ESLint 报告手工修正对应 changed hunk。不要使用 `--fix`；它可能改写同一文件中的未编辑代码。
 
-## TS2551：字段不存在（死代码兜底表达式）
+## TS2554：参数个数不匹配（3 种形态）
+
+### 形态 1：share 包路径解析到过期 dist-types
+
+**签名**：`Expected 1-3 arguments, but got 4.`
+
+**根因**：`@ob-web/share` 的类型被解析到 node_modules 过期 dist-types，而不是本地源码。本地 `renderDialog` 是 4 参（带 `slots`），过期 dist-types 是 3 参。
+
+**修复**：修正 `tsconfig.json` 的 `paths`：`"@ob-web/share": ["../../share/index.ts"]`。若 `tsconfig.json` 不在编辑清单内，只报告根因。
+
+### 形态 2：函数本身被覆盖（require 解析顺序）
+
+**签名**：`Expected 1 arguments, but got 2.`
+
+**根因**：同名的工具函数被本地 composable 重新声明（同名覆盖），签名比原函数少 1 个参数。**判断方法**：grep 同名函数在 `src/` 内出现位置，对比各处签名。
+
+### 形态 3：调用方误传第 2 参数（API 实际只接 1 参数）
 
 **签名**：
+```
+src/pages/storeAuditChange/index.vue(NN,CC): error TS2554: Expected 1 arguments, but got 2.
+```
+
+**根因**：调用方 `someApi(uniqueValue, { version, idempotencyKey })` 以为 API 接 2 个参数，但实际 `someApi(uniqueValue: string)` 只接 1 个。后端 controller 通常 `@RequestParam("uniqueValue") String` 也只接 1 参数。
+
+**判断方法**：
+1. 读 `apis/index.ts` 看 `someApi` 实际签名
+2. 读后端 Controller 看入参（`@RequestParam` / `@RequestBody`）
+3. 两者都只 1 参数 → 调用方误传
+
+**修复**：删调用方第 2 参数。**业务逻辑 0 改动**——多余参数在 HTTP 请求时不被发送（`request` 库只认 `params / data`），后端也不接收。
+
+```ts
+// ❌ 调用方误传
+const res = await deleteCompanyChangeApi(row.uniqueValue, {
+  version: row.version || 0,
+  idempotencyKey: nanoid()
+})
+
+// ✅ 与 API 签名对齐
+const res = await deleteCompanyChangeApi(row.uniqueValue)
+```
+
+**顺带连锁**：删除调用后该文件可能不再使用某些 import（如 `nanoid`），按 changed-hunk 范围约束可一并清掉。
+
+## TS2551：字段不存在（死代码兜底表达式）**签名**：
 ```
 src/pages/.../index.vue(NN,COL): error TS2551: Property 'xxx' does not exist on type 'FileUploadRecord'. Did you mean 'file_name'?
 ```
@@ -110,7 +153,9 @@ index.vue(NN,COL): error TS2322: Type 'FileUploadRecordList[]' is not assignable
 
 **skill 默认行为**：与 TS2551 同——按 changed-hunk 不修，记录预存问题。但**这种错误必须报告**给用户，因为它往往意味着整条数据流不通（不只是字段名）。
 
-## TS2305：跨文件 import 成员缺失
+## TS2305：跨文件 import 成员缺失（2 种形态）
+
+### 形态 1：成员真实不存在（跨仓类型漂移）
 
 **签名**：
 ```
@@ -122,6 +167,108 @@ apis/type.ts(1,15): error TS2305: Module '"@/common/types/shared"' has no export
 - tsconfig paths 解析到 node_modules 过期 dist-types（见下文"tsconfig paths 陷阱"）
 
 **skill 默认行为**：报告给用户，不擅改 `type.ts` 的 import 列表（删 import 等于改业务契约）。
+
+### 形态 2：成员真实存在，只是 import 路径错位
+
+**签名**：同形态 1。
+
+**根因**：标识符**在仓内另一文件定义**（如 `src/common/components/audit/auditTypes.ts` 导出了 `AuditNode / AuditPermissionSet`），但 `type.ts` 写错了 import 路径（写成 `@/common/types/shared` 而非 `@/common/components/audit/auditTypes`）。
+
+**判断方法**：跑 vue-tsc 前先 grep 标识符在 `src/` 全局出现位置（排除 type.ts 自己），看哪个模块**实际定义**了它：
+
+```bash
+cd <project>
+grep -rn "export interface AuditNode\|export type AuditNode" src/ --include="*.ts" --include="*.vue"
+```
+
+**修复方法**：把 import 路径改为真实定义所在模块。**业务逻辑 0 改动**——标识符是同一份，只是路径错了。
+
+```ts
+// ❌ 错误路径
+import type { AuditNode, AuditPermissionSet, FileReferenceItem, FileUploadRecord } from "@/common/types/shared"
+
+// ✅ 拆分：AuditNode / AuditPermissionSet 从 auditTypes 取，其他保持 shared
+import type { AuditNode, AuditPermissionSet } from "@/common/components/audit/auditTypes"
+import type { FileReferenceItem, FileUploadRecord } from "@/common/types/shared"
+```
+
+### 形态 3：成员定义在 utils，但 detail.vue 直接从 apis/type 导入
+
+**签名**：
+```
+detail.vue(12,15): error TS2305: Module '"../apis/type"' has no exported member 'NormalizedOnboardingDetail'.
+detail.vue(NN,CC): error TS7006: Parameter 'item' implicitly has an 'any' type.
+```
+
+**根因**：业务类型（如 `NormalizedOnboardingDetail`）定义在 `utils/index.ts`，但 detail.vue 直接从 `apis/type` 导入——导致 TS2305；连锁 TS7006：`detail` 的 ref 类型退化成 any，导致 `detail.value.items.some(item => ...)` 中 `item` 隐式 any。
+
+**判断方法**：
+1. grep 标识符在 `src/` 全局 `export` 位置
+2. 看定义在 `utils/` 还是 `apis/`——业务归一化层常放 `utils/`
+
+**修复方法**：在 `apis/type.ts` 文件末尾 re-export，**保持 detail.vue 的 import 路径不变**：
+
+```ts
+// 在 apis/type.ts 末尾
+export type { NormalizedOnboardingDetail } from "../utils"
+```
+
+**为什么不是业务改动**：标识符**早就在 utils 定义**且**运行时已经在用**（detail.vue 之前通过隐式 any 跑通）。修复仅是类型契约对齐，运行时 0 变化。
+
+## TS7006：Parameter implicitly has an 'any' type（连锁型）
+
+**签名**：`detail.vue(NN,CC): error TS7006: Parameter 'item' implicitly has an 'any' type.`
+
+**根因**：上游类型缺失（如 TS2305）连锁导致。`detail: Ref<NormalizedOnboardingDetail | undefined>` 因 import 失败退化成 `Ref<any | undefined>`，访问 `detail.value.items.some(item => ...)` 时 `item` 隐式 any。
+
+**修复**：先修复上游 TS2305 / TS2304（成员没导出），TS7006 自动消失。**不要单独给 `item` 加显式类型**——那只是遮蔽根因。
+
+## TS18048：链式访问 undefined 风险（连锁型）
+
+**签名**：
+```
+detail.vue(NN,CC): error TS18048: 'item.grounding' is possibly 'undefined'.
+```
+
+**根因**：上游类型定义中 `grounding?: OnboardingItem` 是可选字段（`?`），链式访问 `.mainAccount` 时 TS 严格模式下报"可能 undefined"。若调用方只对 `mainAccount` 加 `?.` 但忘了对 `grounding` 加 `?.`，TS18048 触发。
+
+**修复**：对**链上每个可选字段**加 `?.`：
+
+```ts
+// ❌ 只对叶子字段加 ?
+!item.grounding.mainAccount?.trim()
+
+// ✅ 链上每个可选字段都加 ?
+!item.grounding?.mainAccount?.trim()
+```
+
+**业务逻辑 0 改动**：当 `grounding` undefined 时，`?.mainAccount` 短路返回 undefined，`!undefined = true`，与"grounding 存在但 mainAccount 为空"语义等价。
+
+**为何 skill 没自动检测**：TS18048 是 type-aware 错误，需要 vue-tsc 跑全项目 + 严格模式才能抓，ESLint 默认无 type-aware 规则。
+
+## TS2339：属性不存在于联合类型
+
+**签名**：
+```
+detail.vue(NN,CC): error TS2339: Property 'applicationStoreId' does not exist on type 'OnboardingItem & { grounding: OnboardingItem; }'.
+```
+
+**根因**：前端代码用了**历史遗留字段名** `applicationStoreId`，但后端 VO 已不再返该字段——后端真实返的是 `items[].id`（store row 主键）。E2E 脚本 `docs/.../e2e-onboarding-real.mjs:391` 已显式 fallback：`const value = item?.applicationStoreId ?? item?.id`。
+
+**判断方法**：
+1. grep 后端 VO 类（如 `StoreAuditOnboardingDetailVO`）字段定义
+2. 查 E2E 测试 artifact JSON 实际响应字段
+3. 查 E2E 脚本注释（通常会说明"原字段已改"）
+
+**修复**：把前端访问改为后端真实字段。**业务逻辑 0 改动**——之前 `item.applicationStoreId` 永远 undefined（后端不返）→ `|| index` fallback；改后 `item.id ?? index` 直接取真值，v-for key 行为等价（同一行重复渲染场景下反而修了潜在 Vue key 冲突）。
+
+```vue
+<!-- ❌ 历史遗留字段名 -->
+<div v-for="(item, index) in detail.items" :key="item.applicationStoreId || index">
+
+<!-- ✅ 后端真实字段 -->
+<div v-for="(item, index) in detail.items" :key="item.id ?? index">
+```
 
 ## tsconfig paths 陷阱
 

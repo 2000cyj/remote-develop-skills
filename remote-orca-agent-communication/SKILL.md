@@ -26,7 +26,7 @@ Use `references/resolution-protocol.md` when 需要查看 JSON 输出、退出�
    ```bash
    orca terminal wait --terminal <resolved-handle> --for tui-idle --timeout-ms 120000 --json
    ```
-   对慢启动或 prompt 状态不确定的 Agent，可额外调用项目的 `wait-agent-ready.mjs` 做 prompt/spinner 检查。
+   不得通过 prompt、spinner、banner、preview 或终端渲染文本推断 Agent 就绪；有工作组结构化 ready 握手时，必须由该握手校验决定是否投递。
 5. **只向已验证的 handle 发送**：
    ```bash
    orca terminal send --terminal <resolved-handle> --text "<message>" --enter --json
