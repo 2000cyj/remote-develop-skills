@@ -13,6 +13,9 @@
       "./remote-flowable-task-with-next/SKILL.md",
       "./remote-idea-mcp-usage/SKILL.md",
       "./remote-list-page-directory/SKILL.md",
+      "./remote-longmemory-find/SKILL.md",
+      "./remote-longmemory-search/SKILL.md",
+      "./remote-longmemory-tour/SKILL.md",
       "./remote-orca-agent-communication/SKILL.md",
       "./remote-orca-cli/SKILL.md",
       "./remote-ts-es-check/SKILL.md"
