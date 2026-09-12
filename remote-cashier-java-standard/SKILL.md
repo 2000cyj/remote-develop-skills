@@ -317,7 +317,7 @@ private Long localCacheSize;                  ← 实例字段（按业务相关
 
 | 任务类型 | 参考文档 |
 |---------|---------|
-| 类文件内代码布局（import 分组、字段/方法顺序、guard clauses、私有 helper）、**DTO/VO 设计规范** | `references/code-structure.md` |
+| 类文件内代码布局（import 分组、字段/方法顺序、guard clauses、私有 helper）、**DTO/VO 设计规范**、**DTO/VO 字段 Javadoc 句末不带句号 + 字段间空行 + 类体首尾空行（V20260912 新增）** | `references/code-structure.md` |
 | 命名、**注释规范（覆盖 interface 方法 / 常量 / 字段 Javadoc）**、注解、**异常处理完整规约**、**日志格式细化**、**安全性规约**、**错误码/错误信息规范**、**Feign 客户端使用规约** | `references/coding-quality.md` |
 | PO 基类、uniqueValue 生成、软删除、复合主从表、SQL 归档、**PO 字段映射规约** | `references/data-model-sql.md` |
 | 性能红线、批量查库、异步导出、敏感字段权限 | `references/performance.md` |
@@ -345,6 +345,7 @@ private Long localCacheSize;                  ← 实例字段（按业务相关
 - 禁止用空壳 Javadoc（`/** xxx */` 一句话 + `@param xxx` 参数）蒙混过关——Javadoc 必须写出业务语义。
 - **禁止 interface 内方法、常量、字段变量无注释**——必须按本文档"代码规范 §0 接口注释规范"逐项加 Javadoc；新增 / 改动行不允许出现无注释的方法签名或常量定义。
 - **禁止聚合 / 上下文 DTO 内嵌在 Service / Interface / Impl 中**——见 §4.4，所有 `XxxContext` / `XxxReq` 必须放 `bi-cashier-api/dto/` 作为顶级 `public class`。
+- **禁止 DTO/VO 字段 Javadoc 句末带句号、字段间无空行、类体首尾缺空行**——见 `references/code-structure.md` §6.2 / §6.3（V20260912 新增）；DTO/VO 字段 Javadoc 末尾不加 `。`，每个字段声明后空一行，类 `{` 后与 `}` 前各空一行。
 
 ## 实战重构案例（V20260907）
 

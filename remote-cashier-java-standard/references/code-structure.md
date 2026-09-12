@@ -525,24 +525,32 @@ public final class XxxUtils {
 @Data
 @ApiModel("银行卡分页查询DTO")
 public class BankCardPageDTO {
+
     @ApiModelProperty("页码")
     private Integer pageNum = 1;
+
     @ApiModelProperty("每页数量")
     private Integer pageSize = 10;
+
     @ApiModelProperty("账户名称（模糊查询）")
     private String accountName;
+
     @ApiModelProperty("账号列表（已选项）")
     private List<String> selectedAccountNumbers;
+
     @ApiModelProperty("开户行编码列表")
     private List<String> bankCodes;
+
     @ApiModelProperty("开户日期开始")
     @DateTimeFormat(pattern = "yyyy-MM-dd")
     @JsonFormat(pattern = "yyyy-MM-dd")
     private LocalDate openDateStart;
+
     @ApiModelProperty("开户日期结束")
     @DateTimeFormat(pattern = "yyyy-MM-dd")
     @JsonFormat(pattern = "yyyy-MM-dd")
     private LocalDate openDateEnd;
+
 }
 ```
 
@@ -557,26 +565,30 @@ public class BankCardPageDTO {
 @Data
 @ApiModel("店铺保存请求（复合）")
 public class StoreSaveRequestDTO {
+
     @ApiModelProperty("店铺业务唯一流水号")
     private String uniqueValue;
-    
+
     @ApiModelProperty("变更信息列表")
     private List<ChangeInfoItem> changeInfoList;
-    
+
     @Data
     @ApiModel("变更信息项")
     public static class ChangeInfoItem {
+
         @ApiModelProperty("变更信息ID")
         private Long id;
+
         @ApiModelProperty("变更日期")
         @DateTimeFormat(pattern = "yyyy-MM-dd")
         @JsonFormat(pattern = "yyyy-MM-dd")
         private LocalDate changeDate;
+
     }
 }
 ```
 
-**嵌套静态类**模式（参考 `StoreSaveRequestDTO.ChangeInfoItem`）。
+**嵌套静态类**模式（参考 `StoreSaveRequestDTO.ChangeInfoItem`）。嵌套类同样遵守 §6.1-6.3 的注解顺序与空行规约。
 
 ### 4. VO 命名
 
@@ -606,6 +618,73 @@ public class StoreSaveRequestDTO {
 - **不能**持有 Service / Component 依赖
 - 日期字段同时 `@DateTimeFormat` + `@JsonFormat`
 - 列表字段用 `List<Xxx>`（统一不带 `s` 后缀）
+
+#### 6.1 类级注解顺序（V20260912 更新）
+
+Lombok 在前、Swagger 在后：
+
+```java
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+@ApiModel("异常状态审计上下文DTO")   // Swagger 类级注解放最后
+public class StoreAuditAbnormalAuditContextDTO { ... }
+```
+
+固定次序：`@Data` → `@Builder` → `@NoArgsConstructor` → `@AllArgsConstructor` → `@ApiModel`。该顺序与 §3 "类级注解按显示/框架/容器/Swagger/数据/事务的次序排" 不冲突——DTO 不属于容器/框架层，Swagger 在 Lombok 之后是 DTO 的特例。
+
+#### 6.2 字段 Javadoc 句末**不带句号**（V20260912 新增）
+
+DTO/VO 字段的 Javadoc 描述文本**末尾不加 `。`**，与 `@ApiModelProperty` 的描述字符串保持一致。
+
+```java
+/**
+ * 申请业务唯一流水号          ← 不要写 "申请业务唯一流水号。"
+ */
+@ApiModelProperty("申请业务唯一流水号")
+private String applicationUniqueValue;
+```
+
+**适用范围**：本节只约束 DTO / VO / Req / Resp / Form 等纯契约类的**字段 Javadoc**；接口方法 Javadoc（`IXxxManageService` / `IXxxService`）的描述仍按 §0 末尾带 `。`。
+
+#### 6.3 字段与类体的空行规约（V20260912 新增）
+
+- 类开 `{` 后**空一行**再接第一个字段；
+- 每个字段声明后**空一行**（包括最后一个字段）；
+- 闭合 `}` 前**空一行**；
+- 文件末尾保留一个换行符（POSIX 标准）。
+
+完整模板：
+
+```java
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+@ApiModel("异常状态审计上下文DTO")
+public class StoreAuditAbnormalAuditContextDTO {
+
+    /**
+     * 申请业务唯一流水号
+     */
+    @ApiModelProperty("申请业务唯一流水号")
+    private String applicationUniqueValue;
+
+    /**
+     * 当前店铺下状态为正常的子账号快照
+     */
+    @ApiModelProperty("当前店铺下状态为正常的子账号快照")
+    private List<StoreSubAccount> activeSubAccounts;
+
+}
+```
+
+**审查硬指标**：
+- 类内连续两个字段之间无空行 → 违规；
+- 类 `{` 后紧接字段（无空行）→ 违规；
+- 闭合 `}` 前紧接字段（无空行）→ 违规；
+- DTO 字段 Javadoc 描述末尾出现 `。` → 违规。
 
 ### 7. 校验注解（javax.validation）
 
