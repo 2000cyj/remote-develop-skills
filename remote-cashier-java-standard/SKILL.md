@@ -1,6 +1,6 @@
 ---
 name: remote-cashier-java-standard
-description: Use when 在 bi-cashier-api、bi-cashier-component、bi-cashier-service 或 bi-cashier-web 中新建、修改或审查 Java 后端代码及关联 Mapper XML/SQL，包括 DTO/VO/PO、分层调用、Service 与 Component 职责、Feign 和数据访问规范；不要用于其他 BI/OBO 模块。
+description: Use when 在 bi-cashier-api、bi-cashier-component、bi-cashier-service 或 bi-cashier-web 中新建、修改或审查 Java 后端代码及关联 Mapper XML/SQL，包括 DTO/VO/PO、分层调用、Service 与 Component 职责、Feign 和数据访问规范；或 prompt 中出现显式触发短语「使用 oboJava 规范」「按 oboJava 规范修改」「按 oboJava 规范审查」中的任意一个、并伴随对 bi-cashier-* 模块 Java 后端代码的修改/审查/重构描述。不要用于其他 BI/OBO 模块。
 ---
 
 # bi-cashier 模块 Java 开发规范
@@ -17,6 +17,18 @@ description: Use when 在 bi-cashier-api、bi-cashier-component、bi-cashier-ser
 同时适用于与上述模块 Java 实现直接关联的 Mapper XML、`bi-cashier` SQL 和代码评审。
 
 不得把本规范套用到 `bi-file`、`bi-user` 或其他 BI/OBO Java 模块，即使它们采用相似分层或命名、包名相近或复用本规范的辅助类。跨模块任务只对其中明确属于 `bi-cashier` 模块组的文件使用本规范；无法从 Maven 模块确认归属时，不要推断适用。
+
+### 显式触发短语（用户约定触发器）
+
+为了让团队成员在不方便显式说仓库名时也能稳定触发本 skill，约定以下三类显式触发短语（出现任意一个即视为命中本 skill 的触发条件，无需再额外指定 `bi-cashier-*` 仓库名）：
+
+- `使用 oboJava 规范`
+- `按 oboJava 规范修改`
+- `按 oboJava 规范审查`
+
+命中后，紧随其后的 prompt 仍需描述具体的 Java 后端开发/审查/重构任务（如"帮我改 XX Service" / "review XX 的 Mapper XML" / "新建一个 XX DTO" 等）。仅触发短语而无具体任务描述时，应向用户反问澄清，不要默认加载本 skill。
+
+> 该约定来自团队内部对"如何稳定触发 cashier Java 规范"的讨论记录，目的是降低误报（不强制要求每次都说仓库名）+ 提高稳定性（即使 prompt 中省略仓库名也能命中）。仓库归属本身的硬约束（只覆盖 `bi-cashier-*` 四个模块）保持不变。
 
 ## 核心规范
 
