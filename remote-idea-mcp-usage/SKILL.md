@@ -1,6 +1,6 @@
 ---
 name: remote-idea-mcp-usage
-description: Use when 使用 JetBrains IDEA MCP 读取或修改代码、构建、运行、调试、操作版本控制或访问 IDEA 数据源；在当前已开启代理所暴露的开发环境内默认拥有操作权限，但只有连接名去除首尾空白后不区分大小写完整等于 dev 的数据库可写，其他数据库必须只读。
+description: Use when 调用 mcp__idea__execute_tool 工具前必读——任何 JetBrains IDEA MCP 操作都走这里：build_project / get_file_problems / lint_files / open_file_in_editor / execute_run_configuration / git_status / xdebug_* / apply_patch / read_file / 数据源 execute_sql_query 等。不要用于：shell mvn/gradle 构建、Computer Use 截图、Orca CLI、远程 Git push/PR。约束：数据库连接名 trim 后完整匹配 dev（不区分大小写）才可写；代理范围内全权限，但不覆盖用户已有改动、不主动 Git add 新文件。
 ---
 
 # IDEA MCP 操作与数据库权限
