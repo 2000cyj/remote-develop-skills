@@ -27,10 +27,12 @@ PR 评审按层次分别检查。每个 checklist 都对应 skills 文档的章�
 - [ ] `implements IXxxManageService`（接口）
 - [ ] 类注解 `@Slf4j` + `@Service`
 - [ ] `@Resource` 数量 ≤ 6（超出按 Facade 拆分）
+- [ ] `@Resource` 字段集中放在类名下、方法声明之前；多个 `@Resource` 按字段名字母序排列（实战重构案例 §8）
 - [ ] 公共方法有 `@Override` + 完整 Javadoc
 - [ ] 业务前置校验（`if (x == null) throw new BusinessException(...)`）
 - [ ] 阶段化注释（方法体 > 80 行时必须）
 - [ ] 复杂方法加 `@Transactional(rollbackFor = Exception.class)`
+- [ ] **DTO↔PO 同名字段 ≥ 3 条必须用 `BeanCopyUtils.copy` / `copyIgnore`**（例外字段在源对象里 → `copyIgnore` 排除；不在 → `copy` + 手写）；不能因"有派生字段就退出 copy、剩下全手写"（详见 SKILL.md §9 + `architecture-layers.md` §15.4）
 - [ ] 不 `new LambdaQueryWrapper<>()` / `new QueryWrapper<>()`
 - [ ] 不 `extends ServiceImpl`（这是 Component 层）
 - [ ] 不跨层依赖（不 import Component Impl）
@@ -38,12 +40,15 @@ PR 评审按层次分别检查。每个 checklist 都对应 skills 文档的章�
 ### 3. Component Service 评审
 
 - [ ] `extends ServiceImpl<XxxMapper, T>` 必须
+- [ ] **PO↔VO 同名字段 ≥ 3 条必须用 `BeanCopyUtils.copy` / `copyIgnore`**（如 PageResult 的 records 批量转换 `copyList`）；原则同 §2（详见 SKILL.md §9）
 - [ ] `implements IXxxService` extends `IService<T>`
 - [ ] **不抛 BusinessException**（业务异常）
 - [ ] **不写 @Transactional** 处理跨表（仅单表）
 - [ ] 复杂合并逻辑可在此（聚合前置等）
 - [ ] 调 Mapper 用 `baseMapper.xxx()`（不是 `@Autowired XxxMapper`）
 - [ ] 空集合返 `Collections.emptyList()`（不 `new ArrayList<>()`）
+- [ ] **分页 `PageResult` 必须带泛型**（如 `PageResult<OperatingScope>`），禁止裸 `PageResult`；菱形式 `new PageResult<>(...)` 优先（详见 SKILL.md §9）
+- [ ] **类加 `@Slf4j`**，CRUD 方法失败（`baseMapper.insert/update/deleteById` 返回 false）必须 `log.warn`/`log.error` 记录业务键；SELECT 按 ID 未命中分 null / 软删两种情况分别 `log.debug` / `log.warn`（详见 SKILL.md §10）
 
 ### 4. Mapper 评审
 
@@ -97,6 +102,7 @@ PR 评审按层次分别检查。每个 checklist 都对应 skills 文档的章�
 - [ ] 敏感字段脱敏（手机号、密码）
 - [ ] 物理删除禁止（统一软删除）
 - [ ] 不在外层模块跨层依赖（参见 §目录归属规则）
+- [ ] **分页返回值类型链一致**：接口 `PageResult<T>` ↔ 实现 `PageResult<T>` ↔ Controller `Result<PageResult<T>>`，禁止上层写 `PageResult<VO>` 实际下层返 `PageResult<PO>` 的伪泛型（详见 SKILL.md §9）
 
 ### 9. 自检 quick 命令
 

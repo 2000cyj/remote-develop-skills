@@ -719,7 +719,7 @@ store.setStoreName(...);
 
 **字段少的场景**：同名字段 ≤ 2 条的手写 setX 仍允许（不值得为兜底字段再引入 copy）。
 
-**字段名错位的解决方案**：不要因为 DTO 与 PO 字段名"略有差异"就拒绝 BeanCopyUtils——先 copy，再对**字段名不一致的少数字段**手动 set：
+**字段名错位的解决方案**：不要因为 DTO 与 PO 字段名“略有差异”就拒绝 BeanCopyUtils——先 copy，再对**字段名不一致的少数字段**手动 set：
 
 ```java
 // 字段名对齐：DTO.platform → PO.platform（一致字段全拷贝）
@@ -728,6 +728,45 @@ bankCard = BeanCopyUtils.copy(dto, BankCard::new);
 bankCard.setBankAccountName(dto.getAccountName());
 bankCard.setBankCode(dto.getBankCode());   // 不一致的也手动补
 ```
+
+**混合场景：例外字段同时存在于源对象里（V20260914 强化）**
+
+例外字段可能在源 DTO 和目标 PO 里都存在（例如 `level` 在 `OperatingScopeSaveDTO` 和 `OperatingScope` 里都有）。此时**必须用 `copyIgnore` 排除**而不是先 copy 后覆盖，原因有二：
+
+1. **防止脏数据灬写**：`copy` 会先把 DTO.例例字段（可能是前端错误传值）复制到 PO，然后业务逻辑再覆盖——可读性差且隐藏 bug
+2. **语义明确**：`copyIgnore("level")` 一行明确表达“DTO.level 不信，后端重算”，比“复制后覆盖”可读性高
+
+```java
+// ❌ 错误：copy + 覆盖（可读性差 + 隐藏脏数据灬写）
+OperatingScope scope = BeanCopyUtils.copy(dto, OperatingScope::new);
+scope.setParentId(dto.getParentId() == null ? 0L : dto.getParentId());
+// level 重算前可能为 dto.level=999 的脏值，业务逻辑仅在 log.warn 时可见
+if (dto.getParentId() == null) {
+    scope.setLevel(1);
+} else {
+    OperatingScopeVO parent = operatingScopeService.queryOperatingScopeById(dto.getParentId());
+    scope.setLevel(parent != null ? parent.getLevel() + 1 : 1);
+}
+
+// ✅ 正确：copyIgnore 排除例外字段 + 手写派生/null兜底
+OperatingScope scope = BeanCopyUtils.copyIgnore(dto, OperatingScope::new, "level");
+scope.setParentId(dto.getParentId() == null ? 0L : dto.getParentId());
+if (dto.getParentId() == null) {
+    scope.setLevel(1);
+} else {
+    OperatingScopeVO parent = operatingScopeService.queryOperatingScopeById(dto.getParentId());
+    scope.setLevel(parent != null ? parent.getLevel() + 1 : 1);
+}
+```
+
+**判定流程**：
+
+1. 数同名字段数（不包括 `id` / `deleted` / `createTime` / `updateTime` / `createBy` / `updateBy` 等含本类缺业务逻辑的字段）
+2. ≥ 3 条 → 进入 BeanCopyUtils 选择
+3. 例外字段是否在源对象里？
+   - 否（仅目标 PO 有）→ `copy` + 手动 set
+   - 是（DTO 也有）→ `copyIgnore(...)` + 手动 set
+4. ≤ 2 条 → 手写 setX 即可（不值得为覆盖字段引入 copy）
 
 **反面典型（2026-08，已重构）**：`OnboardingManageServiceImpl` 早期 `create()` / `update()` 内对 `OnboardingStore` 做了 20 行 `setX`；`savePreparations()` 内对 `OnboardingGrounding` 做了 15 行 `setX`。整改后用 `BeanCopyUtils.copy(row, OnboardingStore::new)` / `BeanCopyUtils.copy(preparation, OnboardingGrounding::new)`，每个循环体由 20+ 行降到 7 行。
 

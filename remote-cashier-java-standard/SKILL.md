@@ -126,7 +126,7 @@ description: Use when 在 bi-cashier-api、bi-cashier-component、bi-cashier-ser
    - 只有方法全部参数确实是固定 RPC 传输字段，且数量不超过 3 个时，才可记录为例外；必须在报告中写明例外依据，不能只写“内部 helper”。
    - A1 架构下沉、重命名或复制方法后，必须重新执行本条扫描；下沉不等于合规，原方法不合规时必须同步 DTO 化。
    - **合规报告门槛**：未提供参数统计表，或未明确覆盖接口声明、实现类和全部调用方时，不得输出“调用链符合规范”或“无需整改”。
-9. **同名字段对象赋值用 BeanCopyUtils**：两个对象 / 集合互转，**同名字段 ≥ 3 条**时必须使用 `com.obo.core.common.utils.BeanCopyUtils.copy(src, Xxx::new)` 或 `BeanCopyUtils.copyList(src, Xxx::new)`，禁止 20 行手动 `setX`。**仅** DTO / PO 都不含的派生字段、`null` 兜底字段、跨表外键字段允许手动补写（详见 `references/architecture-layers.md` §15.4）。
+9. **同名字段对象赋值用 BeanCopyUtils**：两个对象 / 集合互转，**同名字段 ≥ 3 条**时必须使用 `com.obo.core.common.utils.BeanCopyUtils.copy(src, Xxx::new)` / `BeanCopyUtils.copyList(src, Xxx::new)` / `BeanCopyUtils.copyIgnore(src, Xxx::new, "field1", "field2")`，禁止 20 行手动 `setX`。**混合场景**（同名字段 ≥ 3 条但存在例外字段）：首选 `copyIgnore` 排除例外字段（避免源对象脏数据覆写），剩余字段自动复制；例外字段（DTO/PO 都不含的派生字段、`null` 兜底字段、跨表外键字段）才手动 setX。**禁止**“看见例外字段就退出 copy、剩下全手写”的过激反应（详见 `references/architecture-layers.md` §15.4）。
 10. **关键位置日志**：业务校验失败、CAS 冲突、远端 RPC 调用返回 null、字段反射写入数、子资源创建数等关键位置必须打 `log.warn` / `log.info`，输出业务键（`uniqueValue` / `nodeCode` / `taskId` / `idempotencyKey`）。Controller 不打日志（一行转发），日志责任在 Service 聚合层（详见 `references/architecture-layers.md` §15.5）。
 11. **Mapper XML** 必须与 Mapper 接口同名共存（无自定义 SQL 时也建占位 XML）。
 12. **提交前剔除未使用代码**：新增 / 修改 Service 与 Component 时，真 0 引用的接口方法、私有 helper、未引用形参、未使用 import 必须随本次改动同步删掉（接口 + 实现 + 调用方一起动）。"诊断告警"（形参恒为 null / switch 升级 / 重复代码段）**不等于死代码**，是 Feign 契约 / 业务约束 / 风格建议，**保留**（详见 `references/code-structure.md` §8.5）。
@@ -291,6 +291,45 @@ private Long localCacheSize;                  ← 实例字段（按业务相关
 - **提示语必须大白话（硬性）**：`BusinessException` 的提示文案是前端直接展示给用户的，**禁止**程序员腔（"不能为空" / "请刷新页面重试" / "刷新失败" 等），**禁止**暴露内部术语（`uniqueValue` / `taskId` / `CAS` / `bi-file` / `Flowable` / `Redis` 等中间件名）。业务键定位只放在 `log.warn` / `log.info` 中。详见 `references/coding-quality.md` §3.2。
 - **判空**：集合用 `CollUtils.isEmpty(x)` / `CollUtils.isNotEmpty(x)`；字符串用 `StringUtils.isBlank(x)` / `StringUtils.isNotBlank(x)`；包装类型运算前必须判空
 - **空集合返回**：用 `Collections.emptyList()` / `Collections.emptyMap()`，**禁止 `new ArrayList<>()`** 作为返回值
+
+### 9. 分页 `PageResult` 必须声明泛型（V20260914 新增）
+
+分页返回值 `com.obo.core.common.entity.result.PageResult` 是泛型类 `PageResult<T>`，`T` 表示 `records` 字段的元素类型。**禁止**写裸 `PageResult`（raw type）。
+
+#### 反例（裸 PageResult）
+
+```java
+// 接口
+PageResult pageOperatingScope(OperatingScopePageDTO dto);
+
+// 实现（运行时实际返回 PageResult<OperatingScope>，但签名是 raw）
+public PageResult pageOperatingScope(OperatingScopePageDTO dto) {
+    Page<OperatingScope> page = new Page<>(dto.getPageNum(), dto.getPageSize());
+    IPage<OperatingScope> result = this.lambdaQuery()...page(page);
+    return new PageResult(result.getTotal(), result.getRecords()); // 编译器认为是 raw
+}
+```
+
+#### 正例（带泛型）
+
+```java
+// 接口
+PageResult<OperatingScope> pageOperatingScope(OperatingScopePageDTO dto);
+
+// 实现（签名与 new 表达式类型一致）
+public PageResult<OperatingScope> pageOperatingScope(OperatingScopePageDTO dto) {
+    ...
+    return new PageResult<>(result.getTotal(), result.getRecords()); // 菱形式更好，也可写 new PageResult<OperatingScope>(...)
+}
+```
+
+#### 规则
+
+1. **接口 / 实现 / 调用方声明必须一致**：上层接口 `PageResult<T>`，下层实现也必须是 `PageResult<T>`（不能上层 `PageResult<OperatingScopeVO>` 而下层返回 `PageResult<OperatingScope>` —— 类型擦除不会报错但运行期 ClassCastException）
+2. **T 由 `records` 实际元素类型决定**：Component 层一般返回 PO（`PageResult<OperatingScope>`），ManageService 层如要做 PO→VO 转换，需在 ManageService 内 `BeanCopyUtils.copyList(records, OperatingScopeVO::new)` 再包成 `PageResult<OperatingScopeVO>`
+3. **`Controller` `Result<PageResult<T>>` 同样必须带 T**：`Result<PageResult>` 也算 raw，等同违规
+4. **菱形式 `new PageResult<>(...)` 优先**：与 Java 7+ 惯例一致；不必写 `new PageResult<OperatingScope>(...)`
+5. **注意链式调用中的伪泛型**：上层接口写 `PageResult<OperatingScopeVO>` 但实现直接 `return component.pageXxx(dto)`，若 Component 返回的是 `PageResult<OperatingScope>` 实际是伪泛型 —— 必须显式转换 records 后再包一层
 
 ## 目录归属规则
 
@@ -465,5 +504,381 @@ grep -nE "private\s+(Map<String|List<|void)\s+\w+\(" impl/*.java | grep -v "Over
 ```
 
 常见违规命名：`buildXxxMap` / `buildXxxList` / `applyXxxDefaults` / `initXxxContext` / `convertXxxMap`
+
+
+### 8. `@Resource` 注入字段按字段名字母序统一放到类名下（V20260914）
+
+> 来源：`OperatingScopeManageServiceImpl` 重构（2026-09-14）。原文件把第二个 `@Resource` 字段插在 `updateOperatingScope` 和 `deleteOperatingScope` 两个方法之间，违反 §4「字段顺序」。
+
+**反面案例**：
+
+```java
+@Service
+public class OperatingScopeManageServiceImpl implements IOperatingScopeManageService {
+
+    @Resource
+    private IOperatingScopeService operatingScopeService;
+
+    @Override
+    public PageResult pageOperatingScope(OperatingScopePageDTO dto) { ... }
+
+    // ... 若干 public 方法 ...
+
+    @Resource
+    private ICompanyBusinessScopeService companyBusinessScopeService;   // ❌ 散落在方法间
+
+    @Transactional(rollbackFor = Exception.class)
+    @Override
+    public Boolean deleteOperatingScope(Long id) {
+        // 这里才用到 companyBusinessScopeService
+    }
+}
+```
+
+**判定为反模式**：违反 §4「字段顺序」——`@Resource` 注入字段必须**集中放在类名下、方法声明之前**，且多个 `@Resource` 之间按**字段名**（不是类型名）字母序排列。
+
+**正确做法**：
+
+```java
+@Service
+public class OperatingScopeManageServiceImpl implements IOperatingScopeManageService {
+
+    @Resource
+    private ICompanyBusinessScopeService companyBusinessScopeService;   // c 字母序在前
+
+    @Resource
+    private IOperatingScopeService operatingScopeService;
+
+    @Override
+    public PageResult pageOperatingScope(OperatingScopePageDTO dto) { ... }
+}
+```
+
+**理由**：
+1. 字段集中声明使 Service 依赖的 Component 一目了然
+2. 字母序避免「我先写的 `@Resource` 在前面、后写的反而在后」的散乱
+3. PR 评审可用一行命令验证：`grep -n "@Resource" <file>.java` 应集中在类体顶部 1-2 行内
+
+**典型违规扫描**：
+
+```bash
+# @Resource 字段应该只出现在类体顶部，不应散落在 public 方法之间
+awk '/@Resource/{found=NR; next} /^[[:space:]]*(public|@Override)/ && found && NR > found + 2 {print FILENAME":"NR": @Resource 散落到方法间"}' <file>.java
+```
+
+判定：所有 `@Resource` 行号必须小于该类第一个 `@Override` 或 `public` 方法的行号。
+
+
+### 9. 分页 PageResult 泛型链路对齐：Controller → Manage → Component（V20260914）
+
+> 来源：`OperatingScopeController` / `IOperatingScopeManageService` / `OperatingScopeManageServiceImpl` / `IOperatingScopeService` / `OperatingScopeServiceImpl` 五层分页链路类型对齐（2026-09-14）。
+
+#### 原链路（3 处不一致，全靠类型擦除骗编译）
+
+| 层 | 文件:行 | 原签名 | 问题 |
+|---|---|---|---|
+| Controller | `OperatingScopeController.java:46` | `Result<PageResult>` | raw PageResult；PO 全部字段（含 `deleted` / `parent_id` 表字段）泄漏到前端 |
+| Manage 接口 | `IOperatingScopeManageService.java:23` | `PageResult<OperatingScope>` | PO 透出 Manage 层；与 Controller 拼不起来 |
+| Manage 实现 | `OperatingScopeManageServiceImpl.java:48` | `PageResult<OperatingScopeVO>` | **伪泛型**——签名说 VO，records 实际是 PO（Component 返的），靠 `@SuppressWarnings` 或类型擦除编译过，运行期 `vo.getXxx()` 会 ClassCastException |
+| Component 接口 | `IOperatingScopeService.java:22` | `PageResult` | raw PageResult |
+| Component 实现 | `OperatingScopeServiceImpl.java:26` | `PageResult` | raw PageResult |
+
+**伪泛型最阴险**：编译通过、所有 IDE 跳转正常、单元测试 mock 也 ok，唯一炸的场景是下游真正调用 `records.get(0).getName()` 才在运行期崩，且单元测试用 mock 不打 records 时根本发现不了。
+
+#### 修复后链路（5 层类型一致 + 显式 PO→VO 转换点）
+
+| 层 | 签名 | 转换点 |
+|---|---|---|
+| Controller | `Result<PageResult<OperatingScopeVO>>` | 仅委托 |
+| Manage 接口 | `PageResult<OperatingScopeVO>` | — |
+| Manage 实现 | `PageResult<OperatingScopeVO>` | **显式 `BeanCopyUtils.copyList(records, OperatingScopeVO::new)`** |
+| Component 接口 | `PageResult<OperatingScope>` | — |
+| Component 实现 | `PageResult<OperatingScope>` | 仅返回 PO records |
+
+#### 关键代码：Manage 实现层的转换样板
+
+```java
+@Override
+public PageResult<OperatingScopeVO> pageOperatingScope(OperatingScopePageDTO dto) {
+    PageResult<OperatingScope> pageResult = operatingScopeService.pageOperatingScope(dto);
+    if (CollectionUtils.isEmpty(pageResult.getRecords())) {
+        return new PageResult<>(pageResult.getTotal() == null ? 0L : pageResult.getTotal(),
+                                 Collections.emptyList());
+    }
+    List<OperatingScopeVO> records = BeanCopyUtils.copyList(pageResult.getRecords(), OperatingScopeVO::new);
+    return new PageResult<>(pageResult.getTotal(), records);
+}
+```
+
+#### 判定为反模式的 4 个特征
+
+1. **接口/实现任一层是 raw `PageResult`**——编译器不会报，但 `getRecords()` 返回 raw `List`，下游遍历全靠强转
+2. **上层接口声明 `PageResult<VO>` 但实现直接 `return component.pageXxx(dto)`**——伪泛型，重灾区
+3. **Controller `Result<PageResult>` 没带泛型**——前端拿到响应时 `records` 字段类型是 `Object[]`，TS 端也拿不到元素类型提示
+4. **PO 字段出现在 Controller 响应中**（如 `deleted` / `parent_id` / `create_by` 等表字段）——VO/PO 分层失效
+
+#### 推荐扫描命令
+
+```bash
+# 扫 raw PageResult（无泛型参数的 PageResult 出现位置）
+grep -rn "PageResult\b" --include="*.java" bi-cashier/ \
+  | grep -vE "PageResult<[^>]+>" \
+  | grep -vE "^[^:]+:[0-9]+:[[:space:]]*\*"     # 排除 Javadoc
+  | grep -vE "^[^:]+:[0-9]+:[[:space:]]*//"     # 排除单行注释
+
+# 扫伪泛型：Manage 实现里直接 return component.pageXxx 没用 copyList
+grep -rn "return [a-zA-Z]*Service.page\|return component.page\|return [a-zA-Z]*ManageService.page" \
+  --include="*ManageServiceImpl.java" bi-cashier/
+```
+
+#### 关联规则
+
+- SKILL.md §9（分页 PageResult 必须声明泛型）——本案例是该规则的落地版
+- `code-review-checklist.md` §3 + §8 检查项
+
+
+### 10. Component 层 CRUD 失败必须写关键日志，不能静默返 false（V20260914）
+
+> 来源：`OperatingScopeServiceImpl` 重构（2026-09-14）。原文件 3 个 CRUD 方法都是
+> `return baseMapper.xxx() > 0;` 静默返 false，SELECT 按 ID 也静默返 null。
+
+#### 反面案例（静默失败、无现场）
+
+```java
+@Service
+public class OperatingScopeServiceImpl extends ServiceImpl<OperatingScopeMapper, OperatingScope>
+        implements IOperatingScopeService {
+
+    @Override
+    public Boolean addOperatingScope(OperatingScope operatingScope) {
+        return baseMapper.insert(operatingScope) > 0;          // ❌ 失败原因丢
+    }
+
+    @Override
+    public Boolean updateOperatingScope(OperatingScope operatingScope) {
+        return baseMapper.updateById(operatingScope) > 0;      // ❌ 上游直接转发 false 给前端
+    }
+
+    @Override
+    public Boolean deleteOperatingScope(Long id) {
+        return baseMapper.deleteById(id) > 0;                  // ❌ 同上
+    }
+
+    @Override
+    public OperatingScopeVO queryOperatingScopeById(Long id) {
+        OperatingScope scope = baseMapper.selectById(id);
+        if (scope == null || scope.getDeleted() == 1) {        // ❌ null vs 软删 不分
+            return null;
+        }
+        ...
+    }
+}
+```
+
+#### 三类问题与上游连锁后果
+
+| Component 层问题 | Manage 层后果 | 前端后果 |
+|---|---|---|
+| `add` 返回 false | 上游抛 `BusinessException("新增经营范围失败")` | 用户看到“新增失败”；SRE 看不到为什么失败（约束冲突？重复键？连接超时？）|
+| `update` 返回 false | 上游 `return operatingScopeService.updateOperatingScope(scope)` 直接转发 | **前端拿到 false 当成功**，用户不知道修改未生效 |
+| `delete` 返回 false | 上游 `return operatingScopeService.removeByIds(scopeIds)` 直接转发 | 同上，列表看上去删了但实际还在 |
+| `queryById` 返 null 不分场景 | Manage 层 `queryOperatingScopeById` 也返 null，调用方不知道是“id 不存在”还是“被软删” | 404 与 403 混淆，审计难度大 |
+
+#### 正确做法：日志级别按场景选
+
+```java
+@Slf4j
+@Service
+public class OperatingScopeServiceImpl extends ServiceImpl<OperatingScopeMapper, OperatingScope>
+        implements IOperatingScopeService {
+
+    @Override
+    public Boolean addOperatingScope(OperatingScope operatingScope) {
+        boolean ok = baseMapper.insert(operatingScope) > 0;
+        if (!ok) {
+            // ERROR：上游会抛异常，用户级失败
+            log.error("经营范围新增失败 name={}, parentId={}",
+                    operatingScope.getName(), operatingScope.getParentId());
+        }
+        return ok;
+    }
+
+    @Override
+    public Boolean updateOperatingScope(OperatingScope operatingScope) {
+        boolean ok = baseMapper.updateById(operatingScope) > 0;
+        if (!ok) {
+            // WARN：可能是 id 不存在（伪 update），需要日志以便排查“修改未生效”
+            log.warn("经营范围更新未生效 id={}, name={}",
+                    operatingScope.getId(), operatingScope.getName());
+        }
+        return ok;
+    }
+
+    @Override
+    public Boolean deleteOperatingScope(Long id) {
+        boolean ok = baseMapper.deleteById(id) > 0;
+        if (!ok) {
+            log.warn("经营范围删除未生效 id={}", id);
+        }
+        return ok;
+    }
+
+    @Override
+    public OperatingScopeVO queryOperatingScopeById(Long id) {
+        OperatingScope scope = baseMapper.selectById(id);
+        if (scope == null) {
+            // DEBUG：404 正常场景，不污染生产日志
+            log.debug("经营范围详情查询未命中 id={}", id);
+            return null;
+        }
+        if (scope.getDeleted() == 1) {
+            // WARN：软删记录被访问，可能是前端存了 stale id，需要审计
+            log.warn("经营范围详情查询命中已软删记录 id={}, name={}", id, scope.getName());
+            return null;
+        }
+        ...
+    }
+}
+```
+
+#### 日志级别决策表
+
+| 场景 | 级别 | 理由 |
+|---|---|---|
+| INSERT 返 false | `log.error` | 上游一定会转抛 `BusinessException`，用户级失败 |
+| UPDATE 返 false | `log.warn` | 可能“伪 update”（id 不存在）也可能是 DB 错误，需要现场但不一定严重 |
+| DELETE 返 false | `log.warn` | 同 UPDATE |
+| SELECT by ID 未命中（null） | `log.debug` | 404 正常场景，生产日志不污染 |
+| SELECT by ID 命中软删记录 | `log.warn` | 审计场景，可能是 stale id 或越权访问 |
+| SELECT by ID 返 null 但调用方预期不为 null | `log.warn` | 需调用方主动检查并 log |
+| `lambdaQuery().list()` 返 null | 转 `Collections.emptyList()` 并 **不**记日志 | §8 规定空集合返 `emptyList()` |
+| `lambdaQuery().page()` 返 null（异常） | `log.error` + 重新抛 | MyBatis-Plus 一般不返 null，真返了是异常 |
+
+#### 关联规则
+
+- SKILL.md §10（关键业务事件日志）——原规则偏 Manage 层，本案例补齐 Component 层覆盖
+- `code-review-checklist.md` §3 检查项（加了 Component 层日志条目）
+- SKILL.md §8（空集合返 `Collections.emptyList()`）—— `listAllOperatingScope` 不能 log.error
+
+
+### 11. BeanCopyUtils 混合场景：`copyIgnore` 排除例外字段（V20260914）
+
+> 来源：`OperatingScopeManageServiceImpl` 重构（2026-09-14）。`addOperatingScope` 有 6 个同名字段 + 2 个例外字段（`parentId` null 兜底、`level` 派生计算）。前一轮 sweep **漏了 BeanCopyUtils 优化**——看到例外字段就停手、剩下 6 个同名字段全手写。
+
+#### 原代码（错误：“看到例外就退出 copy”）
+
+```java
+@Override
+public Boolean addOperatingScope(OperatingScopeSaveDTO dto) {
+    OperatingScope scope = new OperatingScope();
+    scope.setParentId(dto.getParentId() == null ? 0L : dto.getParentId());  // 例外1：null 兜底
+    if (dto.getParentId() == null) {
+        scope.setLevel(1);                                                   // 例外2：派生
+    } else {
+        OperatingScopeVO parent = operatingScopeService.queryOperatingScopeById(dto.getParentId());
+        scope.setLevel(parent != null ? parent.getLevel() + 1 : 1);
+    }
+    scope.setName(dto.getName());                       // 同名字段 × 5 手写
+    scope.setRemark(dto.getRemark());
+    scope.setBusinessScopeDescription(dto.getBusinessScopeDescription());
+    scope.setSort(dto.getSort());
+    scope.setIndustryCategory(dto.getIndustryCategory());
+    boolean ok = operatingScopeService.addOperatingScope(scope);
+    if (!ok) {
+        throw new BusinessException("新增经营范围失败，请稍后重试");
+    }
+    return true;
+}
+
+@Override
+public Boolean updateOperatingScope(OperatingScopeSaveDTO dto) {
+    if (dto.getId() == null) {
+        throw new BusinessException("更新经营范围失败：经营类型ID不能为空");
+    }
+    OperatingScope scope = new OperatingScope();
+    scope.setId(dto.getId());                          // 同名字段 × 6 手写
+    scope.setName(dto.getName());
+    scope.setRemark(dto.getRemark());
+    scope.setBusinessScopeDescription(dto.getBusinessScopeDescription());
+    scope.setSort(dto.getSort());
+    scope.setIndustryCategory(dto.getIndustryCategory());
+    return operatingScopeService.updateOperatingScope(scope);
+}
+```
+
+#### 判定流程（现在加在 §9 + §15.4）
+
+1. 数同名字段：6 个（`id` / `name` / `remark` / `businessScopeDescription` / `sort` / `industryCategory`）→ ≥ 3，必须 BeanCopy
+2. 例外字段是否在源 DTO 里同时存在？
+   - `level` **在 DTO 和 PO 里都有**（DTO 里定义了但前端不应传）→ **`copyIgnore("level")` 排除**
+   - `parentId` 在两边都有但是**语义不同**（DTO=null 表“顶级”，PO=0 表“顶级”）→ 手写 setX 覆写
+3. 选择 `copyIgnore` 路径：例例字段不能信，后端重算或赋默认
+
+#### 优化后代码
+
+```java
+@Override
+public Boolean addOperatingScope(OperatingScopeSaveDTO dto) {
+    // copyIgnore("level")：DTO.level 不能信，后端根据 parent 重新计算
+    OperatingScope scope = BeanCopyUtils.copyIgnore(dto, OperatingScope::new, "level");
+    scope.setParentId(dto.getParentId() == null ? 0L : dto.getParentId());
+    if (dto.getParentId() == null) {
+        scope.setLevel(1);
+    } else {
+        OperatingScopeVO parent = operatingScopeService.queryOperatingScopeById(dto.getParentId());
+        scope.setLevel(parent != null ? parent.getLevel() + 1 : 1);
+    }
+    boolean ok = operatingScopeService.addOperatingScope(scope);
+    if (!ok) {
+        throw new BusinessException("新增经营范围失败，请稍后重试");
+    }
+    return true;
+}
+
+@Override
+public Boolean updateOperatingScope(OperatingScopeSaveDTO dto) {
+    if (dto.getId() == null) {
+        throw new BusinessException("更新经营范围失败：经营类型ID不能为空");
+    }
+    // DTO 无需排除的例外字段，直接 copy
+    OperatingScope scope = BeanCopyUtils.copy(dto, OperatingScope::new);
+    return operatingScopeService.updateOperatingScope(scope);
+}
+```
+
+#### 三类场景决策表
+
+| 场景 | copy | copyIgnore | 手写 setX |
+|---|---|---|---|
+| **纯同名**（无例外字段）| ✅ | — | — |
+| **例外字段仅目标对象有**（如外键）| ✅ + 手写补例外字段 | — | — |
+| **例外字段源/目标都有**（如脏数据源 DTO.level）| — | ✅ 排除例外字段 | 手写补例外字段 |
+| **同名字段 ≤ 2** | — | — | ✅ 全部手写即可 |
+
+#### 漏判的反模式（五个“看到例外就退出 copy”）
+
+1. **「有派生字段 → 全手写」**——没回头数非派生同名字段
+2. **「拷贝后覆盖」**代替 copyIgnore——可读性差 + 隐藏脏数据灬写
+3. **「DTO.id 边为空 → 退出 copy」**——BeanCopy 会复制 null，MyBatis-Plus 插入时 id 为 null 自动走 IdType.AUTO，这不是问题
+4. **「DTO 含业务字段 → 不信任何字段」**——DTO 含全部 6 个同名字段是常态，只有少量例外字段才需排除
+5. **「字段名略不同 → 不敢用 BeanCopy」**——已补充字段名错位场景的解决方案（§15.4）
+
+#### 关联规则
+
+- SKILL.md §9（同名 BeanCopyUtils 规则）——措辞已强化为“混合场景首选 copyIgnore”
+- `references/architecture-layers.md` §15.4——补充「例外字段在源对象里」子节 + 判定流程
+- `references/code-review-checklist.md` §2 + §3——加了 BeanCopyUtils 检查项
+
+---
+
+## 补充：oboJava 自我迭代规则（V20260914 meta-check）
+
+本 session 连续出现 3 次“oboJava 漏了 X → 修 → 再漏”循环（Component 日志 / PageResult 链路 / BeanCopyUtils copyIgnore）。为防重复发生，以后 oboJava **每次代码改动后必须自动检查 3 件事**：
+
+1. **这个改法是不是某条 §X 的实例化？是的话 §X 措辞、worked example、检查项是不是都要补？**
+2. **这个改法是不是 §X 未覆盖的新变体？是的话 §X 需不需要拆分出子节或加新案例？**
+3. **`code-review-checklist.md` 是不是要加一条检查项？**——评审清单是防漏最后一道闸。
+
+**默认动作**：新发现必须沉淀到 skill 源（SKILL.md / architecture-layers.md / code-review-checklist.md）。不再以“可选追加”处理。
 
 
