@@ -12,23 +12,35 @@
 
 ### 1.2 软删除约定
 
-- 出纳模块一律软删除，**禁止** `remove()` / `removeById()` / `deleteById()` 物理删除。
+- 出纳模块一律软删除，**禁止** `remove()` / `removeById()` / `deleteById()` 物理删除（PO 继承 BaseEntity 时，MP 会把 `delete*` 自动转换为 `UPDATE ... SET deleted = 1`，物理删除是绕过 MP 的写法）。
 - PO 与表必须有 `deleted` 列（`tinyint`，`0` = 正常，`1` = 已删除）。
-- 软删除标准写法：
+- PO 继承 `BaseEntity` 时，`deleted` 字段已配 `@TableLogic(value="0", delval="1")`：
+  - **所有 `select*` 自动追加 `WHERE deleted = 0`**——**禁止**再写 `.eq(Xxx::getDeleted, 0)`
+  - **所有 `delete*` / `remove*` 自动转 `UPDATE ... SET deleted = 1`**——走 `baseMapper.deleteById(...)` / `this.remove(...)` 即可，**禁止**任何 `lambdaUpdate().set(getDeleted, 1)` 模式
+  - **`selectById` 不会返回 deleted=1 的记录**——**禁止**写 `if (po.getDeleted() == 1) return null;` 死代码
+- 按业务键软删除走 `remove(lambdaQueryWrapper)`：
 
 ```java
-return this.lambdaUpdate()
-        .eq(Seal::getUniqueValue, uniqueValue)
-        .set(Seal::getDeleted, 1)
-        .update();
+// 按 uniqueValue 软删除
+return this.remove(
+        this.lambdaQuery()
+                .eq(Seal::getUniqueValue, uniqueValue)
+);
 ```
 
-- 查询 / 列表统一加 `.eq(Xxx::getDeleted, 0)` 过滤：
+- 按主键软删除直接 `removeById` / `deleteById`：
+
+```java
+return this.removeById(id);          // 或 baseMapper.deleteById(id)
+```
+
+- 查询 / 列表**不需要** `.eq(Xxx::getDeleted, 0)`，MP 自动加：
 
 ```java
 List<Seal> list = this.lambdaQuery()
-        .eq(Seal::getDeleted, 0)
-        ...
+        .in(CollUtil.isNotEmpty(ids), Seal::getId, ids)
+        .orderByDesc(Seal::getCreateTime)
+        .list();
 ```
 
 - Service 聚合层做"级联删除"也走软删除（参考 `deleteStore(uniqueValue)` 同时清空子表）。
@@ -326,12 +338,17 @@ private LocalDate openDate;
 统一 0/1：
 
 ```java
-// 默认未删
+// 默认未删（PO 继承 BaseEntity 时，select 自动加 WHERE deleted = 0；XML 仍需手写）
 WHERE deleted = 0
 
-// 软删除
-this.lambdaUpdate().set(Xxx::getDeleted, 1).eq(Xxx::getId, id).update();
+// 按业务键软删除（走 remove，MP 自动 .set(deleted, 1)）
+this.remove(this.lambdaQuery().eq(Xxx::getUniqueValue, uniqueValue));
+
+// 按主键软删除（MP 自动转 UPDATE ... SET deleted = 1）
+this.removeById(id);   // 或 baseMapper.deleteById(id)
 ```
+
+> **禁止** `lambdaUpdate().set(Xxx::getDeleted, 1).update()` 模式——MP 的 `@TableLogic` 已把所有 `delete*` / `remove*` 自动转换为软删 UPDATE，**不存在**需要显式 `set(getDeleted, 1)` 的场景。详见 `references/mybatis-vs-xml.md` §2.1。
 
 ### 8. 表名命名
 

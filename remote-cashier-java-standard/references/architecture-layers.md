@@ -144,18 +144,19 @@ public class BankCardServiceImpl
 ### 3.3 查询与更新写法（强制）
 
 ```java
-// 推荐：链式调用
+// 推荐：链式调用（deleted 过滤由 BaseEntity.@TableLogic 自动加，禁止显式 .eq(getDeleted, 0)）
 List<Seal> list = this.lambdaQuery()
-        .eq(Seal::getDeleted, 0)
         .in(CollUtil.isNotEmpty(ids), Seal::getId, ids)
         .orderByDesc(Seal::getCreateTime)
         .list();
 
-// 软删除
-return this.lambdaUpdate()
-        .eq(Seal::getUniqueValue, uniqueValue)
-        .set(Seal::getDeleted, 1)
-        .update();
+// 按业务键软删除（走 remove，MP 自动 .set(deleted, 1)）
+return this.remove(
+        this.lambdaQuery().eq(Seal::getUniqueValue, uniqueValue)
+);
+
+// 按主键软删除直接用 removeById / deleteById（MP 自动转 UPDATE ... SET deleted = 1）
+return this.removeById(id);   // 或 baseMapper.deleteById(id)
 ```
 
 **禁止** 显式 `new LambdaQueryWrapper<>()` 或 `new QueryWrapper<>()`。
@@ -915,9 +916,11 @@ public String exportBankCard(BankCardPageDTO dto) {
 ### 4. Component Service → Mapper（数据访问）
 
 ```java
+import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+
 @Service
 public class BankCardServiceImpl
-        extends com.baomidou.mybatisplus.extension.service.impl.ServiceImpl<BankCardMapper, BankCard>
+        extends ServiceImpl<BankCardMapper, BankCard>
         implements IBankCardService {
 
     @Override
@@ -937,12 +940,13 @@ public class BankCardServiceImpl
 ```
 
 **约束**：
-- 必须 `extends ServiceImpl<XxxMapper, Xxx>`
+- 必须 `extends ServiceImpl<XxxMapper, Xxx>`，通过 `import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;` 引入；禁止用全限定类名写在 `extends` 后（除非同包同名特殊情况）
 - 调 Mapper 用 `baseMapper`（不是 `@Autowired XxxMapper mapper`）
 - 业务逻辑（**简单**）：合并、组装、过滤——可以在 Component 层
 - 复杂业务逻辑（事务、跨表、跨服务）必须**下沉到 ManageService**
 - 业务异常不要抛（Component 不做业务校验）
-- 软删除：`this.lambdaUpdate().set(Xxx::getDeleted, 1).eq(...).update()`
+- 软删除一律走 `delete*` / `remove*`：按主键用 `this.removeById(id)` 或 `baseMapper.deleteById(id)`；按业务键用 `this.remove(this.lambdaQuery().eq(业务键))`。MP 自动 `.set(deleted = 1)`，**不存在**需要 `lambdaUpdate().set(getDeleted, 1)` 的场景
+- **禁止**显式 `.eq(Xxx::getDeleted, 0)`（PO 继承 BaseEntity 时 MP 自动加），详见 `references/mybatis-vs-xml.md` §2.1
 - 不要 `new QueryWrapper<>()` / `new LambdaQueryWrapper<>()`（必须用 `this.lambdaQuery()` / `this.lambdaUpdate()` 链式）
 
 ### 5. Mapper 接口（bi-cashier-component 包）

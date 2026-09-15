@@ -183,7 +183,7 @@
 行 21: (空行)
 行 22: @Service
 行 23: public class BankCardServiceImpl
-行 24:         extends com.baomidou.mybatisplus.extension.service.impl.ServiceImpl<BankCardMapper, BankCard>
+行 24:         extends ServiceImpl<BankCardMapper, BankCard>            ← import 见文件顶部第 2 组
 行 25:         implements IBankCardService {
 行 26: (空行)
 行 27:     @Override
@@ -203,12 +203,11 @@
 行 52:         if (CollUtils.isEmpty(accountNumbers)) {
 行 53:             return Collections.emptyList();
 行 54:         }
-行 55:         List<BankCard> list = this.lambdaQuery()
+行 55:         List<BankCard> list = this.lambdaQuery()                   // deleted 过滤由 BaseEntity.@TableLogic 自动加
 行 56:                 .in(BankCard::getAccountNumber, accountNumbers)
-行 57:                 .eq(BankCard::getDeleted, 0)
-行 58:                 .orderByDesc(BankCard::getCreateTime)
-行 59:                 .list();
-行 60:         return list == null ? Collections.emptyList() : list;
+行 57:                 .orderByDesc(BankCard::getCreateTime)
+行 58:                 .list();
+行 59:         return list == null ? Collections.emptyList() : list;
 行 61:     }
 行 62: (空行)
 行 63-118: 其它方法（queryBankCardById / addBankCard / updateBankCard / deleteBankCard / isAccountNumberExists / listAllBankCard / listByBankCardIds）

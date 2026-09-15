@@ -39,7 +39,7 @@ PR 评审按层次分别检查。每个 checklist 都对应 skills 文档的章�
 
 ### 3. Component Service 评审
 
-- [ ] `extends ServiceImpl<XxxMapper, T>` 必须
+- [ ] `extends ServiceImpl<XxxMapper, T>` 必须（用 import 引入 `com.baomidou.mybatisplus.extension.service.impl.ServiceImpl`，禁止 `extends com.baomidou...` 全限定名）
 - [ ] **PO↔VO 同名字段 ≥ 3 条必须用 `BeanCopyUtils.copy` / `copyIgnore`**（如 PageResult 的 records 批量转换 `copyList`）；原则同 §2（详见 SKILL.md §9）
 - [ ] `implements IXxxService` extends `IService<T>`
 - [ ] **不抛 BusinessException**（业务异常）
@@ -49,6 +49,11 @@ PR 评审按层次分别检查。每个 checklist 都对应 skills 文档的章�
 - [ ] 空集合返 `Collections.emptyList()`（不 `new ArrayList<>()`）
 - [ ] **分页 `PageResult` 必须带泛型**（如 `PageResult<OperatingScope>`），禁止裸 `PageResult`；菱形式 `new PageResult<>(...)` 优先（详见 SKILL.md §9）
 - [ ] **类加 `@Slf4j`**，CRUD 方法失败（`baseMapper.insert/update/deleteById` 返回 false）必须 `log.warn`/`log.error` 记录业务键；SELECT 按 ID 未命中分 null / 软删两种情况分别 `log.debug` / `log.warn`（详见 SKILL.md §10）
+- [ ] **不重检 DTO 默认值与校验注解（信任契约）**：DTO 字段 `= defaultVal` 默认值 + `@Min/@Max/@NotBlank` 等校验由 Controller `@Validated` 阶段处理；Component 层不写 `dto.getXxx() == null ? defaultVal : ...` 或 `Math.max(MIN, dto.getXxx())` 等重复防御；同样不写 `records == null ? Collections.emptyList() : records`（PageHelper contract 保证非 null）、不写 `list == null ? new ArrayList<>() : list`（MP `lambdaQuery().list()` 返空 `ArrayList` 不返 null）、不写 `count == null ? 0L : count`（PageHelper `getTotal()` 返 `long` 基本类型）（详见 SKILL.md §14）
+- [ ] **不显式 `.eq(Xxx::getDeleted, 0)`**（PO 继承 BaseEntity 时由 `@TableLogic` 自动加 `WHERE deleted = 0`；写出来是冗余），详见 SKILL.md §15
+- [ ] **任何 `lambdaUpdate().set(Xxx::getDeleted, 1)` 模式都禁止**：软删除一律走 `delete*` / `remove*`（`removeById(id)` / `deleteById(id)` / `remove(lambdaQuery().eq(业务键))`），MP 自动 `.set(deleted, 1)`，详见 SKILL.md §15
+- [ ] **`selectById(...)` 后不写 `if (po.getDeleted() == 1) return null;`**（MP 已自动过滤软删记录，该分支是死代码）
+- [ ] **类 extends 写法**：`extends ServiceImpl<XxxMapper, T>` 必须通过 `import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;` 引入，禁止在 `extends` 后写全限定类名
 
 ### 4. Mapper 评审
 
@@ -87,9 +92,13 @@ PR 评审按层次分别检查。每个 checklist 都对应 skills 文档的章�
 - [ ] 字段 `@ApiModelProperty("中文")`
 - [ ] 命名：`XxxDTO` / `XxxPageDTO` / `XxxSaveRequestDTO` / `XxxVO` / `XxxListVO` / `XxxDetailVO`
 - [ ] 复合 DTO 嵌套 `public static class XxxItem`
-- [ ] 校验注解 + 中文 message
+- [ ] 校验注解 + 中文 message（`@NotBlank` / `@NotNull` / `@Min` / `@Size` + `message="中文"`）
 - [ ] 不持有 Service 依赖
 - [ ] 列表字段用 `List<Xxx>`（不带 `s` / `List` 后缀）
+- [ ] **自引用 VO（TreeVO）禁止裸 `@Data`**：`@Data` 含 `@ToString + @EqualsAndHashCode` 会递归到 children 触发 StackOverflowError；必须用 `@Data + @ToString(exclude = "children") + @EqualsAndHashCode(exclude = "children")`（详见 SKILL.md §12）
+- [ ] **List / listAllXxx 返回类型必须是 VO 不是 PO**：PO 字段（`deleted` / `create_user` / `update_user` 等底表字段）不外露；Service 接口、Manage 实现、Controller 三层同步改（详见 SKILL.md §12）
+- [ ] **DTO 边界（`@Size` / `@Min` 等）必须同步到前端 FormRules**：同一 DTO 在前端可能对应弹窗 / 内联编辑 / Drawer / 表单查询多个表单，必须共享一份 `FormRules`（在 `utils/validation.ts`）且与后端边界值逐字段对齐；`@Size(max=100)` 不能前端写 `max:50` 也不能写 `max:200`（详见 SKILL.md §13）
+- [ ] **VO 按业务视图独立命名（`Page` / `List` / `Detail`），禁止跨场景复用同类型**：`queryXxxById` 返回 `XxxDetailVO`、`listAllXxx` 返回 `XxxListVO` 或 `List<XxxListVO>`、`pageXxx` 返回 `PageResult<XxxPageVO>`；不允许详情/列表场景借用 `XxxPageVO`，也不允许「通用 `XxxVO`」跨多端点复用；字段集暂一致时直接复制字段不抽 BaseVO 抽象（继承会让 Swagger codegen 生成父类字段、且未来修改父类污染全部子类）（详见 SKILL.md §16）
 
 ### 8. 通用规范
 
@@ -123,4 +132,16 @@ grep -r "@Autowired" bi-cashier-service bi-cashier-component bi-cashier-web
 for f in $(find bi-cashier-api/src/main/java -name "*.java" -path "*/dto/*"); do
   if ! grep -q "@ApiModel" $f; then echo "MISS: $f"; fi
 done
+
+# 显式 .eq(getDeleted, 0) 反例（BaseEntity.@TableLogic 自动加）
+grep -rEn "::getDeleted\s*,\s*0\)" bi-cashier-{component,service}/src/main/java/
+
+# lambdaUpdate().set(getDeleted, 1) 反例（一律走 remove，MP 自动 .set(deleted, 1)）
+grep -rEnA1 "lambdaUpdate\(\)" bi-cashier-{component,service}/src/main/java/ | grep -E "set\(.*::getDeleted\s*,\s*1\)"
+
+# selectById 后多余 getDeleted==1 判断反例
+grep -rEn "\.getDeleted\(\)\s*==\s*1" bi-cashier-{component,service}/src/main/java/
+
+# extends 全限定 ServiceImpl 反例（必须 import 后用短名）
+grep -rEn "extends\s+com\.baomidou\.mybatisplus\.extension\.service\.impl\.ServiceImpl" bi-cashier-{component,service}/src/main/java/
 ```

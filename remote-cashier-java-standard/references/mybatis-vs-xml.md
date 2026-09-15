@@ -7,7 +7,8 @@
 | 场景 | 选择 | 理由 |
 |------|------|------|
 | 等值查询（1-4 个条件） | MP Lambda | 链式 1-5 行，无需 XML |
-| 软删除（`set deleted=1`） | MP Lambda | 固定 `lambdaUpdate().set(...).eq(...).update()` |
+| 软删除（主键） | MP `removeById` / `deleteById` | MP 自动转 `UPDATE ... SET deleted = 1` |
+| 软删除（业务键 / 多条件） | MP `this.remove(lambdaQuery().eq(业务键))` | MP 自动转 `UPDATE ... SET deleted = 1 WHERE <条件>`；**禁止**用 `lambdaUpdate().set(getDeleted, 1).update()` |
 | 批量 `IN` 查询 | MP Lambda | `.in(Xxx::getField, list)` 链式即可 |
 | 按 uniqueValue 全量下拉 | MP Lambda | 1个条件 + `orderByDesc` |
 | 批量 INSERT/UPDATE/DELETE | MP `saveBatch` / `updateBatchById` / `removeByIds` | BaseMapper 已生成，无需手写 |
@@ -26,9 +27,9 @@
 
 ```java
 // 精确查询已选账号（3 个条件 + 排序）——BankCardServiceImpl.java:55-59
+// 注：deleted 过滤由 BaseEntity.@TableLogic 自动加，**禁止**显式 .eq(Xxx::getDeleted, 0)
 List<BankCard> list = this.lambdaQuery()
         .in(BankCard::getAccountNumber, accountNumbers)
-        .eq(BankCard::getDeleted, 0)
         .orderByDesc(BankCard::getCreateTime)
         .list();
 
@@ -42,11 +43,11 @@ return this.lambdaUpdate()
         .eq(BankCard::getAccountNumber, bankCard.getAccountNumber())
         .update(bankCard);
 
-// 软删除——BankCardServiceImpl.java:86-90
-return this.lambdaUpdate()
-        .set(BankCard::getDeleted, 1)
-        .eq(BankCard::getAccountNumber, accountNumber)
-        .update();
+// 按业务键软删除（走 remove，MP 自动 .set(deleted, 1)）——BankCardServiceImpl.java:86-90
+return this.remove(
+        this.lambdaQuery()
+                .eq(BankCard::getAccountNumber, accountNumber)
+);
 
 // 带可选条件（条件为 null 时自动跳过）——FileExpiryRecordServiceImpl.java:69-73
 return this.lambdaQuery()
@@ -58,6 +59,77 @@ return this.lambdaQuery()
 ```
 
 **三参数 `.eq(condition, column, value)`**：`condition=true` 才加入条件，`condition=false` 忽略——这是 MP 动态条件的正确写法，不要用 `if` 分支拼 Wrapper。
+
+### 2.1 deleted 字段由 `@TableLogic` 自动处理（禁止显式写）
+
+PO 继承 `com.obo.core.common.model.BaseEntity` 时，`deleted` 字段已配 `@TableLogic(value="0", delval="1")`：
+
+- **所有 `select*`（含 `lambdaQuery().list() / .one() / .page()`、`baseMapper.selectById(...)`）**：MP 自动追加 `WHERE deleted = 0`，**禁止**再写 `.eq(Xxx::getDeleted, 0)`
+- **所有 `delete*` / `remove*`（含 `baseMapper.deleteById(...)` / `this.removeById(...)` / `this.remove(wrapper)`）**：MP 自动转换为 `UPDATE ... SET deleted = 1`
+- **业务键软删除一律走 `this.remove(this.lambdaQuery().eq(业务键))`**，MP 自动 `.set(deleted, 1)`；**不存在**需要 `lambdaUpdate().set(getDeleted, 1)` 的场景
+- **selectById 不会返回 deleted=1 的记录**：**禁止**写 `if (po.getDeleted() == 1) return null;` 这类死代码
+
+**反例（5 类）**：
+
+```java
+// ❌ 1. lambdaQuery 显式 .eq(getDeleted, 0)
+this.lambdaQuery().eq(BankCard::getDeleted, 0).list();
+
+// ❌ 2. selectById 后判 getDeleted==1
+BankCard b = baseMapper.selectById(id);
+if (b != null && b.getDeleted() == 1) { return null; }   // 死代码：selectById 已自动过滤
+
+// ❌ 3. 业务键软删除手写 lambdaUpdate().set(getDeleted, 1)（必须走 remove）
+this.lambdaUpdate()
+        .set(BankCard::getDeleted, 1)
+        .eq(BankCard::getUniqueValue, v)
+        .update();   // ❌ 一律走 remove，MP 自动 .set(deleted, 1)
+
+// ❌ 4. 主键软删除手写 lambdaUpdate（必须走 removeById / deleteById）
+this.lambdaUpdate()
+        .set(BankCard::getDeleted, 1)
+        .eq(BankCard::getId, id)
+        .update();   // ❌ 一律走 baseMapper.deleteById(id) / this.removeById(id)
+
+// ❌ 5. deleteById 后跟 lambdaUpdate().set(getDeleted, 1)（重复声明）
+baseMapper.deleteById(id);
+this.lambdaUpdate().set(BankCard::getDeleted, 1).eq(BankCard::getId, id).update();  // ❌ deleteById 已自动 set
+
+// ❌ 6. XML 手写 `WHERE deleted = 0` 漏写（PO 未继承 BaseEntity 时仍要手写，见 §6.2）
+```
+
+**正确写法参考**：
+
+```java
+// ✅ 按主键软删除
+boolean ok = this.removeById(id);                 // 或 baseMapper.deleteById(id)
+
+// ✅ 按业务键软删除
+boolean ok = this.remove(
+        this.lambdaQuery().eq(BankCard::getUniqueValue, uniqueValue)
+);
+
+// ✅ 按多个业务键 / 条件软删除
+boolean ok = this.remove(
+        this.lambdaQuery()
+                .eq(BankCard::getAccountNumber, accountNumber)
+                .eq(BankCard::getBankCode, bankCode)
+);
+```
+
+**扫描命令**（PR 评审前自查）：
+
+```bash
+# 扫"lambdaQuery 显式 .eq(getDeleted, 0)"
+grep -rEn "::getDeleted\s*,\s*0\)" bi-cashier-{component,service}/src/main/java/
+
+# 扫"selectById 后多余判 getDeleted==1"
+grep -rEn "\.getDeleted\(\)\s*==\s*1" bi-cashier-{component,service}/src/main/java/
+
+# 扫"lambdaUpdate().set(getDeleted, 1) 反例（一律禁止）"
+grep -rEn "lambdaUpdate\(\)[^)]*\)\s*\.set\(\s*.*::getDeleted\s*,\s*1" bi-cashier-{component,service}/src/main/java/
+grep -rEnA1 "lambdaUpdate\(\)" bi-cashier-{component,service}/src/main/java/ | grep -E "set\(.*::getDeleted\s*,\s*1\)"
+```
 
 ## 3. 手写 XML 写法示例
 
@@ -154,6 +226,9 @@ int countByAccountNumber(@Param("accountNumber") String accountNumber,
 
 - ❌ Service 聚合层写 `this.lambdaQuery()` / `this.lambdaUpdate()`（下沉到 Component）
 - ❌ Service 聚合层写 `new QueryWrapper<>()` / `new LambdaQueryWrapper<>()`（下沉到 Component，封装为业务方法）
+- ❌ PO 继承 BaseEntity 时显式 `.eq(Xxx::getDeleted, 0)`（MP 自动加，详见 §2.1）
+- ❌ 任何 `lambdaUpdate().set(Xxx::getDeleted, 1).update()` 模式（主键/业务键一律走 `remove*` / `delete*`，MP 自动 `.set(deleted, 1)`，详见 §2.1）
+- ❌ `selectById` 后写 `if (po.getDeleted() == 1) return null;`（MP 自动过滤，详见 §2.1）
 - ❌ XML 中 `${value}` 传用户输入——一律 `#{value}`（防 SQL 注入）
 - ❌ `@Select("...")` 注解 SQL——统一写 XML 文件
 - ❌ 手写 INSERT / UPDATE XML 替代 MP BaseMapper

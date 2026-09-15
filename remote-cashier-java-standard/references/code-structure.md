@@ -372,18 +372,31 @@ public Boolean updateSeal(String uniqueValue) {
 
 ### 9.3 Component Service 软删除
 
+PO 继承 BaseEntity 时，`@TableLogic(value="0", delval="1")` 让所有 `delete*` / `remove*` 自动转为 `UPDATE ... SET deleted = 1`：
+
 ```java
 @Override
 public Boolean deleteXxx(String uniqueValue) {
     if (StringUtils.isBlank(uniqueValue)) {
         return false;
     }
-    return this.lambdaUpdate()
-            .eq(Xxx::getUniqueValue, uniqueValue)
-            .set(Xxx::getDeleted, 1)
-            .update();
+    // 按业务键软删除：走 remove，MP 自动 .set(deleted, 1)
+    return this.remove(
+            this.lambdaQuery().eq(Xxx::getUniqueValue, uniqueValue)
+    );
 }
 ```
+
+**按主键软删除**：
+
+```java
+@Override
+public Boolean deleteXxxById(Long id) {
+    return this.removeById(id);   // 或 baseMapper.deleteById(id)
+}
+```
+
+> **禁止** `lambdaUpdate().set(Xxx::getDeleted, 1).update()` 模式——`@TableLogic` 已把所有 `delete*` / `remove*` 自动转为软删 UPDATE，项目里**不存在**需要显式 `set(getDeleted, 1)` 的场景。详见 `references/mybatis-vs-xml.md` §2.1。
 
 ### 9.4 枚举
 

@@ -667,7 +667,7 @@ public class OperatingScopeServiceImpl extends ServiceImpl<OperatingScopeMapper,
     @Override
     public OperatingScopeVO queryOperatingScopeById(Long id) {
         OperatingScope scope = baseMapper.selectById(id);
-        if (scope == null || scope.getDeleted() == 1) {        // ❌ null vs 软删 不分
+        if (scope == null || scope.getDeleted() == 1) {        // ❌ null vs 软删 不分；且 getDeleted==1 是死代码（selectById 已被 @TableLogic 自动过滤）
             return null;
         }
         ...
@@ -682,7 +682,7 @@ public class OperatingScopeServiceImpl extends ServiceImpl<OperatingScopeMapper,
 | `add` 返回 false | 上游抛 `BusinessException("新增经营范围失败")` | 用户看到“新增失败”；SRE 看不到为什么失败（约束冲突？重复键？连接超时？）|
 | `update` 返回 false | 上游 `return operatingScopeService.updateOperatingScope(scope)` 直接转发 | **前端拿到 false 当成功**，用户不知道修改未生效 |
 | `delete` 返回 false | 上游 `return operatingScopeService.removeByIds(scopeIds)` 直接转发 | 同上，列表看上去删了但实际还在 |
-| `queryById` 返 null 不分场景 | Manage 层 `queryOperatingScopeById` 也返 null，调用方不知道是“id 不存在”还是“被软删” | 404 与 403 混淆，审计难度大 |
+| `queryById` 返 null 不分场景 | Manage 层 `queryOperatingScopeById` 也返 null，调用方不知道是“id 不存在”还是“被软删” | 404 与 403 混淆，审计难度大（注：PO 继承 BaseEntity 后，selectById 已被 `@TableLogic` 自动过滤 deleted=1，`scope.getDeleted()==1` 分支是死代码，仅保留 null 与非 null 的区分） |
 
 #### 正确做法：日志级别按场景选
 
@@ -728,12 +728,8 @@ public class OperatingScopeServiceImpl extends ServiceImpl<OperatingScopeMapper,
         OperatingScope scope = baseMapper.selectById(id);
         if (scope == null) {
             // DEBUG：404 正常场景，不污染生产日志
+            // selectById 已被 BaseEntity.@TableLogic 自动过滤 deleted=1，不会返回软删记录，无需再判 getDeleted
             log.debug("经营范围详情查询未命中 id={}", id);
-            return null;
-        }
-        if (scope.getDeleted() == 1) {
-            // WARN：软删记录被访问，可能是前端存了 stale id，需要审计
-            log.warn("经营范围详情查询命中已软删记录 id={}, name={}", id, scope.getName());
             return null;
         }
         ...
@@ -881,4 +877,664 @@ public Boolean updateOperatingScope(OperatingScopeSaveDTO dto) {
 
 **默认动作**：新发现必须沉淀到 skill 源（SKILL.md / architecture-layers.md / code-review-checklist.md）。不再以“可选追加”处理。
 
+
+### 12. DTO/VO/PO 链路全面遵循 oboJava 规范：OperatingScope 案例（V20260914）
+
+> 来源：`OperatingScopeController` / `IOperatingScopeManageService` / `OperatingScopeManageServiceImpl` / `OperatingScopeServiceImpl` / `IOperatingScopeService` 配套的 DTO/VO/PO 全部过一遍 skill 规范（2026-09-14）。原文件 8 处违规（3 处 PO 泄漏 + 1 处自引用栈溢出 + 4 处规约细节）。
+
+#### 违规清单（8 处）
+
+| # | 文件 | 违规 | 规则引用 |
+|---|---|---|---|
+| 1 | `OperatingScopeController.listAllOperatingScope` | 返回 `List<OperatingScope>`（PO 泄漏）| §10 + §7 |
+| 2 | `IOperatingScopeManageService.listAllOperatingScope` | 返回 `List<OperatingScope>`（PO 泄漏）| §7 |
+| 3 | `OperatingScopeManageServiceImpl.listAllOperatingScope` | 返回 `List<OperatingScope>`（PO 泄漏）| §7 |
+| 4 | `OperatingScopeTreeVO` | 裸 `@Data` + 自引用 `List<TreeVO> children` → toString/equals/hashCode 栈溢出 | §7 + 隐藏 bug |
+| 5 | `OperatingScopeSaveDTO` | 无校验注解（`@NotBlank` / `@Min` / `@Size` + 中文 message）| §7 |
+| 6 | `OperatingScopeController` 3 个 `@RequestBody` 方法 | 缺 `@Validated`（Bean Validation 不生效）| §7 |
+| 7 | `OperatingScopePageDTO` / `OperatingScopeSaveDTO` / `OperatingScopeVO` / `OperatingScopeTreeVO` | 缺类 Javadoc | §0（应推广到 DTO/VO/PO）|
+| 8 | `OperatingScopeVO.industryCategory` / `OperatingScope.industryCategory` | `@ApiModelProperty` 描述不一致（“字符串类型” vs “支持多选ID逗号分隔”）| §7 + §6 |
+
+#### 1. PO 不能暴露在 Service 接口 / Manage 实现 / Controller 返回（3 处必须同步改）
+
+**反面案例**（PO 底表字段泄漏到前端）：
+
+```java
+// Controller
+public Result<List<OperatingScope>> listAllOperatingScope() {
+    return Result.success(operatingScopeManageService.listAllOperatingScope());
+}
+
+// Manage Service 接口
+List<OperatingScope> listAllOperatingScope();
+
+// Manage Service 实现
+@Override
+public List<OperatingScope> listAllOperatingScope() {
+    return operatingScopeService.listAllOperatingScope();
+}
+```
+
+**为什么是硬违规**：
+- 前端响应 JSON 会拿到 `deleted` / `create_user` / `update_user` / `create_time` / `update_time`（BaseEntity 字段）
+- 软删状态泄漏（前端可能根据 `deleted` 猜业务规则）
+- 接口契约与 PO 架构耦合——PO 加字段（`update_by` / 业务状态）直接污染前端
+
+**修复**（三层同步改）：
+
+```java
+// 1. Service 接口
+List<OperatingScopeVO> listAllOperatingScope();
+
+// 2. Manage 实现（空集合走 §8 + 转换走 §9）
+@Override
+public List<OperatingScopeVO> listAllOperatingScope() {
+    List<OperatingScope> list = operatingScopeService.listAllOperatingScope();
+    if (CollectionUtils.isEmpty(list)) {
+        return Collections.emptyList();
+    }
+    return BeanCopyUtils.copyList(list, OperatingScopeVO::new);
+}
+
+// 3. Controller
+public Result<List<OperatingScopeVO>> listAllOperatingScope() {
+    return Result.success(operatingScopeManageService.listAllOperatingScope());
+}
+```
+
+#### 2. TreeVO 自引用 + @Data → StackOverflowError（隐藏 bug）
+
+**反模式**：
+
+```java
+@Data
+@ApiModel("经营范围树形VO")
+public class OperatingScopeTreeVO {
+    @ApiModelProperty("子节点")
+    private List<OperatingScopeTreeVO> children;   // 自引用
+}
+```
+
+**为什么会炸**：`@Data` = `@Getter + @Setter + @ToString + @EqualsAndHashCode + @RequiredArgsConstructor`。
+`@ToString` 递归打印 children 列表里的每个子节点的 children 列表……一旦树超过 5 层就堆栈溢出。
+`@EqualsAndHashCode` 同样递归。
+
+**修复**（子节点排除递归）：
+
+```java
+@Data
+@ToString(exclude = "children")
+@EqualsAndHashCode(exclude = "children")
+@ApiModel("经营范围树形VO")
+public class OperatingScopeTreeVO {
+    @ApiModelProperty("子节点")
+    private List<OperatingScopeTreeVO> children;
+}
+```
+
+**判定标准**：VO 含 `List<XxxVO>` 字段且 `XxxVO` 是同类型（本类 / 父类 / 常见递归类型）→ 必须 exclude 该字段。
+
+#### 3. DTO 校验注解 + Controller @Validated
+
+**SaveDTO 校验**：
+
+```java
+@Data
+@ApiModel("经营范围保存DTO")
+public class OperatingScopeSaveDTO {
+    @NotBlank(message = "名称不能为空")
+    @Size(max = 100, message = "名称长度不能超过100")
+    private String name;
+
+    @Min(value = 0, message = "排序不能小于0")
+    private Integer sort;
+
+    @Size(max = 500, message = "备注长度不能超过500")
+    private String remark;
+    ...
+}
+```
+
+**Controller 开启校验**：
+
+```java
+// 原（不生效）
+public Result<Boolean> addOperatingScope(@RequestBody OperatingScopeSaveDTO dto) { ... }
+
+// 修（项目用 @Validated 不是 @Valid，参考 EmployeeController）
+public Result<Boolean> addOperatingScope(@RequestBody @Validated OperatingScopeSaveDTO dto) { ... }
+```
+
+> 注：skill §7 原文写 `@Valid`，bi-cashier 实际用 Spring 的 `@Validated`（能启用方法级校验），两者效果对 `@RequestBody` 一致。
+
+#### 4. 字段描述一致性（PO ↔ VO）
+
+PO 写完整定义，VO 复制时**只可精简、不能加错**。
+
+```java
+// PO：包含完整业务描述
+@ApiModelProperty("所属行业字典（支持多选ID逗号分隔）")
+
+// VO：同样描述（不能简化为“字符串类型”——丢信息）
+@ApiModelProperty("所属行业字典（支持多选ID逗号分隔）")
+```
+
+#### 5. 类 Javadoc（DTO/VO/PO 推广）
+
+DTO/VO/PO 原本项目习惯不加类 Javadoc，但 §0 明确“**接口契约**”型需要 Javadoc。考虑 Controller / Service / Mapper / Component 实现都是“服务”类，而 DTO/VO/PO 是“**数据契约**”类，建议加：
+
+```java
+/**
+ * 经营范围详情 VO。
+ *
+ * <p>对外暴露的经营范围完整信息，包含审计字段（创建/更新时间），但不包含
+ * 持久层敏感字段（如 deleted / create_user / update_user）。</p>
+ */
+```
+
+不强制（未加进 code-review-checklist），但 Controller 传参 / 跨服务 Feign 接收参数时类 Javadoc 能帮助理解。
+
+#### 关联规则
+
+- SKILL.md §7 + §10（PO 不可泄漏）
+- `code-review-checklist.md` §7（加了 2 条新检查项）
+- §11 BeanCopyUtils copyList 模式（本案例 `BeanCopyUtils.copyList(list, OperatingScopeVO::new)` 复用 §11 决策表）
+
+
+### 13. DTO 边界跨端同步：后端 `@Validated` ↔ 前端 `FormRules`（V20260914）
+
+> 来源：`OperatingScopeSaveDTO` 后端加了 `@Validated` 校验后，前端 `businessScope` 页面两处表单（`BusinessScopeModal.vue` 弹窗 + `index.vue` 内联编辑）未同步对齐，发现 5 处不一致（V20260914）。
+
+#### 违规清单（5 处）
+
+| # | 位置 | 前端原值 | 后端边界 | 问题 |
+|---|---|---|---|---|
+| 1 | `BusinessScopeModal.vue` formRules | `max: 50`（name）| `@Size(max=100)` | 前端过严，用户输 60 字符会被前端拒，后端其实允许 |
+| 2 | `BusinessScopeModal.vue` formItems | `maxlength: 50`（name）| `@Size(max=100)` | 同上，浏览器原生限制错 |
+| 3 | `BusinessScopeModal.vue` formItems | `maxlength: 200`（description）| `@Size(max=500)`（remark）| 前端过严 |
+| 4 | `BusinessScopeModal.vue` formItems | 无 maxlength（businessScope）| `@Size(max=1000)` | **完全未限制**，可粘贴任意长文本 |
+| 5 | `index.vue` scopeText | 无 maxlength | `@Size(max=1000)` | 同上 |
+
+外加两处 `formRules` 逻辑重复：弹窗 + 内联编辑各自定义 `name` 规则（完全相同的 2 条），后端改边界后两处都会源。
+
+#### 为什么必须跨端同步
+
+1. **后端边界是“最大允许”，前端必须≥后端边界**：`@Size(max=100)` 表示后端允许 0-100 字符，前端 `maxlength: 50` 是人为过严，用户输 80 字符前端拒、后端放行——体验不一致
+2. **前端 maxlength 是“输入限位”、rule 是“提交校验”**：两者必须与后端对齐才能在“输入”与“提交”两个节点都报中文 message
+3. **DTO 在前端多个表单复用**（弹窗 / 内联编辑 / Drawer / 查询表单），重复定义规则会漂移，必须抽公共文件
+
+#### 正确做法：共享 `utils/validation.ts`
+
+**`pages/businessScope/utils/validation.ts`**（新文件，与后端 DTO 边界常量一一对齐）：
+
+```ts
+import type { FormRules } from "element-plus"
+
+// 后端 OperatingScopeSaveDTO 常量
+export const BUSINESS_SCOPE_NAME_MAX = 100          // @Size(max=100)
+export const BUSINESS_SCOPE_REMARK_MAX = 500         // @Size(max=500)
+export const BUSINESS_SCOPE_DESCRIPTION_MAX = 1000   // @Size(max=1000)
+
+export const businessScopeFormRules: FormRules = {
+  name: [
+    { required: true, message: "请输入名称", trigger: "change" },
+    { max: BUSINESS_SCOPE_NAME_MAX, message: `名称不能超过 ${BUSINESS_SCOPE_NAME_MAX} 个字符`, trigger: "change" }
+  ],
+  description: [
+    { max: BUSINESS_SCOPE_REMARK_MAX, message: `备注不能超过 ${BUSINESS_SCOPE_REMARK_MAX} 个字符`, trigger: "change" }
+  ],
+  businessScope: [
+    { max: BUSINESS_SCOPE_DESCRIPTION_MAX, message: `经营范围描述不能超过 ${BUSINESS_SCOPE_DESCRIPTION_MAX} 个字符`, trigger: "change" }
+  ]
+}
+```
+
+**两处表单复用**：
+
+```vue
+<!-- BusinessScopeModal.vue -->
+<script setup>
+import { businessScopeFormRules, BUSINESS_SCOPE_NAME_MAX, ... } from "../utils/validation"
+const formRules = businessScopeFormRules
+const formItems = [
+  { prop: "name", maxlength: BUSINESS_SCOPE_NAME_MAX, ... },
+  { prop: "description", maxlength: BUSINESS_SCOPE_REMARK_MAX, ... },
+  ...
+]
+</script>
+```
+
+```vue
+<!-- index.vue -->
+<script setup>
+import { businessScopeFormRules, BUSINESS_SCOPE_NAME_MAX, ... } from "./utils/validation"
+const editRules: FormRules = businessScopeFormRules
+</script>
+
+<template>
+  <el-input v-model="editForm.name" :maxlength="BUSINESS_SCOPE_NAME_MAX" />
+  <el-input v-model="editForm.description" :maxlength="BUSINESS_SCOPE_REMARK_MAX" />
+  <el-input v-model="scopeText" :maxlength="BUSINESS_SCOPE_DESCRIPTION_MAX" />
+</template>
+```
+
+#### 字段名错位（前端字段名 ≠ 后端 DTO 字段名）
+
+`OperatingScopeSaveDTO` 后端用 `remark` / `businessScopeDescription`，前端习惯用 `description` / `businessScope`。校验文件里加注释明确映射，防止后人修改时改错。
+
+#### `@NotBlank` vs `required: true` 语义差异（隐藏 gap）
+
+后端 `@NotBlank` 拒绝三种值：`null` / 空字符串 `""` / **纯空白 `"   "`**。
+Element Plus `required: true` 只拒绝 `null` / `undefined` / 空字符串，**纯空白字符串会通过**。
+
+后果：用户输入 `"   "`（3 个空格）→ 前端提交校验通过 → 后端抛 `@NotBlank` 失败 → 用户看到大白话“名称不能为空”，但前端已经让 submit 走了一步，体验割裂且调用栈难追。
+
+**修复**：抽 `requiredNotBlank` validator 工厂代替 `required: true`：
+
+```ts
+// utils/validation.ts
+export function requiredNotBlank(message: string, trigger: FormItemRule["trigger"] = "change"): FormItemRule {
+  return {
+    required: true,
+    validator: (_rule, value, callback) => {
+      if (value === null || value === undefined || String(value).trim().length === 0) {
+        callback(new Error(message))
+      } else {
+        callback()
+      }
+    },
+    trigger
+  }
+}
+
+// 使用
+export const businessScopeFormRules: FormRules = {
+  name: [
+    requiredNotBlank("请输入名称"),   // ❌ { required: true, ... } 接受纯空白
+    { max: BUSINESS_SCOPE_NAME_MAX, message: `名称不能超过 ${BUSINESS_SCOPE_NAME_MAX} 个字符`, trigger: "change" }
+  ]
+}
+```
+
+**检测脚本**（扫前端是否还有纯 `required: true` 用法）：
+
+```bash
+grep -rEn "\\{\\s*required:\\s*true" --include="*.vue" --include="*.ts" packages/
+```
+
+每条命中的 `required: true` 都需检查：后端该字段是否用 `@NotBlank`，是 → 改 `requiredNotBlank`；后端用 `@NotNull`（接受空串）→ 保留 `required: true`。
+
+#### 交付检查表（5 条 checklist）
+
+后端加 `@Validated` 后同步前端时逐条检查：
+
+1. **边界值是否相同**：后端 `@Size(max=100)` → 前端 `max: 100`（不能 50 也不能 200）
+2. **是否加到所有表单项**：同一 DTO 的弹窗 / 内联编辑 / Drawer 都要同步，不能漏
+3. **是否加 `maxlength` 属性**：`maxlength` 是浏览器原生限制、`rules` 是提交前校验，两者都要
+4. **是否抽公共文件**：两份以上表单必须共享 `FormRules`
+5. **字段名映射是否清晰**：前端字段名 ≠ 后端字段名时必须在 validation.ts 里加注释
+6. **语义是否对齐**：后端 `@NotBlank` 不能用 Element Plus 的 `required: true` 代替（`required` 接受纯空白）；必须用 `requiredNotBlank` validator 工厂
+
+#### 关联规则
+
+- SKILL.md §7 DTO/VO 评审 + `code-review-checklist.md` §7（加了「DTO 边界跨端同步」检查项）
+- 后端 `@Validated` 启用见本 skill §7 校验注解条目 + `code-review-checklist.md` §1 Controller 评审（`@Validated`）
+- §12 OperatingScope DTO/VO/PO 案例——本案例是 §12 补位案例，原 §12 仅改后端、未追前端
+
+
+### 14. Component 层契约信任：DTO 默认值 + Mapper contract 不再防御（V20260914）
+
+> 来源：`OperatingScopeServiceImpl.pageOperatingScope` 在 DTO 已有默认值 + `@Min` 校验 + PageHelper contract 保障的情况下，重复做 `dto.getPageNum() == null ? 1 : Math.max(1, ...)` 与 `records == null ? Collections.emptyList() : records` 防御，违反"信任契约"原则（V20260914）。
+
+#### 反面案例（OperatingScopeServiceImpl.pageOperatingScope 原状）
+
+```java
+@Override
+public PageResult<OperatingScopePageVO> pageOperatingScope(OperatingScopePageDTO dto) {
+    // PageHelper.startPage(...) 自动完成 count + 追加 LIMIT；SQL 本身不带 LIMIT，
+    // 不走 MyBatis-Plus 分页拦截器，避免 JSqlParser 4.x 触发的 AST toString 自递归 StackOverflowError。
+    int pageNum = dto.getPageNum() == null ? 1 : Math.max(1, dto.getPageNum());
+    int pageSize = dto.getPageSize() == null ? 10 : Math.max(1, dto.getPageSize());
+    PageHelper.startPage(pageNum, pageSize);
+    List<OperatingScopePageVO> records = baseMapper.pageOperatingScope(dto);
+    long total = ((Page<OperatingScopePageVO>) records).getTotal();
+    return new PageResult<>(total, records == null ? Collections.emptyList() : records);
+}
+```
+
+#### 三处冗余
+
+| # | 冗余代码 | 为什么冗余 |
+|---|---|---|
+| 1 | `dto.getPageNum() == null ? 1 : ...` | DTO 字段已有 `private Integer pageNum = 1;` 默认值；`@Min(1)` 在 Controller `@Validated` 阶段已拒绝 `< 1`；DTO + `@Validated` 是契约层，Component 不再二次兜底 |
+| 2 | `Math.max(1, dto.getPageNum())` | 同上：`@Min(1)` 保证 `pageNum >= 1`；Component 层不需要夹一道 |
+| 3 | `records == null ? Collections.emptyList() : records` | PageHelper contract：`startPage` 后下一次查询结果必为 `com.github.pagehelper.Page<T>`（继承 `ArrayList`），**绝不为 null**；该分支是死代码 |
+
+#### 判定为反模式的 3 个特征
+
+1. **Component 层职责越界**：Component 是数据访问层，入参校验归 Controller + DTO（`@Validated`）；Component 重复校验 = 把 Controller 的活重做一遍，且**校验时机已晚**（应该在校验注解失败时抛大白话，Component 层抛则是底层异常翻译）
+2. **代码膨胀但实质信息量=0**：5 行防御代码全部命中契约层已经覆盖的场景，没有任何新增保护
+3. **违反"信任契约"原则**：DTO 字段默认值 + Bean Validation 是项目标准入参防御；PageHelper / MyBatis-Plus / MP BaseMapper 各自有明确的 contract，Component 层必须信任，否则每层都做"防御性兜底"，最终谁也不信谁，Diff 噪音爆炸
+
+#### 正面做法（OperatingScopeServiceImpl.pageOperatingScope 修复后）
+
+```java
+@Override
+public PageResult<OperatingScopePageVO> pageOperatingScope(OperatingScopePageDTO dto) {
+    // PageHelper.startPage(...) 自动完成 count + 追加 LIMIT；SQL 本身不带 LIMIT，
+    // 不走 MyBatis-Plus 分页拦截器，避免 JSqlParser 4.x 触发的 AST toString 自递归 StackOverflowError。
+    // DTO 默认值 (pageNum=1, pageSize=10) + @Min(1) 校验已覆盖边界；PageHelper contract 保证 records 非 null。
+    PageHelper.startPage(dto.getPageNum(), dto.getPageSize());
+    List<OperatingScopePageVO> records = baseMapper.pageOperatingScope(dto);
+    long total = ((Page<OperatingScopePageVO>) records).getTotal();
+    return new PageResult<>(total, records);
+}
+```
+
+5 行变 4 行（注释变 1 行），实际可执行代码从 7 行缩到 4 行，零信息丢失。
+
+#### 五类典型反模式扫描清单
+
+| 反模式 | 出现位置 | 为什么错 |
+|---|---|---|
+| `dto.getXxx() == null ? defaultVal : ...`（DTO 字段已有 `= defaultVal`）| Component / Service 任何入参处理 | DTO 默认值兜底 |
+| `Math.max(MIN, dto.getXxx())` / `Math.min(MAX, dto.getXxx())`（DTO 已有 `@Min` / `@Max`）| 同上 | `@Validated` 兜底 |
+| `records == null ? Collections.emptyList() : records`（PageHelper / MP `page()` 后）| Component 分页方法 | PageHelper contract 保障非 null |
+| `if (list == null) list = new ArrayList<>();`（MP `lambdaQuery().list()` 后）| 同上 | MP `list()` 返空 `ArrayList`，不返 null |
+| `if (count == null) count = 0L;`（PageHelper / MP `count()` / `total` 后）| 同上 | PageHelper `getTotal()` 返 `long`（基本类型）不返 null |
+
+**审查硬指标**：
+```bash
+# 扫"DTO 字段已有默认值但 Component 层又兜底"的反例
+grep -rEn "dto\.get\w+\(\)\s*==\s*null\s*\?" bi-cashier-{component,service}/src/main/java/
+
+# 扫"PageHelper 后置调用还做 null 兜底"的反例
+grep -rEn "(records|list|result)\s*==\s*null\s*\?" bi-cashier-{component,service}/src/main/java/
+
+# 扫"MP lambdaQuery().list() 后又空集合兜底"的反例（合规代码直接用结果即可，§8 要求空集合走 Collections.emptyList()，但前提是判断 list 本身）
+grep -rEn "list\s*==\s*null\s*\?\s*Collections\.emptyList\(\)" bi-cashier-{component,service}/src/main/java/
+```
+
+#### 关联规则
+
+- SKILL.md §7（API 入参对象化）+ §8（Service / Helper 入参对象化）—— DTO 是契约层，Component 不重复校验
+- `mybatis-vs-xml.md §1` 决策表 — PageHelper 模式详见 §1
+- SKILL.md §9（分页 PageResult 泛型链路对齐）— 本案例是该规则在 Component 层的补位案例
+- `code-review-checklist.md §3` Component Service 评审 — 本案例加了「Component 不重检 DTO 默认值与校验注解」检查项
+
+
+### 15. PO 继承 BaseEntity 时，deleted 字段由 `@TableLogic` 自动处理（V20260914 新增）
+
+> 来源：`OperatingScopeServiceImpl` 重构（2026-09-14）。原文件 4 处 `.eq(OperatingScope::getDeleted, 0)` + 1 处 `if (scope.getDeleted() == 1)` 死代码，全部删除。BaseEntity 已配 `@TableLogic(value="0", delval="1")`，MP 自动追加 `WHERE deleted = 0` 与 `UPDATE ... SET deleted = 1`。
+
+#### 反面案例（5 处冗余 / 死代码）
+
+```java
+// ❌ 1. lambdaQuery 显式 .eq(getDeleted, 0)
+List<OperatingScope> list = this.lambdaQuery()
+        .eq(OperatingScope::getDeleted, 0)            // 冗余：MP 自动加 WHERE deleted = 0
+        .orderByAsc(OperatingScope::getLevel)
+        .list();
+
+// ❌ 2. selectById 后判 getDeleted==1
+OperatingScope scope = baseMapper.selectById(id);
+if (scope == null || scope.getDeleted() == 1) {       // 死代码：selectById 已自动过滤
+    return null;
+}
+
+// ❌ 3. 业务键软删除手写 lambdaUpdate().set(getDeleted, 1)（必须走 remove）
+this.lambdaUpdate()
+        .set(OperatingScope::getDeleted, 1)
+        .eq(OperatingScope::getUniqueValue, uniqueValue)
+        .update();                                    // 走 remove 即可，MP 自动 .set(deleted, 1)
+
+// ❌ 4. 主键软删除手写 lambdaUpdate（必须走 removeById / deleteById）
+this.lambdaUpdate()
+        .set(OperatingScope::getDeleted, 1)
+        .eq(OperatingScope::getId, id)
+        .update();                                    // 走 removeById 即可
+
+// ❌ 5. deleteById 后跟 lambdaUpdate().set(getDeleted, 1)（重复声明）
+baseMapper.deleteById(id);
+this.lambdaUpdate().set(OperatingScope::getDeleted, 1)
+        .eq(OperatingScope::getId, id).update();
+```
+
+#### @TableLogic 自动行为一览（重要：项目里**不存在**需要显式 `set(getDeleted, 1)` 的场景）
+
+| MP 调用 | @TableLogic 自动行为 | 是否需额外写 `.set(getDeleted, 1)` |
+|---|---|---|
+| `baseMapper.selectById(id)` | 追加 `WHERE deleted = 0`，不返软删记录 | ❌ |
+| `lambdaQuery().list() / .one() / .page()` | 同上 | ❌ |
+| `baseMapper.selectList(wrapper)` | 同上 | ❌ |
+| XML `<select>` | ❌ 不自动加，需手写 `WHERE deleted = 0` | — |
+| **`baseMapper.deleteById(id)`** | **转 `UPDATE ... SET deleted = 1 WHERE id = ?`** | ❌ 一律走这条 |
+| **`this.removeById(id)`** | 同上 | ❌ 一律走这条 |
+| **`this.remove(wrapper)`（含业务键）** | **转 `UPDATE ... SET deleted = 1 WHERE <wrapper conditions>`** | ❌ 一律走这条 |
+| `this.lambdaUpdate().eq(业务键).update()` | ❌ 这是普通 UPDATE，MP 不加 deleted 条件 | **❌ 一律禁止走 lambdaUpdate 软删** |
+| XML `<update>` | ❌ 不自动加，需手写 `SET deleted = 1` | — |
+
+#### 正确做法（OperatingScopeServiceImpl 修复后）
+
+```java
+@Override
+public List<OperatingScope> queryOperatingScopeTree() {
+    // 无 .eq(getDeleted, 0)——MP 自动加
+    List<OperatingScope> list = this.lambdaQuery()
+            .orderByAsc(OperatingScope::getLevel)
+            .orderByAsc(OperatingScope::getSort)
+            .orderByDesc(OperatingScope::getId)
+            .list();
+    return list == null ? Collections.emptyList() : list;
+}
+
+@Override
+public OperatingScopePageVO queryOperatingScopeById(Long id) {
+    // 无 .getDeleted() == 1 判断——selectById 已自动过滤
+    OperatingScope scope = baseMapper.selectById(id);
+    if (scope == null) {
+        log.debug("经营范围详情查询未命中 id={}", id);
+        return null;
+    }
+    OperatingScopePageVO vo = new OperatingScopePageVO();
+    BeanUtils.copyProperties(scope, vo);
+    return vo;
+}
+
+@Override
+public Boolean deleteOperatingScope(Long id) {
+    // deleteById 已被 MP 自动转 UPDATE ... SET deleted = 1
+    boolean ok = baseMapper.deleteById(id) > 0;
+    if (!ok) {
+        log.warn("经营范围删除未生效 id={}", id);
+    }
+    return ok;
+}
+```
+
+#### 业务键软删除一律走 `remove`（项目规范）
+
+**禁止** `lambdaUpdate().set(Xxx::getDeleted, 1).eq(业务键).update()` 模式。项目里任何软删除都走 `delete*` / `remove*`，MP 自动加 `.set(deleted, 1)`。
+
+```java
+// ✅ 按业务键软删除
+return this.remove(
+        this.lambdaQuery().eq(Xxx::getUniqueValue, uniqueValue)
+);
+
+// ✅ 多条件软删除
+return this.remove(
+        this.lambdaQuery()
+                .eq(Xxx::getAccountNumber, accountNumber)
+                .eq(Xxx::getBankCode, bankCode)
+);
+```
+
+#### 类 extends ServiceImpl 写法规范
+
+```java
+// ❌ 全限定类名写在 extends 后（拼写错误多、IDE 跳转失效）
+public class OperatingScopeServiceImpl
+        extends com.baomidou.mybatisplus.extension.service.impl.ServiceImpl<OperatingScopeMapper, OperatingScope>
+        implements IOperatingScopeService { ... }
+
+// ✅ 必须 import ServiceImpl，extends 用短名
+import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+
+public class OperatingScopeServiceImpl
+        extends ServiceImpl<OperatingScopeMapper, OperatingScope>
+        implements IOperatingScopeService { ... }
+```
+
+**例外**：与本模块某个业务类同名（如自定义 `XxxServiceImpl` 在 `com.obo.bi.cashier.service.impl` 内已有同名类，**完全限定名**避免歧义）。其它场景一律 import。
+
+#### 判定为反模式的 5 个特征
+
+1. **`lambdaQuery().list() / .one()` 后多余 `.eq(getDeleted, 0)`**——MP 自动加，重复声明
+2. **`selectById(...)` 后多余 `if (po.getDeleted() == 1)`**——selectById 已过滤软删，分支永远不进
+3. **任何 `lambdaUpdate().set(Xxx::getDeleted, 1).update()`**（主键/业务键/多条件都不行）——一律走 `remove*` / `delete*`
+4. **`deleteById(...)` 后跟 `lambdaUpdate().set(getDeleted, 1)`**——MP 自动转软删，重复声明
+5. **`extends com.baomidou.mybatisplus.extension.service.impl.ServiceImpl` 全限定名**——必须 import 后用短名
+
+#### 审查硬指标
+
+```bash
+# 1) 扫"lambdaQuery 显式 .eq(getDeleted, 0)"
+grep -rEn "::getDeleted\s*,\s*0\)" bi-cashier-{component,service}/src/main/java/
+
+# 2) 扫"selectById 后多余判 getDeleted==1"
+grep -rEn "\.getDeleted\(\)\s*==\s*1" bi-cashier-{component,service}/src/main/java/
+
+# 3) 扫"任何 lambdaUpdate().set(getDeleted, 1) 反例（一律禁止）"
+grep -rEnA1 "lambdaUpdate\(\)" bi-cashier-{component,service}/src/main/java/ \
+  | grep -E "set\(.*::getDeleted\s*,\s*1\)"
+
+# 4) 扫"extends 全限定 ServiceImpl"
+grep -rEn "extends\s+com\.baomidou\.mybatisplus\.extension\.service\.impl\.ServiceImpl" \
+  bi-cashier-{component,service}/src/main/java/
+```
+
+#### 关联规则
+
+- SKILL.md §10（Component 层日志）— 本案例是该规则与 MP 自动行为交叉后的修订版
+- `references/data-model-sql.md §1.2` 软删除约定 — 已同步改为「全部走 delete* / remove*，MP 自动 .set(deleted, 1)」
+- `references/mybatis-vs-xml.md §2.1` 新增章节 — 列出 5 类反例与扫描命令
+- `references/architecture-layers.md §3.3 + §4` — 删 `.eq(getDeleted, 0)`，改 `extends` 为 import
+- `references/code-structure.md §9.3` — 重写为 remove 模式
+- `references/code-review-checklist.md §3` — Component Service 评审新增检查项
+
+
+### 16. VO 按业务视图命名（Page / List / Detail 各自独立），不复用同类型（V20260914）
+
+> 来源：`OperatingScopeServiceImpl.queryOperatingScopeById` 与 `OperatingScopeManageServiceImpl.listAllOperatingScope` 在上轮「OperatingScopeVO 重命名为 OperatingScopePageVO」后继续复用 `OperatingScopePageVO`，造成"分页 VO 被详情/列表场景借用"的语义错位（V20260914）。
+
+#### 判定为反模式的 4 个特征
+
+1. **类名后缀与返回场景语义不符**：方法名是 `queryXxxById` / `listAllXxx` 但返回 `XxxPageVO` — 读者看到类型签名就要在心里做一次"为什么 Page 的类名用在详情/列表上"的翻译，CodeGraph 跳转、`List<OperatingScopeVO>` 索引导航全部失效
+2. **前端 Swagger 模型错位**：`@ApiModel("经营范围VO")` + 类名 `OperatingScopePageVO` 同时出现，前端 codegen 生成的 TS 类型名带 "Page" 后缀，但实际接口是详情/列表 — 类型名误导前端
+3. **未来字段集漂移埋雷**：当前三个 VO 字段一致只是历史巧合；Detail 未来可能加 `parentName` / List 可能砍 `industryCategory` 时，复用同类型会让一处改动污染全部端点
+4. **违反 `code-review-checklist.md §7` 命名约定**：清单明列 `XxxVO` / `XxxListVO` / `XxxDetailVO` / `XxxPageVO` 作为合法后缀，强制按视图选其一，不允许"通用 VO" 跨多端点复用
+
+#### 反面案例（OperatingScope 上轮重构后状态）
+
+```java
+// Service 接口——三个方法共用一个 VO 类型
+PageResult<OperatingScopePageVO> pageOperatingScope(OperatingScopePageDTO dto);     // ✅ 语义正确
+OperatingScopePageVO queryOperatingScopeById(Long id);                                // ❌ 详情借用了分页 VO
+List<OperatingScopePageVO> listAllOperatingScope();                                   // ❌ 列表借用了分页 VO
+
+// Controller——同样是 PageVO
+public Result<PageResult<OperatingScopePageVO>> pageOperatingScope(...) { ... }
+public Result<OperatingScopePageVO> queryOperatingScopeById(...) { ... }              // ❌
+public Result<List<OperatingScopePageVO>> listAllOperatingScope() { ... }             // ❌
+```
+
+类 Javadoc 里写"虽然类名带 Page 后缀，但所有方法共用此类型"——本身就是反模式自白。
+
+#### 正面做法（OperatingScope 修复后）
+
+按 `code-review-checklist.md §7` 命名约定，每个业务视图独立 VO：
+
+```java
+// bi-cashier-api/vo/OperatingScopePageVO.java
+@ApiModel("经营范围分页VO")
+public class OperatingScopePageVO { ... }
+
+// bi-cashier-api/vo/OperatingScopeListVO.java
+@ApiModel("经营范围列表VO")
+public class OperatingScopeListVO { ... }
+
+// bi-cashier-api/vo/OperatingScopeDetailVO.java
+@ApiModel("经营范围详情VO")
+public class OperatingScopeDetailVO { ... }
+```
+
+调用链与类型一一对齐：
+
+```java
+// IOper / ServiceImpl
+PageResult<OperatingScopePageVO> pageOperatingScope(OperatingScopePageDTO dto);
+OperatingScopeDetailVO queryOperatingScopeById(Long id);
+List<OperatingScope> listAllOperatingScope();                       // Component 层返 PO（§12 原则）
+
+// IManage / ManageImpl
+PageResult<OperatingScopePageVO> pageOperatingScope(...);
+OperatingScopeDetailVO queryOperatingScopeById(...);
+List<OperatingScopeListVO> listAllOperatingScope();                  // Manage 层 copyList 转 VO
+
+// Controller
+public Result<PageResult<OperatingScopePageVO>> pageOperatingScope(...) { ... }
+public Result<OperatingScopeDetailVO> queryOperatingScopeById(...) { ... }
+public Result<List<OperatingScopeListVO>> listAllOperatingScope() { ... }
+```
+
+#### 同款约定的项目内先例（参照组）
+
+| 模块 | Page | List | Detail |
+|---|---|---|---|
+| Store | `StorePageVO` | `StoreListVO` | `StoreDetailVO` |
+| BankCard | — | `BankCardListVO` | `BankCardVO` |
+| FileExpiryRecord | — | `FileExpiryRecordListVO` | `FileExpiryRecordDetailVO` |
+| FileExpiryRule | — | `FileExpiryRuleListVO` | `FileExpiryRuleVO`（基础）|
+| Seal | — | `SealListVO` | `SealVO`（基础）|
+| CashierRelatedUser | — | — | `CashierRelatedUserDetailVO` |
+| Company | — | — | `CompanyDetailVO` |
+| OperatingScope（本案例）| `OperatingScopePageVO` | `OperatingScopeListVO` | `OperatingScopeDetailVO` |
+
+**反例模式**（一个 VO 跨场景复用）：项目内历史 `OperatingScopeVO` / `CashierRelatedUserVO` / `BankCardVO` / `FileExpiryRuleVO` 等"通用 VO"在多端点复用时也属本案例反模式范围；本案例仅先行整改 OperatingScope，其他模块是否需要拆分视业务发展而定（如 `BankCardVO` 是否需要分 `BankCardListVO` + `BankCardDetailVO`，按未来字段集漂移判断，不预先拆）。
+
+#### 字段暂时一致的可行做法
+
+未来 Detail 字段多于 List/Page 时（如 Detail 携带父节点详情、附件列表），三个 VO 字段集会自然分化；当前阶段字段一致**允许直接复制字段**（同 StorePageVO 与 StoreListVO 的处理），**不通过继承复用**（继承会让 Swagger codegen 生成"父类字段全在子类"的多余字段、且 BaseVO 修改会污染全部子类）。
+
+```java
+// ✅ 字段一致时直接复制（不抽 BaseVO 抽象）
+// OperatingScopePageVO.java
+private Long id;
+private String name;
+...
+
+// OperatingScopeListVO.java
+private Long id;
+private String name;
+...
+
+// OperatingScopeDetailVO.java
+private Long id;
+private String name;
+...
+
+// ❌ 不要抽 BaseOperatingScopeVO（继承会让 Swagger codegen 在子类生成父类字段、且未来修改父类污染全部）
+public abstract class BaseOperatingScopeVO {
+    protected Long id;
+    protected String name;
+}
+public class OperatingScopePageVO extends BaseOperatingScopeVO { ... }
+```
+
+#### 关联规则
+
+- `code-review-checklist.md §7` 命名约定：`XxxDTO` / `XxxPageDTO` / `XxxSaveRequestDTO` / `XxxVO` / `XxxListVO` / `XxxDetailVO` / `XxxPageVO` — 本案例强化为「禁止跨场景复用同类型 VO」
+- SKILL.md §12 — PO 不可泄漏，与本案例组合形成"PO → PageVO/ListVO/DetailVO"三方独立映射
+- SKILL.md §0 接口注释规范 — VO 类自身应有 Javadoc 说明归属视图（哪个端点用、为什么不暴露 X 字段）
 

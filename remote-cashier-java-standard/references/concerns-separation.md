@@ -287,9 +287,8 @@ public class XxxServiceImpl
         if (StringUtils.isBlank(companyUniqueValue)) {
             return Collections.emptyList();                          // 空集合
         }
-        return this.lambdaQuery()                                    // 链式查询
+        return this.lambdaQuery()                                    // 链式查询（deleted 由 @TableLogic 自动过滤）
                 .eq(Xxx::getCompanyUniqueValue, companyUniqueValue)
-                .eq(Xxx::getDeleted, 0)
                 .list();
     }
 }
