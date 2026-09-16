@@ -257,15 +257,9 @@
 行 28:      */
 行 29:     IPage<BankCard> pageBankCard(Page<BankCard> page, @Param("dto") BankCardPageDTO dto);
 行 30: (空行)
-行 31:     /**
-行 32:      * 根据账号统计数量
-行 33:      *
-行 34:      * @param accountNumber 账号
-行 35:      * @param excludeId 排除的ID
-行 36:      * @return 数量
-行 37:      */
-行 38:     int countByAccountNumber(@Param("accountNumber") String accountNumber, @Param("excludeId") Long excludeId);
-行 39: }
+行 31:     // 唯一性统计走 Component Service 层 MP Lambda：this.count(LambdaQueryWrapper)
+行 32:     // 不在 Mapper 接口里声明 countByXxx（单表非分页是 Component 职责，不下沉到 Mapper）
+行 33: }
 ```
 
 **行级规则**：
@@ -275,7 +269,7 @@
 - 行 22-29: 公共方法必须有 Javadoc（7 行 /** */）
 - 行 29: 多参数时**所有参数都用 `@Param("xxx")`** 命名
 - 行 29: 返回类型为 MP 的 `IPage<PO>`（不是 `PageResult`）
-- 行 38: 简单方法也带 Javadoc
+- 行 32: 唯一性统计**不在 Mapper 接口声明**，下沉到 Component Service 的 `this.count(LambdaQueryWrapper)`（详见 `mybatis-vs-xml.md §1`）
 
 ### 5. Mapper XML 行级模板（对照 BankCardMapper.xml）
 
@@ -308,15 +302,7 @@
 行 26:          ORDER BY create_time DESC
 行 27:      </select>
 行 28:  (空行)
-行 29:      <select id="countByAccountNumber" resultType="java.lang.Integer">
-行 30:          SELECT COUNT(*) FROM cashier_bank_card
-行 31:          WHERE deleted = 0 AND account_number = #{accountNumber}
-行 32:          <if test="excludeId != null">
-行 33:              AND id != #{excludeId}
-行 34:          </if>
-行 35:      </select>
-行 36:  (空行)
-行 37:  </mapper>
+行 29:  </mapper>
 ```
 
 **行级规则**：
@@ -331,8 +317,7 @@
 - 行 14-19: 集合字段判空 `!= null and size() > 0`、IN 用 `<foreach collection="..." item="x" open="(" separator="," close=")">`
 - 行 21, 24: 大于等于 `&gt;=`、小于等于 `&lt;=` 必须 XML 转义
 - 行 26: 排序 `ORDER BY create_time DESC`（按业务字段，不是数据库 id）
-- 行 29: `resultType="java.lang.Integer"`（基础类型用全限定名）
-- 行 37: 闭合 `</mapper>` 前空 1 行
+- 行 29: 闭合 `</mapper>` 前空 1 行
 
 ### 6. 4 层接口契约速查表（按照以上行级模板）
 

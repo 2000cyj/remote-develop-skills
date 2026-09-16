@@ -13,7 +13,7 @@
 | 按 uniqueValue 全量下拉 | MP Lambda | 1个条件 + `orderByDesc` |
 | 批量 INSERT/UPDATE/DELETE | MP `saveBatch` / `updateBatchById` / `removeByIds` | BaseMapper 已生成，无需手写 |
 | **5+ 个动态可选条件的分页查询** | **手写 XML** | `<if>` 组合，Lambda 嵌套过深 |
-| **带可选 `excludeId` 的唯一性统计** | **手写 XML** | `<if test="excludeId != null">` 条件分支 |
+| **带可选 `excludeId` 的唯一性统计** | **MP Lambda `this.count(LambdaQueryWrapper)`** | 1-2 个等值/不等值条件 + 可选 excludeId → `wrapper.eq(业务键).ne(ExcludedId)` 链式即可；禁止为此场景手写 XML |
 | **MySQL 专有函数**（`FIND_IN_SET`、`GROUP_CONCAT`） | **手写 XML** | Lambda 无法表达 |
 | **`GROUP BY + COUNT` 聚合（需下沉到 Component）** | `QueryWrapper.select + listMaps` | Lambda 无 `groupBy` 链式；结果由 Component 封装后返回，聚合层不可见 `listMaps` |
 | **跨表 JOIN** | **手写 XML** | Lambda 无法跨表 |
@@ -160,15 +160,6 @@ grep -rEnA1 "lambdaUpdate\(\)" bi-cashier-{component,service}/src/main/java/ | g
     ORDER BY create_time DESC
 </select>
 
-<!-- BankCardMapper.xml：带可选 excludeId 的唯一性统计 -->
-<select id="countByAccountNumber" resultType="java.lang.Integer">
-    SELECT COUNT(*) FROM cashier_bank_card
-    WHERE deleted = 0 AND account_number = #{accountNumber}
-    <if test="excludeId != null">
-        AND id != #{excludeId}
-    </if>
-</select>
-
 <!-- FileExpiryRuleMapper.xml：FIND_IN_SET 标签匹配——MySQL 专有函数必须用 XML -->
 <select id="selectByMatchTags" resultType="com.obo.bi.cashier.po.FileExpiryRule">
     SELECT * FROM cashier_file_expiry_rule
@@ -216,10 +207,6 @@ this.update(patch,
 ```java
 // 分页：Page 参数在前，DTO 必须 @Param("dto")
 IPage<BankCard> pageBankCard(Page<BankCard> page, @Param("dto") BankCardPageDTO dto);
-
-// 多参数：所有参数必须显式 @Param
-int countByAccountNumber(@Param("accountNumber") String accountNumber,
-                         @Param("excludeId") Long excludeId);
 ```
 
 ## 7. 禁止清单

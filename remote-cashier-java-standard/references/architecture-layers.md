@@ -964,14 +964,8 @@ public interface BankCardMapper extends BaseMapper<BankCard> {
      */
     IPage<BankCard> pageBankCard(Page<BankCard> page, @Param("dto") BankCardPageDTO dto);
 
-    /**
-     * 根据账号统计数量。
-     *
-     * @param accountNumber 账号
-     * @param excludeId 排除的 ID
-     * @return 数量
-     */
-    int countByAccountNumber(@Param("accountNumber") String accountNumber, @Param("excludeId") Long excludeId);
+    // 唯一性统计走 Component Service 层 MP Lambda：this.count(LambdaQueryWrapper)
+    // 不在 Mapper 接口里声明 countByXxx（单表非分页是 Component 职责，不下沉到 Mapper）
 }
 ```
 
@@ -1006,14 +1000,6 @@ public interface BankCardMapper extends BaseMapper<BankCard> {
             AND open_date &gt;= #{dto.openDateStart}
         </if>
         ...
-    </select>
-
-    <select id="countByAccountNumber" resultType="java.lang.Integer">
-        SELECT COUNT(*) FROM cashier_bank_card
-        WHERE deleted = 0 AND account_number = #{accountNumber}
-        <if test="excludeId != null">
-            AND id != #{excludeId}
-        </if>
     </select>
 
 </mapper>

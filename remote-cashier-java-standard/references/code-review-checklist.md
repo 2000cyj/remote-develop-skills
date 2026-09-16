@@ -54,6 +54,9 @@ PR 评审按层次分别检查。每个 checklist 都对应 skills 文档的章�
 - [ ] **任何 `lambdaUpdate().set(Xxx::getDeleted, 1)` 模式都禁止**：软删除一律走 `delete*` / `remove*`（`removeById(id)` / `deleteById(id)` / `remove(lambdaQuery().eq(业务键))`），MP 自动 `.set(deleted, 1)`，详见 SKILL.md §15
 - [ ] **`selectById(...)` 后不写 `if (po.getDeleted() == 1) return null;`**（MP 已自动过滤软删记录，该分支是死代码）
 - [ ] **类 extends 写法**：`extends ServiceImpl<XxxMapper, T>` 必须通过 `import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;` 引入，禁止在 `extends` 后写全限定类名
+- [ ] **Mapper XML 手写 SQL 必须保留 `WHERE deleted = 0`**：XML 不走 MP `@TableLogic` 拦截器，手写条件**不是**死代码；agent sweep 时只删 Component Service 里的 `.eq(getDeleted, 0)`，**不删** XML 里的 `WHERE deleted = 0`；XML `<update>` 软删需手写 `SET deleted = 1`（详见 SKILL.md §15 警示与 §17 错例）
+- [ ] **数据级唯一性：Component 层判重 + throw，Manage 层仅调用**：判重逻辑下沉 Component，以 `validateXxxUnique(业务键, excludeId)`（**void**）提供，内部 `this.count(LambdaQueryWrapper.eq(业务键).ne(id, excludeId)) > 0` 后 `log.warn` + `throw new BusinessException(...)`；禁止 Component 返 `Boolean` + Manage 判后 throw 的双层样板代码；仅当外部业务需区分存在 vs 不存在时才返 `Boolean isXxxExists`（详见 SKILL.md §18）
+- [ ] **Mapper 接口/不声明 `countByXxx`（单表非分页）**：单表非分页统计（如唯一性判重、数量统计）走 Component Service 的 `this.count(LambdaQueryWrapper)`；Mapper 接口/ XML 不应有 `int countByXxx(...)` 方法（详见 SKILL.md §15 + §17 错例 + §18；决策表见 `mybatis-vs-xml.md §1`）
 
 ### 4. Mapper 评审
 
