@@ -24,9 +24,15 @@ description: 按 ID 查找 LongMemory 中某条记忆的完整内容。当用户
 |---|---|---|---|---|
 | `id` | string | ✅ | — | **完整 UUID**(longmemory 不接受短 hex 前缀) |
 | `include_vectors` | bool | ❌ | `false` | 是否包含向量元数据(默认 false,够用) |
-| `user_id` | string | ❌ | — | 校验归属(可选,通常不用) |
+| `user_id` | string | 运行时必填 | `apps/<当前 Agent 目录名>` | 校验记忆归属，防止跨 Agent 读取 |
 
 ⚠️ **关键限制**:`id` 必须是**完整 UUID**(形如 `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`),**不接受 8 位短 hex**。如果用户给了短 hex,需要先用 `longmemory-search` 查到完整 ID。
+
+## 必须执行的范围过滤
+
+与 `packages/agent-script/longmemory-recall.ts` 的 Agent 隔离规则对齐：从当前工作目录识别 `apps/<agent>`，并在所有 `get` / `list` 调用中传入 `user_id: "apps/<agent>"`。无法识别 Agent 范围时，请用户确认目标 Agent，不得按默认全局范围读取。
+
+`find` 是按精确 ID 读取，不存在可用的相似度 `score` 过滤；其等价保护是：只打开当前 `user_id` 范围内搜索、浏览结果给出的 ID，并由 `user_id` 校验归属。
 
 ## 执行步骤
 
@@ -39,8 +45,8 @@ description: 按 ID 查找 LongMemory 中某条记忆的完整内容。当用户
 
 **如果用户只给了 8 位短 ID**(没有完整 UUID):
 
-1. 先调 `mcp__longmemory__openmemory_list`,`limit: 50`
-2. 找出 `id.startsWith(短 hex)` 的那条
+1. 先调 `mcp__longmemory__openmemory_list`,`limit: 50`，并传入当前 Agent 的 `user_id`
+2. 仅在该范围结果中找出 `id.startsWith(短 hex)` 的那条
 3. 用完整 ID 调 get
 
 如果完全抽不到 ID,问用户:"请提供完整 UUID(可在 search 结果里复制)。"
@@ -51,6 +57,7 @@ description: 按 ID 查找 LongMemory 中某条记忆的完整内容。当用户
 
 - `id`: 上一步拿到的完整 UUID
 - `include_vectors`: 默认 false(够用,除非用户明确说要看向量)
+- `user_id`: 当前 Agent 的 `apps/<agent>` 范围
 
 ### Step 3: 展示详情
 
