@@ -475,3 +475,289 @@ function company(...): CompanyAssignInfo {
 | **TS2322（mock 缺字段）** | **mock / test 文件本身接口与对象字面量不一致** |
 
 **SKILL 升级点**：见 `SKILL.md` 第 6 步"类型嫌疑主动扫描"新增的"mock / test 数据 vs 接口契约不一致"扫描项。本形态是 2026-09-21 实际修复 `D:/OB/ob_web/packages/micro/cashier/src/pages/StoreAuditOnboarding/addOrEdit/detail-mock.ts` line 70 时发现。
+
+## jsdoc/multiline-blocks：JSDoc 起始行同行接文字
+
+**签名**：`error  Should have no text on the "0th" line (after the \`/**\`)  jsdoc/multiline-blocks`
+
+**根因**：JSDoc 块注释的写法不规范——把文字直接写在 `/**` 同行，而不是 `/**` 单独一行 + ` *` 起头。
+
+| 错误写法（lint 报错） | 正确写法 |
+|---|---|
+| `/** 加载主体池中的公司列表；keyword 空表示不过滤。<br> *  ponytail: 累加重查 ... */` | `/**<br> * 加载主体池中的公司列表；keyword 空表示不过滤。<br> *<br> * ponytail: 累加重查 ...<br> */` |
+
+**为什么容易踩坑**：手写 JSDoc 时习惯"标题+说明"一段写完，遇到多行注释下意识 `/** <标题>` 起头；后半段用 ` * <说明>` 续行——后半段 OK，但首行违规。
+
+**触发场景**：
+1. 新增复杂函数/常量注释，原本想"标题+解释一段写完" → 触发
+2. 老旧 markdown 文档转换 → 触发
+3. 从 Java 后端注释风格移植（Java 是 `/**\n * <text>\n */` 自动换行） → TypeScript 风格需手动起新行
+
+**判断方法**：
+```bash
+grep -nE "^\s*/\*\* [^/\*\s]" src/ -r --include="*.ts" --include="*.vue"
+```
+- 匹配项 = 违规
+- 期望：所有 `/**` 后跟空行或 ` *`
+
+**修复**：把违规的 `/** <text>` 改成：
+```
+/**
+ * <text>
+ */
+```
+所有原本在第一行的" * ponytail: ..."也提到主体注释内部。
+
+**业务逻辑 0 改动**：纯注释格式调整，运行时无影响。
+
+**与已有形态区别**：
+
+| 形态 | 触发场景 |
+|---|---|
+| TS2305（路径错位） | import 路径贪心合并导致 type-only 跑 value-only |
+| TS2345（函数返回 unknown） | `const x = () => arr.map(...)` 无签名 → 返回 `unknown[]` |
+| TS2322（mock 缺字段） | mock / test 数据 vs 接口契约字段缺失 |
+| **jsdoc/multiline-blocks** | **JSDoc 起始行 `/**` 同行接文字** |
+
+**SKILL 升级点**：见 `SKILL.md` 第 6 步"格式嫌疑主动扫描"新增的"JSDoc 起始行同行接文字"扫描项。本形态是 2026-09-21 实际修复
+- `D:/OB/ob_web/packages/micro/cashier/src/pages/StoreAuditOnboarding/addOrEdit/detail.vue` line 60/138/169/177
+- `D:/OB/ob_web/packages/micro/cashier/src/pages/AccountChangeDetails/index.vue` line 43/48
+时发现。
+
+## 未使用代码（死代码 + 孤儿 API）
+
+**签名**：`error  '_xxx' is assigned a value but never used  no-unused-vars`
+
+ESLint 默认配置（ cashier 项目）禁用了 `no-unused-vars`（避免误报 props/emits），导致默认 lint 0 报错时仍有大量死代码残留。
+
+**典型形态**：
+
+| 形态 | 例子 | 处理 |
+|---|---|---|
+| **下划线前缀死代码** | `const _pageTitle = computed(...)`<br>`function _handleAddToQueue() {...}` | **直接删除**（下划线只是 ESLint 逃生口，不是合法命名） |
+| **孤儿 API 函数** | `export function listAllFileTagsApi(...)` 无任何调用方 | **删除** |
+| **未使用 import** | `import { foo } from "..."` 但文件内未引用 | 删除 |
+
+**为什么容易踩坑**：
+
+1. **历史遗留**：写完代码后逻辑改了，但变量 / 函数忘了删。
+2. **逃生口习惯**：发现 ESLint 报警后下意识加下划线前缀或 `eslint-disable`，问题从"代码死"变成"代码隐式死"。
+3. **大文件重构**：一次重构后部分函数 / import 变孤儿，但代码量大不易一眼看出。
+
+**主动扫描方法（不依赖项目 ESLint 配置）**：
+
+```bash
+# 步骤 1: CLI 开启 no-unused-vars 扫一遍
+npx eslint src/<scope> --ext .ts,.vue \
+  --rule '{"unused-imports/no-unused-imports":"error","no-unused-imports":"error","unused-imports/no-unused-vars":"error","no-unused-vars":"error","vue/no-unused-components":"error","vue/no-unused-vars":"error"}'
+
+# 步骤 2: grep 下划线前缀变量/函数（不依赖 ESLint 配置）
+grep -nE '(const|let|function|class)\s+_\w+\s*[=(:]' src/ -r --include="*.ts" --include="*.vue"
+
+# 步骤 3: grep apis 目录的所有 export 函数，验证每个有调用方
+grep -nE '^export\s+(async\s+)?function\s+\w+' src/ -r --include="*.ts" --include="*.vue"
+# 然后对每个函数 grep 跨文件调用方
+```
+
+**判断 "真死代码 vs 假装豁免"**：
+
+| 标志 | 判断 | 处理 |
+|---|---|---|
+| `_xxx` 仅声明 1 次，无其他引用 | 真死代码 | **删** |
+| `_xxx` 被其他代码引用（如 `_handleAddRowToQueue(companyId)`） | 合法命名约定 | 保留 |
+| `_<slot-name>` / Vue slot 占位符 | Vue 模板约定 | 保留 |
+| `_<event-name>` 事件保留名 | 框架约定 | 保留 |
+
+**修复**：
+1. 真死代码：直接删除 var / const / function / import 行
+2. 假装豁免（`_xxx`）：去掉下划线前缀（如果代码真用）或删除（如果真死）
+3. 孤儿 API 函数：删除函数体（保留 interface type 如果仍被用）
+
+**业务逻辑 0 改动**：删除未引用代码，运行时无影响。
+
+**与已有形态区别**：
+
+| 形态 | 触发场景 |
+|---|---|
+| TS2305（路径错位） | import 路径贪心合并导致 type-only 跑 value-only |
+| TS2345（函数返回 unknown） | `const x = () => arr.map(...)` 无签名 → 返回 `unknown[]` |
+| TS2322（mock 缺字段） | mock / test 数据 vs 接口契约字段缺失 |
+| jsdoc/multiline-blocks | JSDoc 起始行 `/**` 同行接文字 |
+| **未使用代码（默认 ESLint 不抓）** | **项目 eslint.config.js 默认禁用 no-unused-vars 导致死代码 + 孤儿 API 残留** |
+
+**SKILL 升级点**：见 `SKILL.md` 第 6 步后新增的"未使用代码主动扫描"步骤。本形态是 2026-09-21 实际清理
+- `D:/OB/ob_web/packages/micro/cashier/src/pages/StoreAuditOnboarding/apis/index.ts` `listAllFileTagsApi`（孤儿 API）
+- `D:/OB/ob_web/packages/micro/cashier/src/pages/StoreAuditOnboarding/addOrEdit/detail.vue` line 308 `_detailCurrentNodeLabel` + line 414 `_handleAddToQueue`（下划线前缀死代码）
+- `D:/OB/ob_web/packages/micro/cashier/src/pages/StoreAuditOnboarding/addOrEdit/fill.vue` line 30 `_pageTitle`（下划线前缀死代码）
+时发现。
+
+**反思**：之前 ESLint 清零时加下划线前缀保留"死代码"是错的——下划线让 ESLint 不报警，但死代码仍存在。下划线前缀**只在框架占位（Vue slot / 事件保留名）时**才合法；普通业务逻辑的"为了 ES 不报警加下划线"是错误逃生口。
+
+## TS2322：同名类型跨文件独立定义导致赋值不兼容
+
+**签名**：
+```
+TS2322: Type import('X/types.ts').OnboardingSubAccount[]
+is not assignable to type import('Y/component.vue').OnboardingSubAccount[]
+
+Types of property account are incompatible.
+Type string | undefined is not assignable to type string
+SubAccountEditor.vue(13, 3): The expected type comes from property modelValue which is declared here on type
+```
+
+**根因**：同名类型（例 `OnboardingSubAccount`）在两个文件独立 `export interface` 定义，TypeScript 视为两个独立标识符。定义间可选性不一致时（一个 `account?: string`，另一个 `account: string`），赋值不兼容。即使字段名 + 类型看起来一致，只要**字段修饰符**（optional `?` / `readonly` / `| undefined`）不同，结构化赋值失败。
+
+**典型场景**：
+
+| 场景 | 错误表现 |
+|---|---|
+| DTO 接口与 Vue 组件 props 重复定义同名 interface | `model-value="(item.subAccounts || []) as OnboardingSubAccount[]"` 报 TS2322 |
+| 两个 DTO 接口重复定义 | 跨模块 import 同一个名字时分配到不同定义 |
+| 类同名但可选性不同 | `account: string` vs `account?: string` 互相赋值 |
+
+**主动扫描方法**：
+
+```bash
+# 找出同名字 interface / type 定义
+grep -nE "(interface|type)\s+OnboardingSubAccount\b" src/ -r --include="*.ts" --include="*.vue"
+```
+
+**判断 "重复 vs 同名合法"**：
+
+| 标志 | 判断 | 处理 |
+|---|---|---|
+| 同名 interface 定义两处或以上 | **重复定义** | 删掉重复那一份（保留 DTO 接口定义，组件 import DTO） |
+| 同名 type alias 定义两处或以上 | **重复定义** | 同上 |
+| 同名类在不同上下文（如 Express `Request` 与 Vue `Request`） | 独立业务名 | 不一定合并，需业务判断 |
+
+**修复**（Ponytail rung 1 ——“不应该是两个”）：
+1. 选源: **DTO / type 侧为唯一 source of truth**，组件 / props 从 DTO import
+   ```ts
+   // components/SubAccountEditor.vue（从前有重复定义，改后唯一源）
+   import type { OnboardingSubAccount } from "../apis/type"
+   ```
+2. 修文件使用方：
+   ```ts
+   // addOrEdit/fill.vue（之前从组件 import，改后从 DTO import）
+   import type { OnboardingSubAccount } from "../apis/type"
+   ```
+3. 如果两处重复都依赖不同 import 路径，出现 `import/no-duplicates` 报错（同一路径 import 多次），合并为同一行：
+   ```ts
+   import type { NormalizedOnboardingDetail, OnboardingSubAccount } from "../apis/type"
+   ```
+
+**为什么 "从组件 import type" 是反模式**：
+1. Vue 组件会随业务重命名 / 迁移 / 拆分，DTO 是稳定契约层
+2. 组件局部 `export interface` 常与 DTO 重复但可选性不一致 → 反复出现 TS2322
+3. `export interface` 从 .vue 文件导出本身是能力（用于 prop 类型转 external），但**同名字只能有一份定义**
+
+**业务逻辑 0 改动**：唯一源重新 import，运行时无任何实际影响。
+
+**与已有形态区别**：
+
+| 形态 | 触发场景 |
+|---|---|
+| TS2305（路径错位） | import 路径贪心合并导致 type-only 跑 value-only |
+| TS2345（函数返回 unknown） | `const x = () => arr.map(...)` 无签名 → 返回 `unknown[]` |
+| TS2322（mock 缺字段） | mock / test 数据 vs 接口契约字段缺失 |
+| jsdoc/multiline-blocks | JSDoc 起始行 `/**` 同行接文字 |
+| 未使用代码（默认 ESLint 不抓） | 项目 eslint.config.js 默认禁用 no-unused-vars 导致死代码 + 孤儿 API 残留 |
+| **TS2322（同名类型重复定义）** | **同名 interface / type 在两处独立 `export`，可选性不一致** |
+
+**SKILL 升级点**：见 `SKILL.md` 第 6 步“同名多源 import”扫描项补充“同名类型定义也要扫”。本形态是 2026-09-21 实际修复
+- `D:/OB/ob_web/packages/micro/cashier/src/pages/StoreAuditOnboarding/components/SubAccountEditor.vue` `OnboardingSubAccount` 重复定义
+- `D:/OB/ob_web/packages/micro/cashier/src/pages/StoreAuditOnboarding/addOrEdit/fill.vue` 从组件 import 改为从 DTO import
+时发现。
+
+## Tailwind 任意值需等价短写（IDE Tailwind IntelliSense 提示）
+
+**签名**（IDE 提示不是 ESLint 报错，需 grep 主动扫）：
+```
+The class `min-h-[48px]` can be written as `min-h-12`
+The class `px-[16px]` can be written as `px-4`
+The class `rounded-[2px]` can be written as `rounded-sm`
+```
+
+**根因**：Tailwind 默认 spacing 比例（1 单位 = 0.25rem = 4px）和默认字号表存在近似等价项，IDE Tailwind IntelliSense 提示用户"用更短的等价写法"。IDE 飘红，不影响运行。**不是 ESLint 报错——ESLint 查不出，需 grep 主动扫**。
+
+**默认比例映射表**：
+
+| 原写法 | 短写 |
+|---|---|
+| `gap-\[4px\]` / `gap-\[8px\]` / `gap-\[12px\]` / `gap-\[16px\]` | `gap-1` / `gap-2` / `gap-3` / `gap-4` |
+| `gap-\[6px\]` | `gap-1.5` |
+| `p-\[12px\]` / `p-\[16px\]` / `p-\[24px\]` | `p-3` / `p-4` / `p-6` |
+| `px-\[12px\]` / `px-\[16px\]` / `px-\[24px\]` | `px-3` / `px-4` / `px-6` |
+| `py-\[4px\]` / `py-\[8px\]` / `py-\[12px\]` / `py-\[16px\]` / `py-\[20px\]` / `py-\[24px\]` | `py-1` / `py-2` / `py-3` / `py-4` / `py-5` / `py-6` |
+| `mb-\[8px\]` / `mb-\[12px\]` / `mb-\[16px\]` | `mb-2` / `mb-3` / `mb-4` |
+| `mt-\[8px\]` / `ml-\[4px\]` / `mx-\[2px\]` | `mt-2` / `ml-1` / `mx-0.5` |
+| `space-y-\[16px\]` | `space-y-4` |
+| `min-h-\[48px\]` | `min-h-12` |
+| `w-\[4px\]` / `w-\[6px\]` / `w-\[8px\]` | `w-1` / `w-1.5` / `w-2` |
+| `h-\[8px\]` / `h-\[14px\]` / `h-\[18px\]` | `h-2` / `h-3.5` / `h-4.5` |
+| `rounded-\[2px\]` / `rounded-\[3px\]` / `rounded-\[8px\]` / `rounded-\[10px\]` | `rounded-sm` / `rounded` / `rounded-lg` / `rounded-xl` |
+| `text-\[12px\]` / `text-\[14px\]` / `text-\[16px\]` | `text-xs` / `text-sm` / `text-base` |
+
+**不可转换（保留任意值）**：
+
+| 原写法 | 为什么保留 |
+|---|---|
+| `rounded-\[20px\]` | 不是 `rounded-full`（9999px 棚圆），也不是默认比例，保留 |
+| `text-\[13px\]` / `text-\[15px\]` | 不在 Tailwind 默认字号比例，保留 |
+| `bg-\[#xxx\]` / `text-\[#xxx\]` / `border-\[#xxx\]` 颜色 | 不在默认色板，保留为任意值 或抽到 `<style scoped>` |
+| `shadow-\[0_0_0_3px_rgba(...)\]` | 自定义阴影必保留 |
+| `bg-\[linear-gradient(...)\]` | 自定义渐变必保留 |
+| `border-\[rgba(...)\]` | rgba 颜色不在默认色板 |
+
+**主动扫描方法**（ESLint 抓不到，需 grep + 正则）：
+
+```bash
+# 扫所有 spacing / sizing 任意值
+grep -hoE '\b(min-h|max-h|p|px|py|pt|pb|pl|pr|m|mx|my|mt|mb|ml|mr|gap|gap-x|gap-y|rounded|w|h|space-x|space-y|top|bottom|left|right|text)-\[\s*([0-9.]+)(px|rem)?\s*\]' src/ -r --include="*.vue"
+```
+
+**Ponytail rung 选择**：
+1. **rung 1 —— 是否需要这个 class？** 不改逻辑仅换短写，业务 0 改动
+2. **rung 3 —— stdlib 覆盖？** Tailwind 默认比例就是 stdlib，原写法是"手动指定"
+3. **rung 6 —— 批量替换最小代价**：写个一次性 Python 脚本，用 `re.subn` 批量替换 + 计数 + 报告
+
+**修复**：写一次性 Python 脚本：
+
+```python
+import re, pathlib
+replacements = [
+    (r'\bmin-h-\[48px\]', 'min-h-12'),
+    (r'\bspace-y-\[16px\]', 'space-y-4'),
+    (r'\bgap-\[16px\]', 'gap-4'),
+    (r'\bgap-\[12px\]', 'gap-3'),
+    # ... 完整映射表
+    # 注意：text-[13px] / text-[15px] / rounded-[20px] / 颜色 / shadow / gradient 不入表
+]
+for p in pathlib.Path('src/').rglob('*.vue'):
+    s = p.read_text(encoding='utf-8')
+    counts = {}
+    for pat, repl in replacements:
+        s, n = re.subn(pat, repl, s)
+        counts[pat] = n
+    if any(counts.values()):
+        p.write_text(s, encoding='utf-8')
+        print(f'{p}: {sum(counts.values())} replacements')
+```
+
+**业务逻辑 0 改动**：仅 class 名替换，运行时 0 变化。
+
+**与已有形态区别**：
+
+| 形态 | 触发场景 |
+|---|---|
+| TS2305（路径错位） | import 路径贪心合并导致 type-only 跑 value-only |
+| TS2345（函数返回 unknown） | 函数无签名 → 返回 unknown |
+| TS2322（mock 缺字段） | mock / test 数据 vs 接口契约 |
+| jsdoc/multiline-blocks | JSDoc 起始行同行接文字 |
+| 未使用代码 | 项目禁用 no-unused-vars |
+| 同名类型重复定义 | 同名 interface 在多文件独立定义 |
+| **Tailwind 任意值需等价短写** | **Tailwind IntelliSense 提示，需 grep 主动扫** |
+
+**SKILL 升级点**：见 `SKILL.md` 第 6 步后新增的"Tailwind 任意值飘红主动扫描"。本形态是 2026-09-21 实际清理 StoreAuditOnboarding 4 个 .vue 148 处任意值时发现。
+
+**反思**：IDE Tailwind IntelliSense 提示在 IDE 里看起来像"warning"，但 ESLint 报不到——grep 主动扫是唯一可靠手段。颜色任意值（`bg-[#xxx]`）和数值任意值（`min-h-[48px]`）是两件事：前者需抽 `<style scoped>`，后者只需替换短写。

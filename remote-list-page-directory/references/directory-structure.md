@@ -1,6 +1,10 @@
 # 目录结构与放置规则
 
-本文件是 `remote-list-page-directory` 的目录结构与放置规则。先读它，再执行 SKILL.md 的 Workflow。
+本文件是 `remote-list-page-directory` 的底层参考——**目录树本身**。具体执行步骤见 SKILL.md 主入口的目标速查表：
+- 建新页面 → `references/01-create-new-page.md`
+- 审查合规 → `references/02-audit-page-compliance.md`
+- 重构 → `references/03-refactor-page.md`
+- 共用 vs 独立归属判断 → `references/04-shared-vs-private.md`
 
 ## 固定目录项
 
@@ -37,14 +41,6 @@ src/pages/<业务模块>/
 ├── enum/                         # 业务块共用
 └── utils/                        # 业务块共用
 ```
-
-## 结论判定边界
-
-本目录规范只约束页面目录组织与文件归属，不规定产品信息架构或必须存在的 UI 控件。特别是：
-
-- 页面是否需要 Tab、Tab 的数量、名称及状态分类，必须有明确产品需求、交互稿或现有契约依据。
-- 不能因为页面是“列表页”就推断必须增加 Tab；没有证据时应判定为“无需修改”，最多记录为“待需求确认的可选建议”。
-- 新增 Tab 可能改变默认查询、状态筛选和用户操作路径，不能作为纯目录规范整改直接实施。
 
 ## 放置规则
 
