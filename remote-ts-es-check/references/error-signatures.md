@@ -293,3 +293,185 @@ detail.vue(NN,CC): error TS2339: Property 'applicationStoreId' does not exist on
 | `packages/share/node_modules/.pnpm/vue-cropper@1.1.4/...: Could not find a declaration file for module './vue-cropper.vue'` | vue-cropper 缺 .vue 声明 |
 
 两者都**不阻塞 `vite build`**（构建脚本只跑 `vite build`，不跑 vue-tsc）。需要处理时应改 `packages/share`，并知会共享包维护方。
+
+## TS2305 形态 4：修 ESLint `import/no-duplicates` 时贪心合并 value-export 到 type-only path
+
+**签名**：
+```
+detail.vue(NN,COL): error TS2305: Module '"../apis/type"' has no exported member 'FileTagKeyValue'.
+detail.vue(NN,COL): error TS2305: Module '"../apis/type"' has no exported member 'FileTagOption'.
+```
+
+**根因**：文件原本有两路 import：
+```ts
+import { apiFunctions } from "../apis"             // value-import
+import type { OnboardingItem } from "../apis/type" // type-only
+```
+
+ESLint `import/no-duplicates` 报"同一路径多次 import"后，**贪心地**把另外两个 type 名字一起合并到 `from "../apis/type"`：
+```ts
+import { apiFunctions } from "../apis"
+import type { FileTagKeyValue, FileTagOption, OnboardingItem } from "../apis/type"  // ❌ 错位
+```
+
+但 `FileTagKeyValue / FileTagOption` 实际定义在 `../apis/index.ts`（value-export 模块），不在 `../apis/type`（type-only 模块）。TS 解析报 TS2305。
+
+**为什么 ESLint 没报**：`import/no-duplicates` 是文本级 lint（看 path 字符串是否重复），不扫跨文件类型图，不验证 import 标识符在目标模块是否真实存在。`unused-imports/no-unused-imports` 也不会报（标识符在文件内确有使用）。
+
+**判断方法**：
+1. **修 import 前必 grep export**（见 `SKILL.md` 第 4a 步强制检查）：
+   ```bash
+   grep -rn "export interface FileTagKeyValue\|export type FileTagKeyValue" src/ --include="*.ts" --include="*.vue"
+   ```
+2. 把 grep 命中的实际文件路径与 import 文本路径逐个对照
+3. 不一致 → 该标识符属于"路径错位"，拆分到正确的 path
+
+**修复**：把误合并的 value-export 标识符拆回 value-import path：
+```ts
+// ✅ 拆分：value-export 和 type-export 分到各自 path
+import { apiFunctions } from "../apis"
+import type { FileTagKeyValue, FileTagOption } from "../apis"          // value 模块也允许 type-only import
+import type { OnboardingItem } from "../apis/type"                      // type-only 模块
+```
+
+**业务逻辑 0 改动**：仅类型契约对齐，运行时 0 变化。
+
+**与形态 1/2/3 的区别**：
+
+| 形态 | 标识符真实位置 | 错位 path | 触发场景 |
+|---|---|---|---|
+| 1 | 不存在 / share 包过期 dist-types | 任意 | 跨仓类型漂移、tsconfig paths 解析错 |
+| 2 | 仓内另一文件 | 任意 | type.ts import path 写错 |
+| 3 | 同包 utils/index.ts | apis/type | 业务归一化层在 utils 但 detail.vue 直接从 apis 拉 |
+| **4** | **同包 apis/index.ts** | **apis/type** | **修 ESLint `import/no-duplicates` 贪心合并** |
+
+**SKILL 升级点**：见 `SKILL.md` 第 4a 步"修复 import 路径后必须做路径校验"。本形态是 2026-09-21 实际修复 `D:/OB/ob_web/packages/micro/cashier/src/pages/StoreAuditOnboarding/addOrEdit/detail.vue` 时发现，已加入 skill 强制检查点。
+
+## TS2345：函数返回类型推断 `unknown | string`，调用方期待纯 `string`
+
+**签名**：
+```
+detail.vue(NN,COL): error TS2345: Argument of type {} is not assignable to parameter of type string.
+```
+
+**根因**：函数定义使用了 `Record<string, unknown>` / `Record<string, any>` 等索引返回未定类型的参数；函数体取出 `log[key]` 得到 `unknown`，再用 `|| "兑底字符串"` 连接返回。TS 推断函数返回类型为 `unknown | string`。调用方期待的 `string` 参数收到 `unknown` 部分，报 TS2345。
+
+典型形态：
+```ts
+const logValue = (log: Record<string, unknown>, keys: string[]) =>
+  keys.map(key => log[key]).find(item => item !== undefined && item !== null && item !== "") || "-"
+//      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^unknown 起点^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+调用方：
+```vue
+<template #default="{ row }">{{ translateOperatorName(logValue(row, ["operator", "operatorName"])) }}</template>
+<!--                                                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                                                                logValue 返回 unknown | string -->
+<!--                                                              translateOperatorName(operator: string) 报 TS2345 -->
+```
+
+**为什么 ESLint 没报**：
+- `import/no-duplicates` 是文本级 lint，不检查函数返回类型
+- 未启用 `parserOptions.project`，无 type-aware 规则
+- `vue-tsc --noEmit` 才能扫出，但 skill 默认不跑
+
+**判断方法**（避坑技术）：
+1. grep 函数参数中含 `Record<string, unknown>` / `Record<string, any>` / `{ [k: string]: any }`：
+   ```bash
+   grep -nE 'Record<string,\s*(unknown|any)>|\{\s*\[k:\s*string\]:\s*(unknown|any)\s*\}' src/ -r --include="*.ts" --include="*.vue"
+   ```
+2. grep 函数体含 `|| "..."` / `|| '-'` 兑底：
+   ```bash
+   grep -nE '=>.*\|\|\s*"' src/ -r --include="*.ts" --include="*.vue"
+   ```
+3. 同时命中 → 查看调用方参数类型是否期待纯 `string`/`number`，是 → 函数签名漏标注返回类型
+
+**修复**：函数声明加显式返回类型 `: string`，函数体内用 `String(...)` 或类型守卫把 `unknown` 转 `string`：
+
+```ts
+// ✅ 显式标注返回类型 + 循环中转字符串
+function logValue(log: Record<string, unknown>, keys: string[]): string {
+  for (const key of keys) {
+    const v = log[key]
+    if (v !== undefined && v !== null && v !== "") return String(v)
+  }
+  return "-"
+}
+```
+
+**业务逻辑 0 改动**：`unknown` 在运行时本就是字符串（后端只返字符串字段），仅类型契约补齐。
+
+**SKILL 升级点**：见 `SKILL.md` 第 6 步"类型嫌疑主动扫描"中"函数返回类型推断 unknown / 缺签名"扫描项。本形态是 2026-09-21 实际修复 `D:/OB/ob_web/packages/micro/cashier/src/pages/StoreAuditOnboarding/addOrEdit/detail.vue` line 837 时发现。
+
+## TS2322：mock 数据 vs 接口契约字段缺失
+
+**签名**：
+```
+detail-mock.ts(70,5): error TS2322: Type '{ id: string; storeCode: string; storeName: string; platform: string; departmentName: string; shopStatus: string; }[]' is not assignable to type 'CompanyAssignStore[]'.
+  Property 'departmentId' is missing in type '{ id: string; storeCode: string; storeName: string; platform: string; departmentName: string; shopStatus: string; }' but required in type 'CompanyAssignStore'.
+```
+
+**根因**：mock 文件里同时定义了 `CompanyAssignStore` interface（必填 `departmentId`）和 `company()` 函数（生成的 store 对象缺 `departmentId`）。
+
+```ts
+// 接口定义
+export interface CompanyAssignStore {
+  id: string
+  storeCode: string
+  storeName: string
+  platform: string
+  departmentId: string  // ← 必填
+  departmentName: string
+  shopStatus: string
+}
+
+// mock 函数生成的 store 缺 departmentId
+function company(...): CompanyAssignInfo {
+  return {
+    ...
+    stores: stores.map(([storeId, storeCode, storeName, platform, shopStatus]) => ({
+      id: storeId,
+      storeCode,
+      storeName,
+      platform,
+      departmentName,  // ← 只有公司级别 departmentName
+      shopStatus
+      // ❌ 缺 departmentId
+    }))
+  }
+}
+```
+
+**为什么 ESLint 没报**：
+- TS2322 是 type-aware 错误，需 vue-tsc 扫
+- ESLint 默认无 `parserOptions.project`，无 type-aware 规则
+- skill 默认不跑 vue-tsc
+
+**判断方法**：
+1. grep 同文件内 `export interface`，列出所有必填字段（无 `?` 后缀）
+   ```bash
+   grep -nE 'export\s+interface\s+\w+\s*\{' src/ -r --include="*.mock.ts" --include="*.test.ts" --include="*.spec.ts"
+   ```
+2. grep mock 函数内的 `.map((...) => ({...}))` 位置，对照对象字面量字段
+   ```bash
+   grep -nE 'stores:\s*stores\.map|=>\s*\(\s*\{' src/ -r --include="*.mock.ts" --include="*.test.ts" --include="*.spec.ts"
+   ```
+3. 查看调用方是否用 `(s.field as string) ?? ""` 兑底 → 字段本质可选 → 优先放宽接口
+
+**修复方向**（需业务判断，不擅自修）：
+1. **接口放宽**：把 `departmentId: string` 改为 `departmentId?: string`，对齐调用方兑底逻辑（推荐，详情页已用 `(s.departmentId as string) ?? ""` 兑底）
+2. **mock 补字段**：在 `company()` 加第 6 个参数 `departmentId`，给所有 store 赋值（如果接口严格且 mock 有数据源）
+3. **加 `as CompanyAssignStore` 断言遮蔽**（不推荐，掩盖问题）
+
+**业务逻辑 0 改动**：mock 缺字段 / 接口过严 是类型契约层问题，运行时本就能跑（mock 数据本身已经是 mock）。
+
+**与已有形态区别**：
+
+| 形态 | 触发场景 |
+|---|---|
+| TS2322（跨文件类型不匹配） | 后端 VO 与前端接口字段名/类型漂移 |
+| TS2551（字段不存在） | 前端访问历史遗留字段名，后端已不返 |
+| **TS2322（mock 缺字段）** | **mock / test 文件本身接口与对象字面量不一致** |
+
+**SKILL 升级点**：见 `SKILL.md` 第 6 步"类型嫌疑主动扫描"新增的"mock / test 数据 vs 接口契约不一致"扫描项。本形态是 2026-09-21 实际修复 `D:/OB/ob_web/packages/micro/cashier/src/pages/StoreAuditOnboarding/addOrEdit/detail-mock.ts` line 70 时发现。

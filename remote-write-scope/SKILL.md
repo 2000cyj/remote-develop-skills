@@ -5,7 +5,7 @@ description: Use when 当前 Agent 即将对任何文件执行写操作，包括
 
 # remote-write-scope
 
-约束 Agent 的所有写操作严格落在启动目录下的 `.pi/write-allowlist.json` 中。Skill 提供表象规则与拒绝后的修正路径；底层控制由 `packages/agent-script/write-allowlist_test.ts` hook 执行。即使 Skill 未被加载，hook 也会按同一规则拦截越权写入。
+约束 Agent 的所有写操作严格落在启动目录下的 `.pi/write-allowlist.json` 中。Skill 提供表象规则与拒绝后的修正路径；底层控制由 `packages/agent-script/write-allowlist.ts` hook 执行。即使 Skill 未被加载，hook 也会按同一规则拦截越权写入。
 
 Use `references/allowlist-lookup.md` when 需要在会话中复现或核对 `.pi/write-allowlist.json` 内容、根路径与相对路径换算。
 Use `references/hook-overlap.md` when 需要厘清本 Skill 与 `remote-idea-mcp-usage`、`remote-commit-git` 在写权限上的边界，以及 hook 未挂载时的手动验证步骤。
@@ -13,7 +13,7 @@ Use `references/hook-overlap.md` when 需要厘清本 Skill 与 `remote-idea-mcp
 ## Workflow
 
 1. **识别当前 Agent 启动目录**：当前进程 cwd 即 Agent 目录。例如 `apps/agent-java8-vue3`。仅当 cwd 向上能找到名为 `apps` 的父目录时才视为本 Skill 生效；否则停止所有写操作并向用户报告“非 Agent 启动目录”。
-2. **确认 hook 已挂载**：检查 `apps/<agent>/.pi/settings.json` 的 `extensions` 中是否包含 `packages/agent-script/write-allowlist_test.ts`（或当前生效路径）。如果未引用该模块，hook 不会被加载；此时仍必须按本 Skill 的规则手动验证每个写路径，不得默许。
+2. **确认 hook 已挂载**：检查 `apps/<agent>/.pi/settings.json` 的 `extensions` 中是否包含 `packages/agent-script/write-allowlist.ts`（或当前生效路径）。如果未引用该模块，hook 不会被加载；此时仍必须按本 Skill 的规则手动验证每个写路径，不得默许。
 3. **读取最新 allowlist**：读取 `<cwd>/.pi/write-allowlist.json`。**该文件由 hook 每次写操作前自动重新生成**，以 `workgroup.yaml` 的 `permissions` 为唯一真相。文件不存在或解析失败 = 无可写根，所有写操作一律停手。不允许 Agent 自己创建、重写、删除或重命名该文件来扩展权限。
 4. **判定目标路径**：
    - `write` / `edit` / `apply_patch` / `multi_edit`：取 `input.path` 或 patch 头部路径。
@@ -47,7 +47,7 @@ Use `references/hook-overlap.md` when 需要厘清本 Skill 与 `remote-idea-mcp
 
 ## 与 hook 的关系
 
-- 写入拦截由 `packages/agent-script/write-allowlist_test.ts` hook 在 `tool_call` 上统一执行；覆盖 `write` / `edit` / `apply_patch` / `multi_edit` / `bash` / `powershell` / `mcp__*` 等所有可能写盘的工具。
+- 写入拦截由 `packages/agent-script/write-allowlist.ts` hook 在 `tool_call` 上统一执行；覆盖 `write` / `edit` / `apply_patch` / `multi_edit` / `bash` / `powershell` / `mcp__*` 等所有可能写盘的工具。
 - Skill 与 hook 使用同一份 `<cwd>/.pi/write-allowlist.json` 作为唯一真相；hook 在每次写操作前**重新从 `workgroup.yaml` 解析并重写**该文件，Agent 读到的不再反映用户已经改 yaml 后 hook 重生成的新值。
 - 拒绝信息由 hook 给出，但拒绝原因和修复路径与本 Skill 规则一致；Agent 在响应中可以直接引用 hook 错误并按本 Skill 的修正路径处理。
 - **hook 未挂载的 Agent**：例如 `apps/agent-java8-vue3` / `apps/agent-tests` / `apps/agent-inbox` 的 settings.json 仍引用不存在或别的路径的 extension，hook 不会被加载。这类 Agent 必须在每一步写操作前主动验证本 Skill 的三种状态，不允许以“hook 没拦”为由放行。

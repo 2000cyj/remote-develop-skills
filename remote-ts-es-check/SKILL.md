@@ -33,6 +33,21 @@ ESLint 必须解析完整文件才能正确理解 Vue/TS 语法，因此检查�
    不传目录、`.`、glob 或整个工作区文件列表。
 3. **筛选诊断**：只有"文件在编辑清单内且报错行与 changed hunk 相交"的诊断属于本次修复范围。其他诊断单独报告，不处理。
 4. **手工最小修复**：只编辑对应 changed hunk。不要使用 `--fix`；即使只传一个文件，ESLint 也可能改写该文件的其他行。
+
+   > **【强制】4a. 修复 import 路径后必须做"路径校验"**（防 TS2305 形态 2 / 形态 4）：
+   >
+   > 任何对 `import ... from "<path>"` 的路径或路径间标识符迁移修改（合并两个 `from "../apis"` 的 import、调整 import path 在 type.ts / index.ts / utils.ts 之间调动、改 `../apis` 到 `../apis/type` 等），修改前必跑：
+   >
+   > ```bash
+   > grep -rn "export interface <Name>\|export type <Name>\|export const <Name>\|export function <Name>" src/ --include="*.ts" --include="*.vue"
+   > ```
+   >
+   > 其中 `<Name>` 为被移动的每个标识符。把"文本上"写在 import 里的 path 与 `export` 出现的实际文件进行逐个对照。**不一致 → 报告为 TS2305 形态 2，不擅自修**。
+   >
+   > 背景：ESLint 不会扫跨文件类型图，不会发现 TS2305 路径错位；vue-tsc 默认不跑；本次修 `import/no-duplicates` 合并 import 时，如果仅以"同根路径多次 import"作为合并依据、不看实际 export 位置，就会把 value-export 里的接口名误到 type-only path 里，发生本错位。
+   >
+   > 简便记法：**"import path 合并/改动 → 先 grep export 再写代码"**。
+
 5. **复查同一范围**：
 
    ```bash
@@ -45,6 +60,23 @@ ESLint 必须解析完整文件才能正确理解 Vue/TS 语法，因此检查�
 6. **类型嫌疑主动扫描**（即使 ESLint 0 报错也要做）：
    - grep 任务文件中的 `\|\|` 兜底链、`as any` 断言、`@ts-ignore`、`eslint-disable`
    - **grep import 后未使用**：对每个 import 标识符，grep 该文件（除 import 行外）出现次数 = 0
+   - **同名多源 import / 跨文件 import 路径错位**（形态 2 TS2305，**任何修改了 `from "<path>"` 的操作都必须走这一步**）：grep 标识符在 `src/` 全局（除 type.ts 自己）的 `export` 出现位置，对比 type.ts 写出的 import 路径；不一致则报告"路径错位、成员在另一文件真实存在"
+   - **函数返回类型推断 unknown / 缺签名**（防 TS2345：函数体从 `Record<string, unknown>` 取出后用 `||` 兑底为字符串，推断为 `unknown | string`，调用方期待纯 `string` 时报错）：grep 函数参数为 `Record<string, unknown>` / `Record<string, any>` / `{ [k: string]: any }` 等索引返回未定类型的定义，同时函数体含 `|| "..."` 兑底表达式 → 该函数返回类型会被推为 `unknown | string`；查看调用方参数类型是否期待纯 `string`。命中 → 报告为"函数签名漏标注返回类型"，不擅自修。
+     ```bash
+     grep -nE 'Record<string,\s*(unknown|any)>|\{\s*\[k:\s*string\]:\s*(unknown|any)\s*\}' src/ -r --include="*.ts" --include="*.vue"
+     ```
+     ```bash
+     # 另一面：函数体中 `|| "..."` 兑底（怀疑 LHS 是 unknown）
+     grep -nE '=>.*\|\|\s*"' src/ -r --include="*.ts" --include="*.vue"
+     ```
+   - **mock / test 数据 vs 接口契约不一致**（防 TS2322：mock 函数返回的对象字面量缺必填字段，或字段类型不一致）：触发场景——编辑 `*.mock.ts` / `*Mock*.ts` / `mock.ts` / `*.test.ts` / `*.spec.ts` 等包含静态示例数据的文件。grep 同文件内 `export interface` 定义的所有必填字段（无 `?` 后缀）与所有 `.map((...) => ({...}))` / 对象字面量逐字段对照。必填字段缺失 → 报告为"mock 字段缺失"，不擅自修（判断是接口过严还是 mock 漏字段，需看调用方兑底逻辑）。
+     ```bash
+     # 找出 mock 文件内的 interface 定义
+     grep -nE 'export\s+interface\s+\w+\s*\{' src/ -r --include="*.mock.ts" --include="*.test.ts" --include="*.spec.ts" --include="*Mock*.ts"
+     # 找出 mock 文件内的对象字面量返回位置
+     grep -nE 'stores:\s*stores\.map|=>\s*\(\s*\{' src/ -r --include="*.mock.ts" --include="*.test.ts" --include="*.spec.ts" --include="*Mock*.ts"
+     ```
+     参考 `references/error-signatures.md` 中的 "TS2322 形态：mock 对象字面量字段缺失"。
    - 命中 → Read 相关 `type.ts` / `*.d.ts` 对比字段名/类型
    - 不一致 → 报告"预存问题"，**不擅自修**
    - 用户要求全面验证 → 跑 `npx vue-tsc --noEmit | grep <pattern>` 全项目扫描（必须标注范围）
@@ -125,6 +157,9 @@ ESLint 单跑 `eslint --format stylish` **不会暴露**：
 | grep import 后未使用 / 同名多源 import | 允许（主动扫描步骤） | 只读，不修改代码 |
 | grep `:create-file-api` / `:fetch-api` 等 UI 组件 props 绑定模式 | 允许（ApiEnvelope 适配嫌疑扫描步骤） | 只读，不修改代码 |
 | grep 标识符在 `src/` 全局 `export` 位置 | 允许（TS2305 路径错位嫌疑扫描步骤） | 只读，不修改代码 |
+| grep 函数参数 `Record<string, unknown\|any>` / 索引返回 unknown 类型 | 允许（类型嫌疑主动扫描步骤） | 防函数返回类型推断为 `unknown \| string`，与纯 `string` 调用方报 TS2345 |
+| grep mock / test 文件的 interface 必填字段 vs 对象字面量返回字段 | 允许（类型嫌疑主动扫描步骤） | 防 TS2322：mock 对象字面量缺必填字段 |
+| 修 import path 之前 grep export 位置 | **强制**（见第 4a 步） | 防 TS2305 形态 2 / 形态 4 路径错位 |
 
 ## Error Signatures
 
