@@ -761,3 +761,77 @@ for p in pathlib.Path('src/').rglob('*.vue'):
 **SKILL 升级点**：见 `SKILL.md` 第 6 步后新增的"Tailwind 任意值飘红主动扫描"。本形态是 2026-09-21 实际清理 StoreAuditOnboarding 4 个 .vue 148 处任意值时发现。
 
 **反思**：IDE Tailwind IntelliSense 提示在 IDE 里看起来像"warning"，但 ESLint 报不到——grep 主动扫是唯一可靠手段。颜色任意值（`bg-[#xxx]`）和数值任意值（`min-h-[48px]`）是两件事：前者需抽 `<style scoped>`，后者只需替换短写。
+
+## TS2305 形态 5：ApiEnvelope 不存在于 `@ob-web/share`
+
+**签名**：`src/pages/StoreAuditOnboarding/addOrEdit/apis/index.ts(1,15): error TS2305: Module '"@ob-web/share"' has no exported member 'ApiEnvelope'.`
+
+**根因**：`ApiEnvelope<T> = { code: number; data: T; message?: string }` 是**业务模块自己的泛型契约**，并非 share 包公开类型。share 包只提供 `request` / `renderDialog` 等基础设施。错误地写 `import type { ApiEnvelope } from "@ob-web/share"` 会导致：
+
+1. vue-tsc 报 TS2305 Module has no exported member
+2. 整条 import 链失败，导致依赖此文件的调用方连带报 TS2307（Cannot find module）
+3. 业务模块的 ApiEnvelope 定义被旁路
+
+**触发场景**：
+1. 新建业务模块 apis/ 时，复制了某个 share 包 import 的写法，但 `ApiEnvelope` 不是 share 包的
+2. 误以为 share 包提供通用 envelope 类型
+
+**判断方法**：
+
+```bash
+# 1. 看 share 包实际导出哪些类型
+grep -rn "ApiEnvelope" 'D:/OB/ob_web/packages/share/' --include="*.ts"
+
+# 2. 看其他业务模块怎么 import ApiEnvelope
+grep -rn "import.*ApiEnvelope" 'D:/OB/ob_web/packages/micro/cashier/src/' --include="*.ts"
+```
+
+**期望**：所有业务模块都从**本地 type.ts** import（`./type` 或 `@/pages/<module>/apis/type`），不是 `@ob-web/share`。
+
+**修复**：
+
+```ts
+// ❌ 错误
+import type { ApiEnvelope } from "@ob-web/share"
+
+// ✅ 正确：从业务模块本地 type.ts import
+import type { ApiEnvelope } from "../../apis/type"
+// 或
+import type { ApiEnvelope } from "./type"
+```
+
+**业务逻辑 0 改动**：纯 import 路径修正，运行时无影响。
+
+**SKILL 升级点**：见 `SKILL.md` 步骤 6 "类型嫌疑主动扫描" 新增的"同名多源 import / 跨文件 import 路径错位"扫描项。本形态是 2026-09-21 实际修复 `StoreAuditOnboarding/addOrEdit/apis/index.ts` 时发现。
+
+## TS2307：.vue 文件用相对路径 import 业务模块 utils 失败
+
+**签名**：`src/pages/StoreAuditOnboarding/addOrEdit/detail.vue(17,31): error TS2307: Cannot find module '../../utils/confirm' or its corresponding type declarations.`
+
+**根因**：vue-tsc 在 `.vue` 文件里处理 `from "../../utils/confirm"` 这类**业务模块相对路径 import** 时，存在路径解析失败的偶发问题——同一路径在 `.ts` 文件（composables / utils）能成功解析，在 `.vue` 文件里却报 TS2307。
+
+**触发场景**：
+1. `.vue` 文件在 `addOrEdit/` 子目录下，import 业务模块外层 `utils/confirm`
+2. 同一路径在 5 个其他 `.ts` 文件（utils/index.ts / composables/*.ts）都能 resolve
+
+**判断方法**：
+
+```bash
+# 看是哪些文件用这个路径
+grep -rln "from \"\.\./\.\./utils/confirm\"" 'src/pages/'
+# 如果其他 5 个文件都是 .ts，唯独 1 个 .vue 报 TS2307 → 是本形态
+```
+
+**修复**：把 `.vue` 文件的相对路径改成 `@/pages/<module>/utils/confirm` 绝对路径：
+
+```ts
+// ❌ .vue 文件报错
+import { confirmDelete } from "../../utils/confirm"
+
+// ✅ 改绝对路径
+import { confirmDelete } from "@/pages/StoreAuditOnboarding/utils/confirm"
+```
+
+**业务逻辑 0 改动**：纯 import 路径修正，运行时无影响。
+
+**SKILL 升级点**：见 `SKILL.md` 步骤 4a 路径校验 + 步骤 6 类型嫌疑主动扫描。本形态是 2026-09-21 实际修复 `StoreAuditOnboarding/addOrEdit/detail.vue` 时发现——5 个其他 `.ts` 文件同路径都 resolve 成功，仅 `.vue` 失败。**修复规则：`.vue` 文件优先用 `@/pages/...` 绝对路径，避免相对路径在 vue-tsc 解析时的偶发失败**。

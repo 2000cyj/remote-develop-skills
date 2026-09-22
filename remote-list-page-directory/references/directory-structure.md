@@ -54,3 +54,9 @@ src/pages/<业务模块>/
 5. **共用放外层，独立放当前**：
    - 当前业务块（列表页 + 表单页）共用的 `components` / `config` / `enum` / `utils` → 放到上级**外层**目录
    - 只被当前页面（如 `addOrEdit`）独立使用的 → 放到**当前**目录里面
+6. **`utils/` 默认只能放 `index.ts`**：
+   - **例外 1**：`*.composable.ts` —— 含 vue lifecycle 钩子的纯 composable（命名 `useXxx`）
+   - **例外 2**：`validation.ts` —— 大块 DTO 校验对齐表（`FormRules` + `MAX` 常量 + factory，>100 行）
+   - **例外 3**：`*.test.ts` —— vitest 单元测试
+   - 其他工具（format / 计算 / 相关用户视图 / 事件总线非 composable 部分）一律合进 `utils/index.ts`
+   - 详细判定与反模式见 `references/file-responsibilities.md`

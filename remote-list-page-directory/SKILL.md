@@ -45,6 +45,14 @@ description: Use when 在 src/pages/ 下新建或改造页面/业务模块目录
 - `addOrEdit` **目录名固定**，但内部文件名不固定（可拆可合）。
 - **共用放外层，独立放当前**（详见 `references/04-shared-vs-private.md`）。
 - 递归嵌套 `addOrEdit` 时每层结构一致（7 项可重复）。
+- **`utils/` 默认只能放 `index.ts`**（作为 barrel 重导出）。**三个例外**可独立成文件：
+  1. `*.composable.ts` —— 含 vue lifecycle 钩子（`onBeforeUnmount` / `onMounted` / `watch` / `ref` 等）的纯 composable（如 `useCompanyViewTab`）
+  2. `validation.ts` —— 大块 DTO 校验对齐（`FormRules` + `MAX` 常量 + `requiredNotBlank` factory，总行数 >100 行才算"大块"）
+  3. `*.test.ts` —— vitest 单元测试（与 `utils/index.ts` 同目录就近放，便于 mock 与重构同步）
+
+  其他文件（format/相关用户视图/事件总线非 composable 部分/计算工具等）一律合进 `utils/index.ts`。判定细节与反模式见 `references/file-responsibilities.md`。
+- **`addOrEdit/` 顶部 header 的纯 UI 资源**（容器 class 常量、标题文案）放 `addOrEdit/config/index.ts`（与描述项 / 表单 items / 头部 actions 工厂同质）。**不建 `addOrEdit/menu/` 目录**。**触发条件**：`addOrEdit/*.vue` 出现 ≥3 行 inline 顶栏 container class 重复 + ≥2 个 .vue 复用同一标题文本。
+- **`addOrEdit/components/*.vue` 的 `rules: FormRules` 抽出** → `addOrEdit/config/index.ts` 的 `getXxxFormRules(ctx)` 工厂。**触发条件**：rules ≥7 行 + 包含自定义 validator（去重 / 异步校验 / 格式正则）或依赖组件 props。验证见 `references/02-audit-page-compliance.md` 检查 11。
 
 ## Response Shape（所有目标的输出格式）
 

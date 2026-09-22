@@ -224,7 +224,8 @@ ESLint 单跑 `eslint --format stylish` **不会暴露**：
 | grep 标识符在 `src/` 全局 `export` 位置 | 允许（TS2305 路径错位嫌疑扫描步骤） | 只读，不修改代码 |
 | grep 函数参数 `Record<string, unknown\|any>` / 索引返回 unknown 类型 | 允许（类型嫌疑主动扫描步骤） | 防函数返回类型推断为 `unknown \| string`，与纯 `string` 调用方报 TS2345 |
 | grep mock / test 文件的 interface 必填字段 vs 对象字面量返回字段 | 允许（类型嫌疑主动扫描步骤） | 防 TS2322：mock 对象字面量缺必填字段 |
-| 修 import path 之前 grep export 位置 | **强制**（见第 4a 步） | 防 TS2305 形态 2 / 形态 4 路径错位 |
+| 修 import path 之前 grep export 位置 | **强制**（见第 4a 步） | 防 TS2305 形态 2 / 形态 4 / 形态 5 路径错位 |
+| `.vue` 文件用 `@/pages/...` 绝对路径 import 业务模块 utils | **强制**（见 references/error-signatures.md "TS2307 形态"） | 避免 vue-tsc 在 `.vue` 文件处理相对路径 import 偶发失败 |
 | `npx eslint <files> --rule '{"no-unused-vars":"error",...}'` | 允许（未使用代码主动扫描步骤） | CLI 加 --rule，不改 eslint.config.js；扫死代码 + 孤儿 API |
 | grep `(const\|let\|function\|class)\s+_\w+\s*[=(:]` | 允许（未使用代码主动扫描步骤） | 查下划线前缀死代码逃生口 |
 | 加下划线前缀 / `eslint-disable-next-line` 保留死代码 | **禁止** | 错误逃生口；死代码应直接删 |

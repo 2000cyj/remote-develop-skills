@@ -12,8 +12,12 @@
 | `apis/type.ts` | 共用外层 / 独立内层 | 类型 | 对齐后端 DTO/VO：查询、保存、VO 类型；列表/详情共用 VO |
 | `config/index.ts` | 共用外层 / 独立内层 | 列表配置 | `getSearchFormItems` 搜索项工厂 + `getTableColumns` 列工厂；下拉选项由 index.vue 异步注入 |
 | `enum/index.ts` | 共用外层 / 独立内层 | 字典/枚举 | 全部 `createDictionaryEnum` 对接字典；无字典的用本地固定值兜底 |
-| `utils/index.ts` | 共用外层 / 独立内层 | 展示工具 | 状态 → el-tag 映射（`getXxxStatusTagType` 等），纯函数无副作用 |
-| `utils/confirm.ts` | 共用外层 / 独立内层 | 二次确认 | 一行转发 `@/common/utils/confirmDelete` |
+| `utils/index.ts` | 共用外层 / 独立内层 | 展示工具 | **唯一默认允许** 的 utils/ 文件；状态 → el-tag 映射（`getXxxStatusTagType` 等），纯函数无副作用；其他工具一律合进此处 |
+| **`utils/*.composable.ts`**（**例外 1**） | 共用外层 / 独立内层 | composable | 含 vue lifecycle 钩子（`onBeforeUnmount` / `onMounted` / `watch` / `ref` / 跨路由事件总线等）的**纯 composable**。命名带 `useXxx` 前缀。例：`companyEventBus.ts` 含 `useCompanyViewTab` + `emitCompanyViewTab`，**因后者含 `onBeforeUnmount` 钩子属例外 1** |
+| **`utils/validation.ts`**（**例外 2**） | 共用外层 / 独立内层 | DTO 校验对齐表 | 大块 DTO 校验对齐：`FormRules` 对象 + `MAX` 常量（如 `BANK_CARD_ACCOUNT_NUMBER_MAX`）+ `requiredNotBlank` factory 函数，**总行数 >100 行才算"大块"**。例：`bankCard/utils/validation.ts`（158 行）、`businessScope/utils/validation.ts`（95 行）。小块校验直接合进 `utils/index.ts` |
+| **`utils/*.test.ts`**（**例外 3**） | 共用外层 / 独立内层 | 单元测试 | vitest 单元测试。与 `utils/index.ts` 同目录就近放，便于 mock 与重构同步。不计 utils/ 文件数限制 |
+| **`addOrEdit/config/index.ts`**（**内层**） | `addOrEdit/config/` | 顶部 header UI 资源 + 表单配置 + 描述项 + actions 工厂 + 组件 rules 工厂 | **含顶栏 UI 资源**（`PAGE_HEADER_CLASSES` 容器 class / `DETAIL_HEADER_TITLE` 标题文案 / `FILL_SUBMIT_TEXT` 按钮文案 等）+ **actions 工厂**（`getXxxHeaderActions(ctx)`）+ 表单 items / 校验规则 / 描述项 + **组件 rules 工厂**（`getXxxFormRules(ctx)`：抽 `addOrEdit/components/*.vue` 的 `rules: FormRules`，依赖 props 传入 ctx）。**不建 `addOrEdit/menu/` 目录**。 |
+| **不推荐 `utils/confirm.ts`** | ~~共用外层 / 独立内层~~ | ~~二次确认~~ | ~~一行转发 `@/common/utils/confirmDelete`~~ —— **2026-09-21 重构后取消**：调用方直接 `import { confirmDelete } from "@/common/utils"`，去除无业务价值的一行转发中间层 |
 | `components/*.vue` | 共用外层 / 独立内层 | 局部组件 | 弹窗内容**不含 el-dialog**，配合 `renderDialog` 命令式弹窗；必须暴露 `submit(): Promise<boolean>` |
 
 > 位置判定：业务块共用 → 外层；仅当前页使用 → 当前目录内。
@@ -26,7 +30,7 @@ index.vue (列表)
   ├─ getSearchFormItems/getTableColumns ←─ config/
   ├─ 枚举/字典选项                        ←─ enum/
   ├─ el-tag 文本/颜色                    ←─ utils/
-  └─ 删除确认                            ←─ utils/confirm.ts → common/confirmDelete
+  └─ 删除确认                            ←─ `@/common/utils` confirmDelete
         │  跳转 /xxx/{insert|change|check}?id={uniqueValue}
         ▼
 addOrEdit/*.vue (表单)
@@ -43,6 +47,7 @@ addOrEdit/*.vue (表单)
 3. **弹窗无壳模式**：局部弹窗组件不包 `el-dialog`，由 `renderDialog` 包裹，契约是暴露 `submit()` —— 命令式弹窗统一写法。
 4. **列表/详情共用 VO**：一个类型两用，详情字段标 optional。
 5. **配置与视图分离**：表格列/搜索项全部工厂化，操作列走 `customAction` slot，权限由页面传 `showAction`。
+6. **`utils/` 默认只能放 `index.ts`**：例外仅 3 个（composable / 大块 validation / `.test.ts`）。判定细节见上方表格。**Ponytail rung 1 实践**：默认拒绝"为了命名清晰拆文件"，3 个例外存在是因为它们有独立的运行时语义（composable 需要被 Vue 编译器识别 + cleanup 钩子；`validation.ts` 是 DTO 对齐独立系统；`.test.ts` 是 vitest 入口约定）—— 不属于"无业务价值的拆文件"。其他一律合进 `index.ts`。
 
 ## 标准参考实现
 
