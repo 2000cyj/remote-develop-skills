@@ -1,5 +1,5 @@
 <!--
-This file is split out from remote-flowable-task-with-next/SKILL.md (§18 – §28).
+This file is split out from remote-cashier-flowable-task-with-next/SKILL.md (§18 – §28).
 It is not a standalone skill: it has no frontmatter. It is a referenced sub-doc
 loaded only when the SKILL.md description triggers plan-A / plan-B / dev-template
 / decision-conclusion concerns.

@@ -7,12 +7,12 @@
   ],
   "pi": {
     "skills": [
+      "./remote-cashier-flowable-task-with-next/SKILL.md",
       "./remote-cashier-java-standard/SKILL.md",
+      "./remote-cashier-list-page-directory/SKILL.md",
       "./remote-commit-git/SKILL.md",
       "./remote-develop-skills-repo/SKILL.md",
-      "./remote-flowable-task-with-next/SKILL.md",
       "./remote-idea-mcp-usage/SKILL.md",
-      "./remote-list-page-directory/SKILL.md",
       "./remote-longmemory-find/SKILL.md",
       "./remote-longmemory-search/SKILL.md",
       "./remote-longmemory-tour/SKILL.md",

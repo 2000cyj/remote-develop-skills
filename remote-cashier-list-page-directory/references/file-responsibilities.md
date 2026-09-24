@@ -1,6 +1,6 @@
 # 文件职责、数据流与设计要点
 
-本文件是 `remote-list-page-directory` 的底层参考——**每个文件干什么**。归属判断（共用 vs 独立）见 `references/04-shared-vs-private.md`，审查清单见 `references/02-audit-page-compliance.md`。
+本文件是 `remote-cashier-list-page-directory` 的底层参考——**每个文件干什么**。归属判断（共用 vs 独立）见 `references/04-shared-vs-private.md`，审查清单见 `references/02-audit-page-compliance.md`。
 
 ## 文件职责
 

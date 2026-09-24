@@ -1,6 +1,6 @@
 # 目录结构与放置规则
 
-本文件是 `remote-list-page-directory` 的底层参考——**目录树本身**。具体执行步骤见 SKILL.md 主入口的目标速查表：
+本文件是 `remote-cashier-list-page-directory` 的底层参考——**目录树本身**。具体执行步骤见 SKILL.md 主入口的目标速查表：
 - 建新页面 → `references/01-create-new-page.md`
 - 审查合规 → `references/02-audit-page-compliance.md`
 - 重构 → `references/03-refactor-page.md`

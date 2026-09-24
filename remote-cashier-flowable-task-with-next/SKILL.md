@@ -1,5 +1,5 @@
 ---
-name: remote-flowable-task-with-next
+name: remote-cashier-flowable-task-with-next
 description: Use when 通过 BiFlowableClient.completeTaskWithNext 完成 Flowable 待办、查询下一节点信息、处理审批结果与幂等、调整或排查 completeTaskWithNext 调用链。
 ---
 

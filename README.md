@@ -24,14 +24,14 @@ BI/OBO 团队远程开发技能集合，每个 skill 一个目录、独立的 `S
 
 | Skill | 范围 |
 |-------|------|
-| `$remote-list-page-directory` | `src/pages/` 下页面/业务模块目录结构（7 项固定目录 + oboweb 触发） |
+| `$remote-cashier-list-page-directory` | `src/pages/` 下页面/业务模块目录结构（7 项固定目录 + oboweb 触发） |
 | `$remote-ts-es-check` | 前端任务内 ESLint / vue-tsc 范围检查与常见 TS 形态修复 |
 
 ### 工作流
 
 | Skill | 范围 |
 |-------|------|
-| `$remote-flowable-task-with-next` | `BiFlowableClient.completeTaskWithNext` 调用链、幂等、下一节点信息 |
+| `$remote-cashier-flowable-task-with-next` | `BiFlowableClient.completeTaskWithNext` 调用链、幂等、下一节点信息 |
 | `$remote-commit-git` | conventional commits 拆批提交 + 多仓库推送 |
 
 ### 工具链
