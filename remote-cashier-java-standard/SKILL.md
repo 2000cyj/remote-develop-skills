@@ -1,6 +1,6 @@
 ---
 name: remote-cashier-java-standard
-description: Use when 在 bi-cashier-api、bi-cashier-component、bi-cashier-service 或 bi-cashier-web 中新建、修改或审查 Java 后端代码及关联 Mapper XML/SQL，包括 DTO/VO/PO、分层调用、Service 与 Component 职责、Feign 和数据访问规范；或 prompt 中出现显式触发短语「使用 oboJava 规范」「按 oboJava 规范修改」「按 oboJava 规范审查」中的任意一个、并伴随对 bi-cashier-* 模块 Java 后端代码的修改/审查/重构描述。不要用于其他 BI/OBO 模块。
+description: Use when 用户 prompt 涉及 Java 后端代码修改、审查、新建，且 (1) prompt 含 Maven 模块名 bi-cashier-api/bi-cashier-component/bi-cashier-service/bi-cashier-web 中的任一个；或 (2) prompt 含 .java/.xml/.sql 文件路径且位于 D:/OB/bi-FOB/bi-cashier-* 下；或 (3) prompt 含目录路径且该目录下能扫到 .java/.xml/.sql 文件；或 (4) 显式触发短语「使用 oboJava 规范」「按 oboJava 规范修改」「按 oboJava 规范审查」中的任一个。命中本 Skill 后必须先用 read 工具加载全文，仅保留与本次任务相关的章节作为参考。仅适用于 bi-cashier-* 模块组，不要用于 bi-file/bi-user 等其他 BI/OBO 模块。
 ---
 
 # bi-cashier 模块 Java 开发规范
@@ -208,6 +208,137 @@ String addBankCard(AddBankCardDTO req);
 
 > 历史存量代码可豁免，但新代码、改动行（包含新增 / 修改的方法、常量）必须遵守本节。
 
+### 0.1 实现类（`Impl`）`@Override` 方法禁止加方法 Javadoc（V20260916 新增）
+
+> 来源：`StoreAuditOnboardingApplicationServiceImpl` / `CompanyServiceImpl` / `StoreServiceImpl` 3 个 Impl 类重构（2026-09-16）。原文件 21 个 `@Override` 方法上写了 `/** {@inheritDoc} */` 或自带 Javadoc，属于冗余——接口已经写完整 Javadoc，Impl 重复写一遍不增加任何信息，反而带来隐患。
+
+#### 协议
+
+| 位置 | 是否加 Javadoc | 说什么 |
+|------|--------------|------|
+| 接口方法（`IXxxService.java` / `IXxxManageService.java` 内） | **必须**加 | 业务语义 + 入参/出参约束 + 异常场景（参见 §0） |
+| 实现类 `@Override` 方法（`XxxServiceImpl.java` 内） | **禁止加** | 在 `@Override` 上一行不允许出现 `/** ... */` |
+| 实现类自定义 helper 方法（`private` / `static`） | **必须加** | 业务规则、why（helper 是闭包的、只在这调用，Javadoc 看不见 Implementation 上下文说明 + 固化本类业务要求） |
+
+#### 反面案例（21 处全部已修正）
+
+```java
+// ❌ 场景 1：`{@inheritDoc}` 占位符反模式
+/**
+ * {@inheritDoc}
+ */
+@Override
+public String generateUniqueValue() {
+    String date = LocalDate.now().format(DATE_FORMATTER);
+    return UNIQUE_VALUE_PREFIX + IDUtils.getId(date, UNIQUE_VALUE_TYPE);
+}
+
+// ❌ 场景 2：`{@inheritDoc}` + 附加“实现说明”同样是违规（不是 Javadoc 多写就有信息量）
+/**
+ * {@inheritDoc}
+ *
+ * <p>实现要点：CAS 比较列 + 一次性 set 全部新字段 + 版本号自增 SQL；
+ * 没有事务注解——单条 UPDATE 不需要事务；如调用方在同一事务内调用，
+ * 由聚合层通过 {@code @Transactional(rollbackFor = Exception.class)} 包裹。</p>
+ */
+@Override
+public int casAdvanceStatus(StoreAuditOnboardingAdvanceStatusDTO req) {
+    ...
+}
+
+// ❌ 场景 4：即使声称“补充语义信息”，也走 “{@inheritDoc}” 表达习惯的就是冗余
+/**
+ * {@inheritDoc}
+ *
+ * <p>本表已有软删除字段 {@code deleted}，但调用方（仅"草稿状态"才允许删除）决定走
+ * 物理删除以彻底级联清理子表，理由见 {@code StoreAuditOnboardingManageServiceImpl#delete}。</p>
+ */
+@Override
+public int deleteByUniqueValue(String uniqueValue) {
+    ...
+}
+```
+
+#### 正面做法
+
+```java
+// ✅ 实现类 @Override 方法：裸签名，无任何方法 Javadoc
+@Override
+public String generateUniqueValue() {
+    String date = LocalDate.now().format(DATE_FORMATTER);
+    return UNIQUE_VALUE_PREFIX + IDUtils.getId(date, UNIQUE_VALUE_TYPE);
+}
+
+@Override
+public int casAdvanceStatus(StoreAuditOnboardingAdvanceStatusDTO req) {
+    ...
+}
+
+// ✅ 自定义 helper：保留 Javadoc 说明业务规则（与 @Override 方法的"裸签名"明确区分）
+/**
+ * V2.0.1：审核员通过时把已分配主体写入 onboarding_store 子表。
+ *
+ * <p>子表行已由 {@link #create(StoreAuditOnboardingCreateDTO)} /
+ * {@link #update(String, StoreAuditOnboardingUpdateDTO)} 在草稿/驳回态插入（{@code company_id} 等为 NULL）。
+ * 本方法按 rowNo 升序取出子表行，把传入的主体条目依次写入到前 N 行，
+ * 触发「已分配主体」列表列 formatter 与详情页「店铺资料」Card 渲染。</p>
+ *
+ * <p>{@code companyItems} 优先（审核员勾选队列时已携带公司名），缺失时 fallback 到
+ * {@code companyIds}（仅 id，无 name 时留空字符串）。MOCK 模式 id 非数字时用
+ * {@code String#hashCode} 取绝对值转 Long 入库；真实模式下 id 是数字字符串直接转。</p>
+ */
+private void writeAssignedCompaniesToSubTable(StoreAuditOnboardingWriteAssignedContext ctx) {
+    ...
+}
+```
+
+#### 为何不让实现类写 `@Override` 方法 Javadoc
+
+1. **冗余无增量**：接口已写完整 Javadoc（业务语义、入参约束、返回值、异常），Impl 重复写一遍不增加任何信息
+2. **维护负担**：接口改了 Javadoc，Impl 的 Javadoc 必须同步改——双倍维护成本
+3. **`{@inheritDoc}` 是反模式**：IDE 自动生成的占位符，没有任何语义价值；读者点进 Impl 看不到任何实现细节说明
+4. **隐藏"为什么"在 helper**：业务约束应该在 helper 方法里（因为 helper 是私有的、只在本类里被调用），而不是 public 接口（接口只承诺契约）
+5. **“代替”型表达习惯：**现有代码习惯上写 `{@inheritDoc}` 是为了跨 interface × implementation 在 javadoc 上"显得一致"——但实现类里读者需要的不是与 interface 一样的描述，而是这个实现版本的**额外信息**（调用顺序、与 helper 的依赖、潜在限制等）。这些信息要么放在代码逻辑本身（`// 1. xxx`阶段化注释），要么写在私有 helper 的 Javadoc 里，**不**应该贴在 public `@Override` 方法头上。
+
+#### 审查硬指标
+
+```bash
+# 1. 扫所有 Impl 文件 @Override 方法上方是否还有 /** ... */ 紧邻（违规）
+grep -rEn "@Override" bi-cashier-{component,service}/src/main/java/com/obo/bi/cashier/**/impl/*.java \
+  | while IFS=: read -r file line _; do
+      # 查看 @Override 上面两行是否为 */ 或 /**
+      if sed -n "$((line-1))p" "$file" | grep -qE "^\s*\*\*/\s*$"; then
+        echo "$file:$line @Override 上方有 */ 紧邻（违规）"
+      fi
+      if sed -n "$((line-2))p" "$file" | grep -qE "^\s*/\*\*"; then
+        echo "$file:$line @Override 上方有 /** 紧邻（违规）"
+      fi
+    done
+
+# 2. 扫 {@inheritDoc} 残留（最常见的反模式）
+grep -rn "{@inheritDoc}" bi-cashier-{component,service}/src/main/java/ --include="*.java"
+
+# 3. 自定义 helper 必须有 Javadoc（配套必查项）
+grep -nE "^    private\s+(static\s+)?[\w<>,\[\]?\s]+\s+\w+\s*\(" bi-cashier-{component,service}/src/main/java/com/obo/bi/cashier/**/impl/*.java \
+  | while IFS=: read -r file line match; do
+      # 检查上方是否紧邻 Javadoc（*/ 在 line-1 或 /** 在 line-2）
+      if ! sed -n "$((line-1))p" "$file" | grep -qE "^\s*\*\*/\s*$" && \
+         ! sed -n "$((line-2))p" "$file" | grep -qE "^\s*/\*\*"; then
+        echo "$file:$line private helper 无 Javadoc（违规）"
+      fi
+    done
+```
+
+#### 判定为违规
+
+- `@Override` 方法上方紧邻 `/** ... */`（`*/` 与 `@Override` 之间 ≤ 2 行且中间无其他代码） → 违规
+- `@Override` 方法上方出现 `{@inheritDoc}`（无论是否有附加说明） → 违规
+- private helper 方法无 Javadoc → 违规（与本规则配套）
+
+#### 例外
+
+类级别 Javadoc（类名上方）保留——类 Javadoc 描述整个类的职责，不属于"方法头注释"。
+
 ### 1. 类文件布局（自上而下）
 
 ```
@@ -364,6 +495,7 @@ public PageResult<OperatingScope> pageOperatingScope(OperatingScopePageDTO dto) 
 | 类间结构（业务/数据分离、Manager 拆分、Impl 膨胀阈值、Facade 模式）、**业务-数据归属精确规则** | `references/concerns-separation.md` |
 | 分层、**Controller 模式规范**、Service 聚合、Component、Mapper、Helper、Convert、**调用链规范** | `references/architecture-layers.md` |
 | **Interface 注释规范完整版**（方法/常量/字段变量 Javadoc、Feign Client、DTO/VO 字段） | `references/coding-quality.md`（"注释规范"章节） |
+| **实现类（Impl）`@Override` 方法不加方法 Javadoc**（V20260916 新增：接口必带 / Impl @Override 必不带 / 自定义 helper 必带） | 本文件 `§0.1` + 实战重构案例 `#19` |
 | **MP Lambda vs 手写 XML 决策、动态条件、聚合查询** | `references/mybatis-vs-xml.md` |
 | **文件附件联合写入（FileExpiryRecord + bi-file + 标签库）** | `references/file-attachment-pattern.md` |
 | **调用链 4 层逐行模板** | `references/call-chain-templates.md` |
@@ -385,6 +517,7 @@ public PageResult<OperatingScope> pageOperatingScope(OperatingScopePageDTO dto) 
 - **禁止 interface 内方法、常量、字段变量无注释**——必须按本文档"代码规范 §0 接口注释规范"逐项加 Javadoc；新增 / 改动行不允许出现无注释的方法签名或常量定义。
 - **禁止聚合 / 上下文 DTO 内嵌在 Service / Interface / Impl 中**——见 §4.4，所有 `XxxContext` / `XxxReq` 必须放 `bi-cashier-api/dto/` 作为顶级 `public class`。
 - **禁止 DTO/VO 字段 Javadoc 句末带句号、字段间无空行、类体首尾缺空行**——见 `references/code-structure.md` §6.2 / §6.3（V20260912 新增）；DTO/VO 字段 Javadoc 末尾不加 `。`，每个字段声明后空一行，类 `{` 后与 `}` 前各空一行。
+- **禁止实现类（Impl）`@Override` 方法上加方法 Javadoc**——见本文档代码规范 §0.1（V20260916 新增）；接口方法必带 Javadoc（参见 §0），但 `@Override` 方法在实现类中重复书写（含 `/** {@inheritDoc} */`、附加"实现要点"等）属于冗余维护，**禁止**加。自定义 helper 方法（private / static）不在本限制范围内——helper 必须保留 Javadoc。
 
 ## 实战重构案例（V20260907）
 
@@ -1823,3 +1956,139 @@ bankCardService.validateAccountNumberUnique(accountNumber, excludeId);
 - `references/code-review-checklist.md` — 加检查项「唯一性判重返 void + throw，不返 Boolean」「Mapper 接口不声明 `countByXxx` 单表非分页方法」
 - SKILL.md §15 警示 + §17 错例 — 本次双错例同月同任务，防「只改一处不审全局」
 
+
+### 19. 实现类 `@Override` 方法不加方法 Javadoc：3 个 StoreAuditOnboarding Impl 的 21 处违规（V20260916 新增）
+
+> 来源：`StoreAuditOnboardingApplicationServiceImpl` / `CompanyServiceImpl` / `StoreServiceImpl` 3 个 Impl 类（2026-09-16）。原文件每个 `@Override` 方法上都加了 `/** {@inheritDoc} */` 或 IDE 风格的"实现要点"型 Javadoc——**冗余**，接口已有完整 Javadoc（参见 §0），Impl 重复写一遍不增加任何信息，反而拖维护。
+
+#### 量化整改
+
+| 文件 | `@Override` 方法数 | 修正前 `@Override` 上方 Javadoc 数 | 修正后 |
+|------|---|---|---|
+| `StoreAuditOnboardingApplicationServiceImpl.java` | 7 | 7（5 处 `{@inheritDoc}` + 2 处带"实现要点/软删字段"附注）| 0 |
+| `StoreAuditOnboardingCompanyServiceImpl.java` | 5 | 5 | 0 |
+| `StoreAuditOnboardingStoreServiceImpl.java` | 9 | 9 | 0 |
+| **合计** | **21** | **21** | **0** |
+
+#### 反面案例（21 处之一）
+
+```java
+// ❌ 场景 1：裸 `{@inheritDoc}` 占位符反模式
+/**
+ * {@inheritDoc}
+ */
+@Override
+public String generateUniqueValue() {
+    String date = LocalDate.now().format(DATE_FORMATTER);
+    return UNIQUE_VALUE_PREFIX + IDUtils.getId(date, UNIQUE_VALUE_TYPE);
+}
+
+// ❌ 场景 2：{`@inheritDoc`} + 附加"实现要点"同样是违规——接口已写完整语义，Impl 重复写一遍仍为零增量
+/**
+ * {@inheritDoc}
+ *
+ * <p>实现要点：CAS 比较列 + 一次性 set 全部新字段 + 版本号自增 SQL；
+ * 没有事务注解——单条 UPDATE 不需要事务；如调用方在同一事务内调用，
+ * 由聚合层通过 {@code @Transactional(rollbackFor = Exception.class)} 包裹。</p>
+ */
+@Override
+public int casAdvanceStatus(StoreAuditOnboardingAdvanceStatusDTO req) {
+    ...
+}
+
+// ❌ 场景 3：试图补"实现理由"——理由应放私有 helper Javadoc，不应放 @Override 方法头上
+/**
+ * {@inheritDoc}
+ *
+ * <p>本表已有软删除字段 {@code deleted}，但调用方（仅"草稿状态"才允许删除）决定走
+ * 物理删除以彻底级联清理子表，理由见 {@code StoreAuditOnboardingManageServiceImpl#delete}。</p>
+ */
+@Override
+public int deleteByUniqueValue(String uniqueValue) {
+    ...
+}
+```
+
+#### 正面做法（修复后）
+
+```java
+// ✅ 实现类 @Override 方法：裸签名，无任何方法 Javadoc
+@Override
+public String generateUniqueValue() {
+    String date = LocalDate.now().format(DATE_FORMATTER);
+    return UNIQUE_VALUE_PREFIX + IDUtils.getId(date, UNIQUE_VALUE_TYPE);
+}
+
+@Override
+public int casAdvanceStatus(StoreAuditOnboardingAdvanceStatusDTO req) {
+    ...
+}
+
+@Override
+public int deleteByUniqueValue(String uniqueValue) {
+    ...
+}
+
+// ✅ 自定义 helper：保留 Javadoc 说明业务规则（与 @Override 方法的"裸签名"明确区分）
+/**
+ * V2.0.1：审核员通过时把已分配主体写入 onboarding_store 子表。
+ *
+ * <p>子表行已由 {@link #create} / {@link #update} 在草稿/驳回态插入（{@code company_id} 等为 NULL）。
+ * 本方法按 rowNo 升序取出子表行，把传入的主体条目依次写入到前 N 行。</p>
+ */
+private void writeAssignedCompaniesToSubTable(StoreAuditOnboardingWriteAssignedContext ctx) {
+    ...
+}
+```
+
+#### 判断口径（何时用哪种注释）
+
+| 位置 | 是否加 Javadoc | 说什么 |
+|------|--------------|------|
+| 接口方法（`IXxxService` / `IXxxManageService`） | **必须**加 | 业务语义 + 入参/出参 + 异常场景（参见 §0）|
+| Impl `@Override` 方法 | **禁止**加 | 裸签名即可；如需"实现理由"放私有 helper Javadoc |
+| Impl 自定义 helper（`private` / `static`） | **必须**加 | 业务规则、why、与其它 helper 的依赖、潜在限制 |
+| Impl 类级别（类名上方） | **必须**加 | 整个类的职责（与 §0 interface 类级别规则一致）|
+
+#### 为何不让 Impl 写 `@Override` 方法 Javadoc
+
+1. **冗余无增量**：接口已写完整 Javadoc（业务语义、入参约束、返回值、异常），Impl 重复写一遍不增加任何信息
+2. **维护负担**：接口改了 Javadoc，Impl 的 Javadoc 必须同步改——双倍维护成本
+3. **`{@inheritDoc}` 是反模式**：IDE 自动生成的占位符，没有任何语义价值；读者点进 Impl 看不到任何实现细节说明
+4. **隐藏"为什么"在 helper**：业务约束应该在 helper 方法里（因为 helper 是私有的、只在本类里被调用），而不是 public 接口（接口只承诺契约）
+5. **"代替"型表达习惯反模式**：现有代码习惯上写 `{@inheritDoc}` 是为了跨 interface × implementation 在 javadoc 上"显得一致"——但实现类里读者需要的不是与 interface 一样的描述，而是这个实现版本的额外信息（调用顺序、与 helper 的依赖、潜在限制等）。这些信息要么放在代码逻辑本身（`// 1. xxx` 阶段化注释，参见 §6），要么写在私有 helper 的 Javadoc 里，不应该贴在 public `@Override` 方法头上
+
+#### 审查硬指标
+
+```bash
+# 1. 扫所有 Impl 文件 @Override 方法上方是否还有 /** ... */ 紧邻（违规）
+grep -rEn "@Override" bi-cashier-{component,service}/src/main/java/com/obo/bi/cashier/**/impl/*.java \
+  | while IFS=: read -r file line _; do
+      # @Override 上一行是 */，或上上一行是 /**（无其他代码）→ 违规
+      if sed -n "$((line-1))p" "$file" | grep -qE "^\s*\*\*/\s*$"; then
+        echo "$file:$line @Override 上方有 Javadoc 结束符（违规）"
+      fi
+      if sed -n "$((line-2))p" "$file" | grep -qE "^\s*/\*\*"; then
+        echo "$file:$line @Override 上方有 Javadoc 起始符（违规）"
+      fi
+    done
+
+# 2. 扫 {@inheritDoc} 残留（最常见的反模式）
+grep -rn "{@inheritDoc}" bi-cashier-{component,service}/src/main/java/ --include="*.java"
+
+# 3. 配套必查：自定义 helper 必须有 Javadoc
+grep -nE "^    private\s+(static\s+)?[\w<>,\[\]?\s]+\s+\w+\s*\(" bi-cashier-{component,service}/src/main/java/com/obo/bi/cashier/**/impl/*.java \
+  | while IFS=: read -r file line match; do
+      if ! sed -n "$((line-1))p" "$file" | grep -qE "^\s*\*\*/\s*$" && \
+         ! sed -n "$((line-2))p" "$file" | grep -qE "^\s*/\*\*"; then
+        echo "$file:$line private helper 无 Javadoc（违规）"
+      fi
+    done
+```
+
+#### 关联规则
+
+- `SKILL.md` §0「接口（interface）注释规范」— 本案例是 §0 的配套（接口必带 Javadoc，Impl @Override 必不带 Javadoc）
+- `references/coding-quality.md` 「注释规范」章节 — Javadoc 风格的字面规则
+- `SKILL.md` §6 方法体内部规范（阶段化注释）— 实现理由的替代承载
+- `SKILL.md` 红线 — 「禁止实现类 @Override 方法上加方法 Javadoc」条目
