@@ -130,7 +130,13 @@ description: Use when 用户 prompt 涉及 Java 后端代码修改、审查、�
 10. **关键位置日志**：业务校验失败、CAS 冲突、远端 RPC 调用返回 null、字段反射写入数、子资源创建数等关键位置必须打 `log.warn` / `log.info`，输出业务键（`uniqueValue` / `nodeCode` / `taskId` / `idempotencyKey`）。Controller 不打日志（一行转发），日志责任在 Service 聚合层（详见 `references/architecture-layers.md` §15.5）。
 11. **Mapper XML** 必须与 Mapper 接口同名共存（无自定义 SQL 时也建占位 XML）。
 12. **提交前剔除未使用代码**：新增 / 修改 Service 与 Component 时，真 0 引用的接口方法、私有 helper、未引用形参、未使用 import 必须随本次改动同步删掉（接口 + 实现 + 调用方一起动）。"诊断告警"（形参恒为 null / switch 升级 / 重复代码段）**不等于死代码**，是 Feign 契约 / 业务约束 / 风格建议，**保留**（详见 `references/code-structure.md` §8.5）。
-13. **方法简化（提交前必查）**：除"未使用代码"外，新增 / 修改 Service 与 Component Service 实现类时，对私有 helper 做一轮反例扫：一判断一抛异常 → 内联调用点；一判断一返回 → 内联三元；取列表第一个 / 拼接字符串 → 删除 + 调用方内联；≥3 形参 wrapper → 封 DTO；一调用一方法 wrapper（仅调 1 次 Component Service）→ 删除 + 调用方直接调 Component Service；0 调用 dead method → 直接删。合规 helper（业务规则解析 / 反射 / 搜索工具 / 链式调用）必须保留（详见 `references/code-structure.md` §8.6）。
+13. **方法简化（提交前必查）**：除"未使用代码"外，新增 / 修改 Service 与 Component Service 实现类时，对私有 helper 做一轮反例扫。一判断一抛异常 → 内联调用点；一判断一返回 → 内联三元；取列表第一个 / 拼接字符串 → 删除 + 调用方内联；≥3 形参 wrapper → 封 DTO；一调用一方法 wrapper（仅调 1 次 Component Service）→ 删除 + 调用方直接调 Component Service；0 调用 dead method → 直接删。合规 helper（业务规则解析 / 反射 / 搜索工具 / 链式调用）必须保留（详见 `references/code-structure.md` §8.6 + §8.7 + SKILL.md §20）。**§8.7 补充 5 类反例**（StoreAuthorizationManageServiceImpl 案例）：BeanCopy 1 行 wrapper → 调用方改 `BeanCopyUtils.copy(src, XxxVO::new)`；DTO→DTO 字段 1:1 复制 → 同样改 `BeanCopyUtils.copy`；函数名撒谎的字典翻译 stub → 函数 + setXxx 调用一起删；纯 filter 1 调用方 wrapper → filter 提到 for 外、逻辑下沉；ID 生成 1 调用方 wrapper → 内联 2 行。
+
+**抽方法的黄金原则**（写之前先看这条）：
+
+- **不要为只使用一次的方法抽 helper**，除非那个方法真的特别长（≥ 30 行）或特别绕（嵌套 / 多状态机分支）
+- 抽 helper 的合法动机只有 2 个：① 同一段逻辑出现 ≥ 2 处（消除重复）② 主方法 ≥ 80 行需要拆解可读性
+- 一次性 / 顺序性强 / 不会再用 → 不要硬抽，保留主流程扁平写法（详见 `references/code-structure.md` §8 表格 + §8.7）
 
 ### 代码生成范围
 
@@ -2092,3 +2098,61 @@ grep -nE "^    private\s+(static\s+)?[\w<>,\[\]?\s]+\s+\w+\s*\(" bi-cashier-{com
 - `references/coding-quality.md` 「注释规范」章节 — Javadoc 风格的字面规则
 - `SKILL.md` §6 方法体内部规范（阶段化注释）— 实现理由的替代承载
 - `SKILL.md` 红线 — 「禁止实现类 @Override 方法上加方法 Javadoc」条目
+
+### 20. 1-调用私有 helper 反模式全集：StoreAuthorizationManageServiceImpl 案例（V20260929 新增）
+
+**黄金原则**（先于案例看这条）：
+
+> **不要为只使用一次的方法抽 helper，除非那个方法真的特别长（≥ 30 行）或特别绕。**
+>
+> 写完第一版后看到「这个 5 行只服务 1 处调用」的方法 → 第一反应应该是「能不能直接内联」而不是「这个方法叫什么名字好」。
+
+**反面案例**（店铺授权管理第一版一口气写出 5 个 1-调用私有 helper，全部是「名字像做事、身体没做事」的套壳）：
+
+| # | helper 名 | 反模式 | 调用方数 | 处置 |
+|---|-----------|--------|----------|------|
+| 1 | `toStorePageVO(Store)` | BeanCopy 套壳（3 行 `new + copy + return`） | 1 | 内联 `BeanCopyUtils.copy(store, StorePageVO::new)` 1 行 |
+| 2 | `toStorePageDTO(...)` | DTO→DTO 5 字段 1:1 setXxx 复制 | 1 | 内联 `BeanCopyUtils.copy(dto, StorePageDTO::new)` 1 行（BeanUtils.copyProperties 按属性名拷贝，target 独有字段保持 null = "不加筛选条件"） |
+| 3 | `resolvePlatformName(p)` | 函数名暗示字典翻译，实际 body 只 return 原值 | 1 | 函数 + setXxx 调用一起删，VO 字段保持 null |
+| 4 | `matchAggregateStatusFilter(row, filters)` | 纯 filter 4 行检查只服务 1 个 for 循环的 continue 判断 | 1 | filter 局部变量提到 for 外，逻辑下沉到循环体 |
+| 5 | `generateUniqueValue()` | 2 行 ID 生成只服务 1 处 setUniqueValue | 1 | 内联 2 行到 `if (isInsert)` 块 |
+
+**反面与正面对比**（节选 1 个代表）：
+
+```java
+// ❌ 反例 2：DTO→DTO 字段复制
+private StorePageDTO toStorePageDTO(StoreAuthorizationPageDTO dto) {
+    StorePageDTO r = new StorePageDTO();
+    r.setPageNum(dto.getPageNum());
+    r.setPageSize(dto.getPageSize());
+    r.setStoreCode(dto.getStoreCode());
+    r.setStoreName(dto.getStoreName());
+    if (CollUtils.isNotEmpty(dto.getPlatforms())) r.setPlatforms(dto.getPlatforms());
+    return r;
+}
+
+// ✅ 正例：BeanCopyUtils 一行解决
+StorePageDTO storeDto = BeanCopyUtils.copy(dto, StorePageDTO::new);
+// StoreMapper.xml 里 companyIds/departmentIdList 等都是 <if test="!=null and size()>0">
+// → 源 DTO 没传的字段保持 null = "不加筛选条件"，语义一致
+```
+
+**事后教训**（写第一版时不该犯的）：
+
+1. **看到 DTO 字段一一对应，就写 `setX(getX)` 复制**，没意识到 BeanUtils.copyProperties 就是干这个的
+2. **函数名 "resolve / translate / convert / map / format / to / build" 是诱饵**，写时脑子默认它在做事，实际 body 只有 `return xxx` —— 该直接断言它没做事并删
+3. **任何「只服务 1 个调用方 + 方法体 ≤ 3 行 + 无业务规则解析」的私有 helper 都是反例候选**，该内联不该留
+
+**判定信号**（**3 条全满足**才保留）：
+
+1. 内部有真业务逻辑（不是单纯 filter / map / collect / 赋值护环）
+2. 至少 2 个调用方
+3. 语义无法用 1-3 行业务代码内联表达
+
+**关联规则**：
+
+- `references/code-structure.md` §8.5「未使用代码剔除」— 0 调用 helper 处置
+- `references/code-structure.md` §8.6「方法简化」— §8.6 表格已列出一判断 / 一调用 / 取列表第一个 / wrapper / 死方法等 6 类，本案例为 §8.7 补充 5 类（BeanCopy 套壳 / DTO 字段复制 / 名字撒谎 stub / 纯 filter / ID 生成）
+- `references/code-structure.md` §8.7「2026-09 新增 5 类反例」— 完整代码示例
+- `SKILL.md` §13.6「方法简化」+ `SKILL.md` §7「禁止简单数据筛选赋值 wrapper helper」— 同一原则的早期沉淀
+- `references/code-review-checklist.md` §9「自检 quick 命令」— 新增扫 1-调用 wrapper 的 grep

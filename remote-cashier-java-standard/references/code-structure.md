@@ -237,6 +237,15 @@ if (CollUtil.isNotEmpty(list)) {
 
 提交前除 §8.5 "未使用" 外，还应专门扫一轮**方法简化**反例。新增 / 修改 Service 与 Component Service 实现类必查；三类处置：
 
+**黄金原则（先于下表看这条）**：
+
+> **不要为只使用一次的方法抽 helper，除非那个方法真的特别长（≥ 30 行）或特别绕。**
+>
+> 抽 helper 的动机只有两个：① 同一段逻辑出现 ≥ 2 处（消除重复）② 主方法 ≥ 80 行需要拆解可读性。
+> 其余情况（用一次 + body ≤ 20 行 + 无业务规则解析语义）都是「提前抽象」，抽完只剩名字、没了行数优势、可读性反而下降。
+
+**反例三类 + 处置**：
+
 **反例三类 + 处置**：
 
 | 反例类型 | 表现 | 判定方法 | 处置 |
@@ -246,6 +255,11 @@ if (CollUtil.isNotEmpty(list)) {
 | **取列表第一个 / 拼接字符串** | `firstTask(List)` / `firstTaskName(List)` 等 1-3 行"小工具" | 调用方 ≤ 2 处 + 方法体 1-3 行 | **删除 + 内联**（用 `CollectionUtils.isEmpty(x) ? null : x.get(0)`） |
 | **wrapper（≥3 形参私有 helper）** | `completeTask(op, two, task, out, comment, vars)` 这种 6 形参 RPC 拼接 helper | 形参 ≥ 3（含 RPC 字段）/ 全部字段为调用方已知 | **封 DTO** + `private xxx(Req req)` + 内部走 `SecurityContextHolder` |
 | **wrapper（一调用一方法 = 1 行）** | `private void deleteStores(String s) { storeService.deleteByApplicationUniqueValue(s); }` 单行调 Component Service | Component Service 已有同名方法 + helper 仅 1 行 | **删除 helper + 调用方直接调 Component Service** |
+| **BeanCopy 1 行 wrapper** | `private StorePageVO toStorePageVO(Store store) { StorePageVO vo = new StorePageVO(); BeanCopyUtils.copy(store, () -> vo); return vo; }` 只包了一层 copy | 调用方 1 处 + 方法体只 `new + copy + return` | **内联为 `StorePageVO vo = BeanCopyUtils.copy(store, StorePageVO::new);`** |
+| **DTO→DTO 字段 1:1 复制 wrapper** | `private StorePageDTO toStorePageDTO(StoreAuthorizationPageDTO dto) { StorePageDTO r = new StorePageDTO(); r.setPageNum(dto.getPageNum()); r.setPageSize(...); ... return r; }` 5 个 setXxx 全是同名同类型搬运 | 调用方 1 处 + 方法体全是 `r.setX(dto.getX())` + 无任何业务过滤 | **内联为 `StorePageDTO r = BeanCopyUtils.copy(dto, StorePageDTO::new);`**（BeanUtils.copyProperties 按属性名拷贝；target 独有源没有的字段保持 null = "不加筛选条件"） |
+| **函数名撒谎的字典翻译 stub** | `private String resolvePlatformName(String p) { if (isBlank(p)) return null; return p; }` 函数名暗示做字典翻译，实际啥也没做 | 调用方 1 处 + 方法体只有 null 兜底 + 原值返回 + 没有真实翻译逻辑 | **删除 helper + 删 setXxx 调用 + 字段保持 null**（前端有 `row.platformName \|\| row.platform` 兜底即可，不渲染就没影响） |
+| **纯 filter 1 调用方 wrapper** | `private boolean matchAggregateStatusFilter(row, filters) { if (isEmpty(filters)) return true; String s = row.getAggregateStatus(); return isNotBlank(s) && filters.contains(s); }` | 调用方 1 处 + 方法体只有 empty/blank/contains 三段式判断 | **内联到调用点的 `for` 循环里**（`if (CollUtils.isNotEmpty(aggregateStatuses)) { ... continue; }`） |
+| **ID 生成 1 调用方 2 行 wrapper** | `private String generateUniqueValue() { String date = LocalDate.now().format(...); return PREFIX + IDUtils.getId(date, TYPE); }` | 调用方 1 处 + 方法体只日期拼接 + IDUtils 拼接 | **内联到调用点**（2 行直接写在 `if (isInsert)` 里，变量名加注释说明"生成 SAA- 业务ID"） |
 | **死方法 0 调用** | `static boolean isOpenAuditNode(...)` 整段 0 引用 | `Grep "isOpenAuditNode\("` | **直接删** |
 
 **内联示例（"一判断一返回"）**：
@@ -336,6 +350,96 @@ onboardingFileRelService.deleteByApplicationUniqueValue(uniqueValue);
 - `completeTask` / `completeOpenTask` / `completeTaskInternal`（两个 wrapper + 一底层，3 个 6/7 形参 → 合并为 `doCompleteTask(CompleteFlowableTaskReq)` 一个 DTO 形参）
 
 本次整改共**清理 8 个反例 helper**，合并 3 个 RPC wrapper 为 1 个，所有调用方同步调整。
+
+### 8.7 2026-09 新增 5 类反例（StoreAuthorizationManageServiceImpl）
+
+**反面案例**：店铺授权管理第一版一口气写了 5 个 1-调用私有 helper，全部是「名字像做事、身体没做事」的壳子。详见下表与代码示例。
+
+**5 类反例 + 处置**：
+
+| # | 反例 | 函数名特征 | 处置 |
+|---|------|-----------|------|
+| 1 | BeanCopy 1 行 wrapper | `toXxxVO(src)` body 只 `new + copy + return` | 调用方改 `BeanCopyUtils.copy(src, XxxVO::new)` 1 行 |
+| 2 | DTO→DTO 1:1 setXxx 复制 | `toXxxDTO(src)` body 5+ 个 `r.setX(src.getX())` | 调用方改 `BeanCopyUtils.copy(src, XxxDTO::new)` 1 行 |
+| 3 | 函数名撒谎的字典翻译 stub | `resolve*` / `translate*` body 只 return 原值 + null 兜底 | 函数 + 唯一 setXxx 调用一起删，VO 字段保持 null |
+| 4 | 纯 filter 1 调用方 wrapper | `matchXxxFilter(item, filters)` body empty/blank/contains 三段式 | 内联到调用点的 `for` 循环里（filter 局部变量提到循环外） |
+| 5 | ID 生成 1 调用方 2 行 wrapper | `generateUniqueValue()` body 只日期 format + IDUtils | 内联 2 行到 `if (isInsert)` 块里 |
+
+**代码示例**（反例 → 正例）：
+
+```java
+// 反例 1：BeanCopy 1 行 wrapper
+private StorePageVO toStorePageVO(Store store) {
+    StorePageVO vo = new StorePageVO();
+    BeanCopyUtils.copy(store, () -> vo);
+    return vo;
+}
+// 正例：调用方 1 行
+StorePageVO storeVo = BeanCopyUtils.copy(store, StorePageVO::new);
+
+// 反例 2：DTO→DTO 5 字段 1:1 复制
+private StorePageDTO toStorePageDTO(StoreAuthorizationPageDTO dto) {
+    StorePageDTO r = new StorePageDTO();
+    r.setPageNum(dto.getPageNum());
+    r.setPageSize(dto.getPageSize());
+    r.setStoreCode(dto.getStoreCode());
+    r.setStoreName(dto.getStoreName());
+    if (CollUtils.isNotEmpty(dto.getPlatforms())) r.setPlatforms(dto.getPlatforms());
+    return r;
+}
+// 正例：BeanUtils.copyProperties 按属性名拷贝，target 独有源没有的字段保持 null
+// （StoreMapper.xml 里 companyIds/departmentIdList 都是 <if test="!=null and size()>0">
+//  → null = "不加筛选条件"，语义一致）
+StorePageDTO storeDto = BeanCopyUtils.copy(dto, StorePageDTO::new);
+
+// 反例 3：函数名撒谎的字典翻译 stub
+private String resolvePlatformName(String platform) {
+    if (StringUtils.isBlank(platform)) return null;
+    return platform;  // 函数名暗示翻译，实际啥也没做
+}
+// 正例：函数 + setXxx 调用一起删，platformName 字段保持 null
+// （前端 index.vue 模板里只渲染 row.platform，row.platformName || row.platform 兜底走 platform）
+
+// 反例 4：纯 filter 1 调用方 wrapper
+private boolean matchAggregateStatusFilter(row, filters) {
+    if (CollUtils.isEmpty(filters)) return true;
+    String status = row.getAggregateStatus();
+    if (StringUtils.isBlank(status)) return false;
+    return filters.contains(status);
+}
+// 正例：filter 提到 for 外，逻辑下沉到循环体
+List aggregateStatuses = dto.getAggregateStatuses();
+for (StorePageVO storeVo : storePage.getRecords()) {
+    ...
+    if (CollUtils.isNotEmpty(aggregateStatuses)) {
+        String status = row.getAggregateStatus();
+        if (StringUtils.isBlank(status) || !aggregateStatuses.contains(status)) continue;
+    }
+    rows.add(row);
+}
+
+// 反例 5：ID 生成 1 调用方 2 行 wrapper
+private String generateUniqueValue() {
+    String date = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
+    return AUTHORIZATION_UNIQUE_VALUE_PREFIX + IDUtils.getId(date, AUTHORIZATION_TYPE);
+}
+// 正例：内联 2 行到 if (isInsert) 块
+if (isInsert) {
+    record = new StoreAuthorization();
+    String date = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
+    record.setUniqueValue(AUTHORIZATION_UNIQUE_VALUE_PREFIX + IDUtils.getId(date, AUTHORIZATION_TYPE));
+}
+```
+
+**PR 自检 quick 命令**：
+
+```bash
+# 扫"名字暗示做事但 body 只有 return 原值 / 1-3 行套壳"的可疑 stub
+grep -nE "private\s+\w+\s+(resolve|translate|convert|map|format|to|build)\w+\(" \
+    bi-cashier-service/src/main/java/*/impl/*.java
+```
+
+**保留判定**（**3 条全满足**才留）：① 内部有真业务逻辑（不是单纯 filter / map / collect / 赋值护环）② 至少 2 个调用方 ③ 语义无法用 1-3 行业务代码内联表达。
 
 ---
 

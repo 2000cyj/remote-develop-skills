@@ -147,4 +147,13 @@ grep -rEn "\.getDeleted\(\)\s*==\s*1" bi-cashier-{component,service}/src/main/ja
 
 # extends 全限定 ServiceImpl 反例（必须 import 后用短名）
 grep -rEn "extends\s+com\.baomidou\.mybatisplus\.extension\.service\.impl\.ServiceImpl" bi-cashier-{component,service}/src/main/java/
+
+# 扫 1-调用私有 wrapper（名字像做事，body 只有 1-3 行套壳）— 详见 code-structure.md §8.7
+grep -nE "private\s+\w+\s+(resolve|translate|convert|map|format|to|build)\w+\(" \
+    bi-cashier-service/src/main/java/*/impl/*.java \
+    bi-cashier-component/src/main/java/*/impl/*.java | \
+    xargs -I{} sh -c 'awk "/private.+(resolve|translate|convert|map|format|to|build)/,/^    }/{print; if(/^    }$/){exit}}" $(echo {} | cut -d: -f1) | awk "NR<=6"'
+
+# 抽方法的黄金原则：不要为只使用一次的方法抽 helper，除非该方法 ≥30 行或特别绕
+# 每次写完 helper 自查：grep "helperName\(" 计数调用方数 ≤ 1 且 body ≤ 30 行 → 删除并内联
 ```
