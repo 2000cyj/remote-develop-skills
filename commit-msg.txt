@@ -1,0 +1,30 @@
+chore: package.json version 与 tag 对齐到 1.0.2 + 仓库结构重大调整
+
+重大调整:
+- README.md 删除, 由根 SKILL.md 路由文件替代 (skill 描述 + 路由表)
+- remote-longmemory-{find,search,tour} 三个 skill 整体移除 (LongMemory 工具不再在仓库内分发)
+- package.json version 1.0.1 → 1.0.2
+
+根 SKILL.md 设计:
+- 描述: Use on ANY coding task in the orca-workflow workspace, ROUTER 模式
+- 强制入口: 任何 orca-workflow workspace 任务都先读根 SKILL.md 路由表
+- 路由表按子 skill 文件位置映射任务类型
+- 不匹配路由时回退到 workspace AGENTS.md
+
+package.json 变化:
+- version: 1.0.1 → 1.0.2
+- pi.skills 列表:
+  * 新增 ./SKILL.md (根路由)
+  * 删除 remote-longmemory-find
+  * 删除 remote-longmemory-search
+  * 删除 remote-longmemory-tour
+  * 保留 remote-cashier-flowable-task-with-next
+  * 保留 remote-cashier-java-standard
+  * 保留 remote-cashier-list-page-directory
+  * 保留 remote-commit-git
+  * 保留 remote-develop-skills-repo
+  * 保留 remote-idea-mcp-usage
+  * 保留 remote-orca-agent-communication
+  * 保留 remote-orca-cli
+  * 保留 remote-ts-es-check
+  * 保留 remote-write-scope
