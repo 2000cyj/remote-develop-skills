@@ -8,7 +8,7 @@
 
 **Tech Stack:** Vue 3.5, TypeScript, Pinia, `@ob-web/share`, Spring Boot 2.7, Java, Flowable, MyBatis-Plus.
 
-**Spec:** `D:/OB/ob_web/packages/micro/cashier/docs/skills/flowable-complete-task-with-next.md`
+**Spec:** `ob_web/packages/micro/cashier/docs/skills/flowable-complete-task-with-next.md`
 
 ## Global Constraints
 
@@ -25,10 +25,10 @@
 ### Task 1: Verify the existing Flowable boundary and contracts
 
 **Files:**
-- Read: `D:/OB/bi-FOB/bi-cashier/bi-cashier-service/src/main/java/com/obo/bi/cashier/flowable/StoreChangeFlowableServiceImpl.java`
-- Read: `D:/OB/bi-FOB/bi-cashier/bi-cashier-service/src/main/java/com/obo/bi/cashier/service/impl/StoreChangeManageServiceImpl.java`
-- Read: `D:/OB/bi-FOB/bi-cashier/bi-cashier-api/src/main/java/com/obo/bi/cashier/dto/StoreChangeApproveDTO.java`
-- Read: `D:/OB/bi-FOB/bi-cashier/bi-cashier-api/src/main/java/com/obo/bi/cashier/dto/StoreChangeRejectDTO.java`
+- Read: `bi-FOB/bi-cashier/bi-cashier-service/src/main/java/com/obo/bi/cashier/flowable/StoreChangeFlowableServiceImpl.java`
+- Read: `bi-FOB/bi-cashier/bi-cashier-service/src/main/java/com/obo/bi/cashier/service/impl/StoreChangeManageServiceImpl.java`
+- Read: `bi-FOB/bi-cashier/bi-cashier-api/src/main/java/com/obo/bi/cashier/dto/StoreChangeApproveDTO.java`
+- Read: `bi-FOB/bi-cashier/bi-cashier-api/src/main/java/com/obo/bi/cashier/dto/StoreChangeRejectDTO.java`
 
 **Interfaces:**
 - Confirm `StoreChangeFlowableService.completeTask()` already delegates to `BiFlowableClient.completeTaskWithNext()`.
@@ -42,8 +42,8 @@
 ### Task 2: Add focused backend contract tests before changing behavior
 
 **Files:**
-- Create or modify: `D:/OB/bi-FOB/bi-cashier/bi-cashier-service/src/test/java/com/obo/bi/cashier/service/impl/StoreChangeFlowableContractTest.java`
-- Test: `D:/OB/bi-FOB/bi-cashier/bi-cashier-service/src/test/java/com/obo/bi/cashier/service/impl/StoreChangeFlowableContractTest.java`
+- Create or modify: `bi-FOB/bi-cashier/bi-cashier-service/src/test/java/com/obo/bi/cashier/service/impl/StoreChangeFlowableContractTest.java`
+- Test: `bi-FOB/bi-cashier/bi-cashier-service/src/test/java/com/obo/bi/cashier/service/impl/StoreChangeFlowableContractTest.java`
 
 **Interfaces:**
 - Test the source contract and DTO contract without requiring a live Flowable server.
@@ -57,9 +57,9 @@
 ### Task 3: Harden backend next-task state mapping
 
 **Files:**
-- Modify: `D:/OB/bi-FOB/bi-cashier/bi-cashier-service/src/main/java/com/obo/bi/cashier/service/impl/StoreChangeManageServiceImpl.java`
-- Modify if required: `D:/OB/bi-FOB/bi-cashier/bi-cashier-service/src/main/java/com/obo/bi/cashier/flowable/StoreChangeFlowableServiceImpl.java`
-- Modify if required: `D:/OB/bi-FOB/bi-cashier/bi-cashier-service/src/main/java/com/obo/bi/cashier/flowable/dto/CompleteTaskResultDTO.java`
+- Modify: `bi-FOB/bi-cashier/bi-cashier-service/src/main/java/com/obo/bi/cashier/service/impl/StoreChangeManageServiceImpl.java`
+- Modify if required: `bi-FOB/bi-cashier/bi-cashier-service/src/main/java/com/obo/bi/cashier/flowable/StoreChangeFlowableServiceImpl.java`
+- Modify if required: `bi-FOB/bi-cashier/bi-cashier-service/src/main/java/com/obo/bi/cashier/flowable/dto/CompleteTaskResultDTO.java`
 
 **Interfaces:**
 - Consume `CompleteTaskResultDTO` values derived from `TaskCompleteWithNextVO`.
@@ -75,10 +75,10 @@
 ### Task 4: Add stable frontend operation IDs and current-task loading
 
 **Files:**
-- Create: `D:/OB/ob_web/packages/micro/cashier/src/pages/storeAuditChange/addOrEdit/detail-flow.ts`
-- Modify: `D:/OB/ob_web/packages/micro/cashier/src/pages/storeAuditChange/addOrEdit/detail.vue`
-- Modify: `D:/OB/ob_web/packages/micro/cashier/src/pages/storeAuditChange/apis/type.ts`
-- Reuse: `D:/OB/ob_web/packages/micro/cashier/src/common/apis/flowableTasks/index.ts`
+- Create: `ob_web/packages/micro/cashier/src/pages/storeAuditChange/addOrEdit/detail-flow.ts`
+- Modify: `ob_web/packages/micro/cashier/src/pages/storeAuditChange/addOrEdit/detail.vue`
+- Modify: `ob_web/packages/micro/cashier/src/pages/storeAuditChange/apis/type.ts`
+- Reuse: `ob_web/packages/micro/cashier/src/common/apis/flowableTasks/index.ts`
 
 **Interfaces:**
 - `createOperationIdStore(createId?: () => string): { get(action: string): string; reset(action: string): void }`
@@ -96,9 +96,9 @@
 ### Task 5: Rewrite frontend approve/return callbacks around the business APIs
 
 **Files:**
-- Modify: `D:/OB/ob_web/packages/micro/cashier/src/pages/storeAuditChange/addOrEdit/detail.vue`
-- Modify: `D:/OB/ob_web/packages/micro/cashier/src/pages/storeAuditChange/apis/type.ts`
-- Modify: `D:/OB/ob_web/packages/micro/cashier/src/pages/storeAuditChange/apis/index.ts` only if the backend DTO shape changes
+- Modify: `ob_web/packages/micro/cashier/src/pages/storeAuditChange/addOrEdit/detail.vue`
+- Modify: `ob_web/packages/micro/cashier/src/pages/storeAuditChange/apis/type.ts`
+- Modify: `ob_web/packages/micro/cashier/src/pages/storeAuditChange/apis/index.ts` only if the backend DTO shape changes
 
 **Interfaces:**
 - `handleFlowableOperation(taskType: "approve" | "return", payload: { taskId: string; comment: string; targetActivityId?: string; returnToActivityId?: string })`
@@ -117,7 +117,7 @@
 
 **Files:**
 - Verify: all files changed by Tasks 2-5
-- Verify: `D:/OB/ob_web/packages/micro/cashier/docs/skills/flowable-complete-task-with-next.md`
+- Verify: `ob_web/packages/micro/cashier/docs/skills/flowable-complete-task-with-next.md`
 
 - [ ] **Step 1: Search for direct frontend calls to `/api/flowable/bpmn/tasks/complete-with-next`; there must be none for this feature.**
 - [ ] **Step 2: Search the主体变更 backend for `completeTaskWithNext`, `operation_id`, `two_level_id`, and `taskId`.**

@@ -21,11 +21,11 @@ Orca 把"定位对象"的语法分成两类：selector（一次性查询，文�
 |---|---|---|---|
 | `name:<text>` | repo、worktree、terminal 等 | `repo name:bi-cashier` | 模糊匹配 name；**有歧义时换 `id:` 或 `path:`** |
 | `id:<uuid>` | repo、worktree、terminal 等 | `worktree id:0ee28200-afe7-44d0-aa4b-98f8110fa87f` | 精确匹配，最稳 |
-| `path:<path>` | repo、worktree | `worktree path:C:/Users/20614/orca/workspaces/bi-cashier/dev-chenyanjun-one-3` | 按绝对路径 |
+| `path:<path>` | repo、worktree | `worktree path:<bi-cashier-repo-root>/dev-chenyanjun-one-3` | 按绝对路径（按本机实际 checkout 填）|
 | `branch:<branch>` | worktree | `worktree branch:dev-chenyanjun-one-3` | 按 git 分支 |
 | `active` | worktree | `worktree active` | 当前 Orca 焦点 worktree |
 | `current` | worktree、tab | `worktree current`、`tab current` | 当前会话所在 |
-| `folder:<path>` / `worktree:<id>` | worktree create 的 `--parent-worktree` | `--parent-worktree folder:D:/OB/bi-FOB/bi-cashier` | 父 worktree 选择 |
+| `folder:<path>` / `worktree:<id>` | worktree create 的 `--parent-worktree` | `--parent-worktree folder:<bi-FOB-repo-root>/bi-cashier` | 父 worktree 选择（按本机实际路径填）|
 | `issue:<id>` / `linear-issue:<id>` | worktree | `--linear-issue STA-335` | 按 Linear ticket 关联 |
 
 ## Handle 用法
@@ -55,7 +55,7 @@ orca terminal wait --terminal "$handle" --for exit --timeout-ms 60000 --json
 ## 真实字段示例（本机 2026-08-22）
 
 ```
-0ee28200-afe7-44d0-aa4b-98f8110fa87f::C:/Users/20614/orca/workspaces/bi-cashier/dev-chenyanjun-one-3  refs/heads/dev-chenyanjun-one-3  C:/Users/20614/orca/workspaces/bi-cashier/dev-chenyanjun-one-3
+0ee28200-afe7-44d0-aa4b-98f8110fa87f::<bi-cashier-repo-root>/dev-chenyanjun-one-3  refs/heads/dev-chenyanjun-one-3  <bi-cashier-repo-root>/dev-chenyanjun-one-3
 displayName: dev-chenyanjun-one-3
 parentWorktreeId: null
 childWorktreeIds: []
@@ -63,11 +63,11 @@ linkedIssue: null
 comment:
 ```
 
-`orca worktree current` 等价于 `orca worktree show --worktree active` 等价于 `orca worktree show --worktree current` 等价于 `orca worktree show --worktree path:C:/Users/20614/orca/workspaces/bi-cashier/dev-chenyanjun-one-3`——在本机四者都命中同一条。
+`orca worktree current` 等价于 `orca worktree show --worktree active` 等价于 `orca worktree show --worktree current` 等价于 `orca worktree show --worktree path:<bi-cashier-repo-root>/dev-chenyanjun-one-3`——在本机四者都命中同一条。
 
 ## 同名歧义案例
 
-- **`cashier` 双 repo**：`797c739d-05f6-4b93-a9c4-94624afa8036` → `D:/OB/ob_web/packages/micro/cashier`；`ccad9ddb-a51f-4bc5-82f6-defd4008aba9` → `D:/OB/cashier`。用 `name:cashier` 会随机命中。**必须用 `id:<uuid>` 或 `path:<path>`**。
+- **`cashier` 双 repo**：`797c739d-05f6-4b93-a9c4-94624afa8036` → `ob_web/packages/micro/cashier`；`ccad9ddb-a51f-4bc5-82f6-defd4008aba9` → 独立的 `cashier` 项目。用 `name:cashier` 会随机命中。**必须用 `id:<uuid>` 或 `path:<path>`**（路径按本机实际 checkout 填）。
 - **多 worktree 同分支**：不同 repo 下可能有同名 `dev-chenyanjun-one`；`worktree branch:dev-chenyanjun-one` 会一次返回多条。**先用 `worktree list` 看清楚，再用 `id:` 精确定位**。
 
 ## 浏览器 element ref 是一次性 handle

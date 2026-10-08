@@ -82,7 +82,7 @@
 
 Run:
 ```bash
-cd "C:/Users/20614/orca/remote-develop-skills" && ls -la
+cd "<本仓库根>" && ls -la
 ```
 
 Expected: 看到 `.claude/`、`docs-skills/`、`.git/`，没有 `README.md` 与 `docs/`。
@@ -90,13 +90,13 @@ Expected: 看到 `.claude/`、`docs-skills/`、`.git/`，没有 `README.md` 与 
 - [ ] **Step 2: 创建根 README.md 占位**
 
 ```bash
-echo "# Remote Develop Skills" > "C:/Users/20614/orca/remote-develop-skills/README.md"
+echo "# Remote Develop Skills" > "<本仓库根>/README.md"
 ```
 
 - [ ] **Step 3: 提交占位 README**
 
 ```bash
-cd "C:/Users/20614/orca/remote-develop-skills" && git add README.md && git commit -m "chore: add placeholder README before restructure"
+cd "<本仓库根>" && git add README.md && git commit -m "chore: add placeholder README before restructure"
 ```
 
 Expected: 1 file changed。
@@ -116,7 +116,7 @@ Expected: 1 file changed。
 
 Run:
 ```bash
-cd "C:/Users/20614/orca/remote-develop-skills" && mkdir -p \
+cd "<本仓库根>" && mkdir -p \
   docs/superpowers/specs \
   docs/superpowers/plans \
   docs/bug \
@@ -133,7 +133,7 @@ Expected: 无输出，全部成功。
 
 Run:
 ```bash
-ls "C:/Users/20614/orca/remote-develop-skills/docs/"
+ls "<本仓库根>/docs/"
 ```
 
 Expected: 看到 `superpowers/`、`bug/`、`变更/`、`字典/`、`权限/`、`测试文档/`、`beforeSkills/`。
@@ -141,7 +141,7 @@ Expected: 看到 `superpowers/`、`bug/`、`变更/`、`字典/`、`权限/`、`
 - [ ] **Step 3: 提交骨架**
 
 ```bash
-cd "C:/Users/20614/orca/remote-develop-skills" && git add docs/ && git commit -m "chore: scaffold docs/ layout"
+cd "<本仓库根>" && git add docs/ && git commit -m "chore: scaffold docs/ layout"
 ```
 
 ---
@@ -162,7 +162,7 @@ cd "C:/Users/20614/orca/remote-develop-skills" && git add docs/ && git commit -m
 - [ ] **Step 1: 复制并改名前 2 个 skill**
 
 ```bash
-cd "C:/Users/20614/orca/remote-develop-skills" && \
+cd "<本仓库根>" && \
   git mv docs-skills/basics-develop-skills-vue/basics-button-permission-vue remote-button-permission && \
   git mv docs-skills/basics-develop-skills-vue/basics-list-page-directory-vue remote-list-page-directory
 ```
@@ -170,7 +170,7 @@ cd "C:/Users/20614/orca/remote-develop-skills" && \
 - [ ] **Step 2: 复制后 3 个 skill**
 
 ```bash
-cd "C:/Users/20614/orca/remote-develop-skills" && \
+cd "<本仓库根>" && \
   git mv docs-skills/basics-develop-skills-vue/basics-permission-summary-vue remote-permission-summary && \
   git mv docs-skills/basics-develop-skills-vue/basics-ts-es-check-vue remote-ts-es-check && \
   git mv docs-skills/basics-develop-skills-vue/basics-claude-hooks-vue remote-claude-hooks
@@ -180,35 +180,35 @@ cd "C:/Users/20614/orca/remote-develop-skills" && \
 
 对 `remote-button-permission/SKILL.md`：
 ```bash
-cd "C:/Users/20614/orca/remote-develop-skills" && \
+cd "<本仓库根>" && \
   sed -i 's/^name: "basics-button-permission-vue"/name: "remote-button-permission"/' remote-button-permission/SKILL.md && \
   sed -i 's/^name: basics-button-permission-vue/name: remote-button-permission/' remote-button-permission/SKILL.md
 ```
 
 对 `remote-list-page-directory/SKILL.md`：
 ```bash
-cd "C:/Users/20614/orca/remote-develop-skills" && \
+cd "<本仓库根>" && \
   sed -i 's/^name: "basics-list-page-directory-vue"/name: "remote-list-page-directory"/' remote-list-page-directory/SKILL.md && \
   sed -i 's/^name: basics-list-page-directory-vue/name: remote-list-page-directory/' remote-list-page-directory/SKILL.md
 ```
 
 对 `remote-permission-summary/SKILL.md`：
 ```bash
-cd "C:/Users/20614/orca/remote-develop-skills" && \
+cd "<本仓库根>" && \
   sed -i 's/^name: "basics-permission-summary-vue"/name: "remote-permission-summary"/' remote-permission-summary/SKILL.md && \
   sed -i 's/^name: basics-permission-summary-vue/name: remote-permission-summary/' remote-permission-summary/SKILL.md
 ```
 
 对 `remote-ts-es-check/SKILL.md`：
 ```bash
-cd "C:/Users/20614/orca/remote-develop-skills" && \
+cd "<本仓库根>" && \
   sed -i 's/^name: "basics-ts-es-check-vue"/name: "remote-ts-es-check"/' remote-ts-es-check/SKILL.md && \
   sed -i 's/^name: basics-ts-es-check-vue/name: remote-ts-es-check/' remote-ts-es-check/SKILL.md
 ```
 
 对 `remote-claude-hooks/SKILL.md`：
 ```bash
-cd "C:/Users/20614/orca/remote-develop-skills" && \
+cd "<本仓库根>" && \
   sed -i 's/^name: "basics-claude-hooks-vue"/name: "remote-claude-hooks"/' remote-claude-hooks/SKILL.md && \
   sed -i 's/^name: basics-claude-hooks-vue/name: remote-claude-hooks/' remote-claude-hooks/SKILL.md
 ```
@@ -266,7 +266,7 @@ description: Use when 判断某个自动化任务该用 Skill 还是 Hook、选�
 
 Run:
 ```bash
-cd "C:/Users/20614/orca/remote-develop-skills" && \
+cd "<本仓库根>" && \
   for d in remote-button-permission remote-list-page-directory remote-permission-summary remote-ts-es-check remote-claude-hooks; do
     [ -f "$d/SKILL.md" ] && echo "OK $d" || echo "MISSING $d/SKILL.md"
   done
@@ -278,7 +278,7 @@ Expected: 全部输出 `OK <dir>`。
 
 Run:
 ```bash
-cd "C:/Users/20614/orca/remote-develop-skills" && \
+cd "<本仓库根>" && \
   for d in remote-button-permission remote-list-page-directory remote-permission-summary remote-ts-es-check remote-claude-hooks; do
     name=$(grep -E '^name:' "$d/SKILL.md" | head -1 | sed 's/name: *//;s/"//g')
     [ "$name" = "$d" ] && echo "OK $d" || echo "MISMATCH dir=$d name=$name"
@@ -291,7 +291,7 @@ Expected: 全部 `OK`。
 
 Run:
 ```bash
-cd "C:/Users/20614/orca/remote-develop-skills" && \
+cd "<本仓库根>" && \
   for d in remote-button-permission remote-list-page-directory remote-permission-summary remote-ts-es-check remote-claude-hooks; do
     grep -q "^description: Use when" "$d/SKILL.md" && echo "OK $d" || echo "BAD $d"
   done
@@ -302,7 +302,7 @@ Expected: 全部 `OK`。
 - [ ] **Step 8: 提交**
 
 ```bash
-cd "C:/Users/20614/orca/remote-develop-skills" && \
+cd "<本仓库根>" && \
   git add remote-button-permission remote-list-page-directory remote-permission-summary remote-ts-es-check remote-claude-hooks && \
   git commit -m "feat(skills): migrate basics-develop-skills-vue children to remote-* format"
 ```
@@ -323,13 +323,13 @@ cd "C:/Users/20614/orca/remote-develop-skills" && \
 
 Run:
 ```bash
-cd "C:/Users/20614/orca/remote-develop-skills" && mkdir -p remote-java-standard/references
+cd "<本仓库根>" && mkdir -p remote-java-standard/references
 ```
 
 - [ ] **Step 2: 复制 SKILL.md 并改名 name**
 
 ```bash
-cd "C:/Users/20614/orca/remote-develop-skills" && \
+cd "<本仓库根>" && \
   git mv docs-skills/skills1111/SKILL.md remote-java-standard/SKILL.md && \
   sed -i 's/^name: "bi-cashier-java-standard"/name: "remote-java-standard"/' remote-java-standard/SKILL.md && \
   sed -i 's/^name: bi-cashier-java-standard/name: remote-java-standard/' remote-java-standard/SKILL.md
@@ -338,7 +338,7 @@ cd "C:/Users/20614/orca/remote-develop-skills" && \
 - [ ] **Step 3: 复制全部 references（9 个 md）**
 
 ```bash
-cd "C:/Users/20614/orca/remote-develop-skills" && \
+cd "<本仓库根>" && \
   git mv docs-skills/skills1111/references/architecture-layers.md remote-java-standard/references/ && \
   git mv docs-skills/skills1111/references/code-structure.md remote-java-standard/references/ && \
   git mv docs-skills/skills1111/references/coding-quality.md remote-java-standard/references/ && \
@@ -354,7 +354,7 @@ cd "C:/Users/20614/orca/remote-develop-skills" && \
 
 Run:
 ```bash
-ls "C:/Users/20614/orca/remote-develop-skills/remote-java-standard/references/" | wc -l
+ls "<本仓库根>/remote-java-standard/references/" | wc -l
 ```
 
 Expected: `9`。
@@ -362,7 +362,7 @@ Expected: `9`。
 - [ ] **Step 5: 改 description 起手为 Use when**
 
 ```bash
-cd "C:/Users/20614/orca/remote-develop-skills" && \
+cd "<本仓库根>" && \
   sed -i 's|^description: "OBO BI 出纳模块 Java 开发规范.*|description: Use when 新建或审查 BI/OBO Java 后端代码、调整 DTO/VO/PO 字段、编写 Mapper SQL、分层调用违反规范、Service 聚合层与 Component 层职责混淆、跨服务 Feign 调用边界不清晰。|' remote-java-standard/SKILL.md
 ```
 
@@ -372,7 +372,7 @@ Expected: SKILL.md 第一段 frontmatter description 起手 `Use when`。
 
 Run:
 ```bash
-cd "C:/Users/20614/orca/remote-develop-skills" && \
+cd "<本仓库根>" && \
   name=$(grep -E '^name:' remote-java-standard/SKILL.md | head -1 | sed 's/name: *//;s/"//g') && \
   echo "name=$name" && \
   grep -q "^description: Use when" remote-java-standard/SKILL.md && echo "DESC OK" || echo "DESC BAD"
@@ -384,7 +384,7 @@ Expected: `name=remote-java-standard` 与 `DESC OK`。
 
 Run:
 ```bash
-wc -l "C:/Users/20614/orca/remote-develop-skills/remote-java-standard/SKILL.md"
+wc -l "<本仓库根>/remote-java-standard/SKILL.md"
 ```
 
 - 若 > 500 行：跳过此步，留待后续 Task 9 处理
@@ -393,7 +393,7 @@ wc -l "C:/Users/20614/orca/remote-develop-skills/remote-java-standard/SKILL.md"
 - [ ] **Step 8: 提交**
 
 ```bash
-cd "C:/Users/20614/orca/remote-develop-skills" && \
+cd "<本仓库根>" && \
   git add remote-java-standard && \
   git commit -m "feat(skills): migrate java-standard to remote-* format"
 ```
@@ -413,8 +413,8 @@ cd "C:/Users/20614/orca/remote-develop-skills" && \
 - [ ] **Step 1: 对比两份内容**
 
 ```bash
-diff "C:/Users/20614/orca/remote-develop-skills/docs-skills/skills1111/cashier-list-page-directory-skill.md" \
-     "C:/Users/20614/orca/remote-develop-skills/remote-list-page-directory/references/directory-structure.md" | head -50
+diff "<本仓库根>/docs-skills/skills1111/cashier-list-page-directory-skill.md" \
+     "<本仓库根>/remote-list-page-directory/references/directory-structure.md" | head -50
 ```
 
 Expected: 看到差异行；多数情况下两者高度重叠。
@@ -431,7 +431,7 @@ Expected: 看到差异行；多数情况下两者高度重叠。
 - [ ] **Step 3: 归档 cashier-list-page-directory-skill.md 到 docs/beforeSkills**
 
 ```bash
-cd "C:/Users/20614/orca/remote-develop-skills" && \
+cd "<本仓库根>" && \
   git mv docs-skills/skills1111/cashier-list-page-directory-skill.md docs/beforeSkills/cashier-list-page-directory-skill.md
 ```
 
@@ -445,7 +445,7 @@ cd "C:/Users/20614/orca/remote-develop-skills" && \
 - [ ] **Step 5: 提交**
 
 ```bash
-cd "C:/Users/20614/orca/remote-develop-skills" && \
+cd "<本仓库根>" && \
   git add remote-list-page-directory docs/beforeSkills/cashier-list-page-directory-skill.md && \
   git commit -m "chore(skills): merge duplicate list-page content, archive original"
 ```
@@ -465,13 +465,13 @@ cd "C:/Users/20614/orca/remote-develop-skills" && \
 - [ ] **Step 1: 创建目录**
 
 ```bash
-cd "C:/Users/20614/orca/remote-develop-skills" && mkdir -p remote-flowable-task-with-next/references
+cd "<本仓库根>" && mkdir -p remote-flowable-task-with-next/references
 ```
 
 - [ ] **Step 2: 移动并改名**
 
 ```bash
-cd "C:/Users/20614/orca/remote-develop-skills" && \
+cd "<本仓库根>" && \
   git mv docs-skills/skills1111/flowable-complete-task-with-next.md remote-flowable-task-with-next/SKILL.md
 ```
 
@@ -491,7 +491,7 @@ description: Use when 通过 BiFlowableClient.completeTaskWithNext 完成 Flowab
 
 Run:
 ```bash
-wc -l "C:/Users/20614/orca/remote-develop-skills/remote-flowable-task-with-next/SKILL.md"
+wc -l "<本仓库根>/remote-flowable-task-with-next/SKILL.md"
 ```
 
 - 若 ≤ 500 行：跳过
@@ -516,7 +516,7 @@ wc -l "C:/Users/20614/orca/remote-develop-skills/remote-flowable-task-with-next/
 
 Run:
 ```bash
-cd "C:/Users/20614/orca/remote-develop-skills" && \
+cd "<本仓库根>" && \
   wc -l remote-flowable-task-with-next/SKILL.md && \
   grep -q "^name: remote-flowable-task-with-next" remote-flowable-task-with-next/SKILL.md && \
   grep -q "^description: Use when" remote-flowable-task-with-next/SKILL.md && \
@@ -528,7 +528,7 @@ Expected: `ALL OK`，且 `SKILL.md` 行数 ≤ 500。
 - [ ] **Step 6: 提交**
 
 ```bash
-cd "C:/Users/20614/orca/remote-develop-skills" && \
+cd "<本仓库根>" && \
   git add remote-flowable-task-with-next && \
   git commit -m "feat(skills): rebuild flowable-task-with-next as standard skill"
 ```
@@ -543,13 +543,13 @@ cd "C:/Users/20614/orca/remote-develop-skills" && \
 - [ ] **Step 1: 创建目录**
 
 ```bash
-cd "C:/Users/20614/orca/remote-develop-skills" && mkdir -p remote-idea-mcp-usage
+cd "<本仓库根>" && mkdir -p remote-idea-mcp-usage
 ```
 
 - [ ] **Step 2: 移动并改名**
 
 ```bash
-cd "C:/Users/20614/orca/remote-develop-skills" && \
+cd "<本仓库根>" && \
   git mv docs-skills/skills1111/idea-mcp-usage-scope.md remote-idea-mcp-usage/SKILL.md
 ```
 
@@ -568,7 +568,7 @@ description: Use when 通过 JetBrains IDEA MCP 读取代码、构建项目、�
 
 Run:
 ```bash
-cd "C:/Users/20614/orca/remote-develop-skills" && \
+cd "<本仓库根>" && \
   wc -l remote-idea-mcp-usage/SKILL.md && \
   grep -q "^name: remote-idea-mcp-usage" remote-idea-mcp-usage/SKILL.md && \
   grep -q "^description: Use when" remote-idea-mcp-usage/SKILL.md && \
@@ -580,7 +580,7 @@ Expected: `ALL OK`，行数 ≤ 500。
 - [ ] **Step 5: 提交**
 
 ```bash
-cd "C:/Users/20614/orca/remote-develop-skills" && \
+cd "<本仓库根>" && \
   git add remote-idea-mcp-usage && \
   git commit -m "feat(skills): rebuild idea-mcp-usage as standard skill"
 ```
@@ -596,7 +596,7 @@ cd "C:/Users/20614/orca/remote-develop-skills" && \
 - [ ] **Step 1: 迁移 docs/bug/**
 
 ```bash
-cd "C:/Users/20614/orca/remote-develop-skills" && \
+cd "<本仓库根>" && \
   ls docs-skills/docs/bug/ && \
   cp -r docs-skills/docs/bug/* docs/bug/ && \
   rm -rf docs-skills/docs/bug
@@ -605,7 +605,7 @@ cd "C:/Users/20614/orca/remote-develop-skills" && \
 - [ ] **Step 2: 迁移 docs/变更/**
 
 ```bash
-cd "C:/Users/20614/orca/remote-develop-skills" && \
+cd "<本仓库根>" && \
   ls docs-skills/docs/变更/ && \
   cp -r docs-skills/docs/变更/* docs/变更/ && \
   rm -rf docs-skills/docs/变更
@@ -614,7 +614,7 @@ cd "C:/Users/20614/orca/remote-develop-skills" && \
 - [ ] **Step 3: 迁移 docs/字典/**
 
 ```bash
-cd "C:/Users/20614/orca/remote-develop-skills" && \
+cd "<本仓库根>" && \
   ls docs-skills/docs/字典/ && \
   cp -r docs-skills/docs/字典/* docs/字典/ && \
   rm -rf docs-skills/docs/字典
@@ -623,7 +623,7 @@ cd "C:/Users/20614/orca/remote-develop-skills" && \
 - [ ] **Step 4: 迁移 docs/权限/**
 
 ```bash
-cd "C:/Users/20614/orca/remote-develop-skills" && \
+cd "<本仓库根>" && \
   ls docs-skills/docs/权限/ && \
   cp -r docs-skills/docs/权限/* docs/权限/ && \
   rm -rf docs-skills/docs/权限
@@ -632,7 +632,7 @@ cd "C:/Users/20614/orca/remote-develop-skills" && \
 - [ ] **Step 5: 迁移 docs/测试文档/**
 
 ```bash
-cd "C:/Users/20614/orca/remote-develop-skills" && \
+cd "<本仓库根>" && \
   ls docs-skills/docs/测试文档/ && \
   cp -r docs-skills/docs/测试文档/* docs/测试文档/ && \
   rm -rf docs-skills/docs/测试文档
@@ -641,7 +641,7 @@ cd "C:/Users/20614/orca/remote-develop-skills" && \
 - [ ] **Step 6: 迁移 docs/beforeSkills/**
 
 ```bash
-cd "C:/Users/20614/orca/remote-develop-skills" && \
+cd "<本仓库根>" && \
   ls docs-skills/docs/beforeSkills/ && \
   cp -r docs-skills/docs/beforeSkills/* docs/beforeSkills/ && \
   rm -rf docs-skills/docs/beforeSkills
@@ -650,7 +650,7 @@ cd "C:/Users/20614/orca/remote-develop-skills" && \
 - [ ] **Step 7: 迁移 basics-develop-skills-vue/README.md**
 
 ```bash
-cd "C:/Users/20614/orca/remote-develop-skills" && \
+cd "<本仓库根>" && \
   mkdir -p docs/beforeSkills/basics-develop-skills-vue && \
   git mv docs-skills/basics-develop-skills-vue/README.md docs/beforeSkills/basics-develop-skills-vue/README.md
 ```
@@ -659,7 +659,7 @@ cd "C:/Users/20614/orca/remote-develop-skills" && \
 
 Run:
 ```bash
-cd "C:/Users/20614/orca/remote-develop-skills" && \
+cd "<本仓库根>" && \
   for d in bug 变更 字典 权限 测试文档 beforeSkills; do
     count=$(find "docs/$d" -type f 2>/dev/null | wc -l)
     echo "$d: $count files"
@@ -671,7 +671,7 @@ Expected: 每个目录至少 1 个文件（验证非空）。
 - [ ] **Step 9: 提交**
 
 ```bash
-cd "C:/Users/20614/orca/remote-develop-skills" && \
+cd "<本仓库根>" && \
   git add docs/ && \
   git commit -m "chore(docs): migrate all subdirs out of docs-skills/"
 ```
@@ -691,7 +691,7 @@ cd "C:/Users/20614/orca/remote-develop-skills" && \
 - [ ] **Step 1: 删除 skills2222/（1111 的副本）**
 
 ```bash
-cd "C:/Users/20614/orca/remote-develop-skills" && \
+cd "<本仓库根>" && \
   git rm -r docs-skills/skills2222
 ```
 
@@ -699,7 +699,7 @@ cd "C:/Users/20614/orca/remote-develop-skills" && \
 
 Run:
 ```bash
-ls "C:/Users/20614/orca/remote-develop-skills/docs-skills/basics-develop-skills-vue/" 2>&1
+ls "<本仓库根>/docs-skills/basics-develop-skills-vue/" 2>&1
 ```
 
 Expected: `No such file or directory` 或空列表（README 已在 Task 8 迁走，5 个 skill 子目录已在 Task 3 迁走）。
@@ -707,14 +707,14 @@ Expected: `No such file or directory` 或空列表（README 已在 Task 8 迁走
 - [ ] **Step 3: 删除空 basics-develop-skills-vue/**
 
 ```bash
-cd "C:/Users/20614/orca/remote-develop-skills" && \
+cd "<本仓库根>" && \
   git rm -r docs-skills/basics-develop-skills-vue 2>/dev/null || true
 ```
 
 - [ ] **Step 4: 删除 7z 压缩包**
 
 ```bash
-cd "C:/Users/20614/orca/remote-develop-skills" && \
+cd "<本仓库根>" && \
   git rm docs-skills/docs/basics-develop-skills-vue.7z 2>/dev/null || true
 ```
 
@@ -722,7 +722,7 @@ cd "C:/Users/20614/orca/remote-develop-skills" && \
 
 Run:
 ```bash
-find "C:/Users/20614/orca/remote-develop-skills/docs-skills" -type f 2>&1
+find "<本仓库根>/docs-skills" -type f 2>&1
 ```
 
 Expected: 只看到 `docs-skills/skills1111/references/` 已迁完（应为空）、`docs-skills/skills1111/` 仅含可能残留的文件；不再有任何内容文件。
@@ -730,7 +730,7 @@ Expected: 只看到 `docs-skills/skills1111/references/` 已迁完（应为空�
 - [ ] **Step 6: 删除空 docs-skills/**
 
 ```bash
-cd "C:/Users/20614/orca/remote-develop-skills" && \
+cd "<本仓库根>" && \
   git rm -r docs-skills 2>/dev/null || true
 ```
 
@@ -738,7 +738,7 @@ cd "C:/Users/20614/orca/remote-develop-skills" && \
 
 Run:
 ```bash
-cd "C:/Users/20614/orca/remote-develop-skills" && ls -d remote-*/
+cd "<本仓库根>" && ls -d remote-*/
 ```
 
 Expected: 8 个目录：
@@ -754,7 +754,7 @@ Expected: 8 个目录：
 - [ ] **Step 8: 提交删除**
 
 ```bash
-cd "C:/Users/20614/orca/remote-develop-skills" && \
+cd "<本仓库根>" && \
   git add -A && \
   git commit -m "chore: remove docs-skills/ after migration complete"
 ```
@@ -841,7 +841,7 @@ done
 - [ ] **Step 2: 提交 README**
 
 ```bash
-cd "C:/Users/20614/orca/remote-develop-skills" && \
+cd "<本仓库根>" && \
   git add README.md && \
   git commit -m "docs: write README with skill index table"
 ```
@@ -857,7 +857,7 @@ cd "C:/Users/20614/orca/remote-develop-skills" && \
 
 Run:
 ```bash
-cd "C:/Users/20614/orca/remote-develop-skills" && \
+cd "<本仓库根>" && \
   for d in remote-*/; do
     case "$d" in remote-cashier-*) echo "RESIDUAL cashier $d"; continue;; esac
     [ -f "$d/SKILL.md" ] || { echo "MISSING $d/SKILL.md"; continue; }
@@ -883,7 +883,7 @@ Expected:
 
 Run:
 ```bash
-cd "C:/Users/20614/orca/remote-develop-skills" && \
+cd "<本仓库根>" && \
   for d in remote-*/; do
     lines=$(wc -l < "$d/SKILL.md")
     [ "$lines" -le 500 ] && echo "OK $d ($lines lines)" || echo "TOO LONG $d ($lines lines)"
@@ -899,7 +899,7 @@ Expected:
 
 Run:
 ```bash
-[ ! -d "C:/Users/20614/orca/remote-develop-skills/docs-skills" ] && echo "OK docs-skills gone" || echo "FAIL docs-skills still exists"
+[ ! -d "<本仓库根>/docs-skills" ] && echo "OK docs-skills gone" || echo "FAIL docs-skills still exists"
 ```
 
 Expected: `OK docs-skills gone`。
@@ -908,7 +908,7 @@ Expected: `OK docs-skills gone`。
 
 Run:
 ```bash
-cd "C:/Users/20614/orca/remote-develop-skills" && \
+cd "<本仓库根>" && \
   for d in superpowers/specs superpowers/plans bug 变更 字典 权限 测试文档 beforeSkills; do
     count=$(find "docs/$d" -type f 2>/dev/null | wc -l)
     echo "$d: $count files"
@@ -928,7 +928,7 @@ Expected: 每个目录至少 1 个文件。
 - [ ] **Step 6: 最终提交（如有调整）**
 
 ```bash
-cd "C:/Users/20614/orca/remote-develop-skills" && \
+cd "<本仓库根>" && \
   git add -A && \
   git commit -m "chore: final validation pass" || echo "No changes to commit"
 ```
@@ -943,7 +943,7 @@ cd "C:/Users/20614/orca/remote-develop-skills" && \
 
 - [ ] **Step 1: 在 cc-switch 配置仓库根**
 
-在 cc-switch 中添加本仓库根 `C:/Users/20614/orca/remote-develop-skills` 为扫描入口。
+在 cc-switch 中添加本仓库根 `<本仓库根>` 为扫描入口。
 
 - [ ] **Step 2: 触发扫描**
 

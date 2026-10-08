@@ -90,7 +90,7 @@ For grounding, keep `:form-items="formItems"` and `:rules="rules"` unchanged.
 
 - [ ] **Step 3: Run a focused type/build check for the four edited files**
 
-Run from `D:/OB/ob_web/packages/micro/cashier`:
+Run from `ob_web/packages/micro/cashier`:
 
 ```bash
 pnpm exec eslint src/pages/storeAuditAbnormal/addOrEdit/index.vue src/pages/storeAuditChange/addOrEdit/index.vue src/pages/storeAuditGrounding/addOrEdit/index.vue src/pages/storeAuditUndercarriage/addOrEdit/index.vue

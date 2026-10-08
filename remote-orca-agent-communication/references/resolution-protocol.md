@@ -5,9 +5,9 @@
 ```bash
 node <skill-dir>/scripts/resolve-agent-terminal.mjs \
   --handle term_old \
-  --pty-id 'repo-id::C:/project@@agent' \
+  --pty-id 'repo-id::<repo-root>@@agent' \
   --incarnation-id old-incarnation \
-  --worktree-id 'repo-id::C:/project'
+  --worktree-id 'repo-id::<repo-root>'
 ```
 
 脚本始终向 stdout 输出 JSON，且不发送任何终端输入。
@@ -22,7 +22,7 @@ node <skill-dir>/scripts/resolve-agent-terminal.mjs \
   "recovered": true,
   "terminal": {
     "handle": "term_new",
-    "ptyId": "repo-id::C:/project@@agent",
+    "ptyId": "repo-id::<repo-root>@@agent",
     "connected": true,
     "writable": true,
     "orphaned": false

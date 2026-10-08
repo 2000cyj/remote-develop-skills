@@ -31,9 +31,9 @@ const SHARE_DIST = resolve(ROOT, "packages/share/dist")            // ← 多了
 
 **Node 复现**（在 cashier 目录运行）：
 ```
-SHARE_DIST (current code) = D:\OB\ob_web\packages\micro\cashier\packages\share\dist
+SHARE_DIST (current code) = ob_web\packages\micro\cashier\packages\share\dist
 EXISTS? false
-correct = D:\OB\ob_web\packages\share\dist
+correct = ob_web\packages\share\dist
 CORRECT EXISTS? true
 ```
 
@@ -268,7 +268,7 @@ defineExpose({ refresh: () => query(true) })
 
 - `src/router/index.ts`：`dynamicRoutes` 数组清空（移除 `/fileExpiration` / `/fileExpiration/rules`）→ 合理：qiankun 子应用走 microMenu 动态路由（参见 `src/main.ts` 的 `transformMicroRoutes`），静态 dynamicRoutes 本来就不该写死两份。本次删除无回归风险。`resetRouter` 的 `meta.roles?.length` 过滤条件保留无影响。`createMemoryHistory("/")` 等 qiankun 模式行为无变化。
 - `src/common/constants/dictionary.ts`：新增枚举值 `CASHIER_GUARANTEE_THRESHOLD` 命名规范、值格式（`CASHIER_*` 大写下划线）与其他项一致，注释语义清晰。
-- `scripts/inject-importmap-plugin.mjs`：`SHARE_MANIFEST_PATH` 路径正确（实测指向 `D:\OB\ob_web\packages\share\dist\manifest.json`，存在）；`<head>` 注入位置正确（importmap 在 head 第一个子节点，必然先于所有 module script）。`enforce: "post"` 保证在 manifest 生成后再注入。
+- `scripts/inject-importmap-plugin.mjs`：`SHARE_MANIFEST_PATH` 路径正确（实测指向 `ob_web\packages\share\dist\manifest.json`，存在）；`<head>` 注入位置正确（importmap 在 head 第一个子节点，必然先于所有 module script）。`enforce: "post"` 保证在 manifest 生成后再注入。
 - `scripts/share-dev-server.mjs` 除 BUG-1 外的部分：`handleShareReq` 的路径遍历防护（`replace(/^(\.\.[/\\])+/, "")`）OK，能挡住 `/share/../foo`、`/share/foo/../../bar` 这类 URL。`getContentType` / `getCacheControl` / `configureServer` & `configurePreviewServer` 的 middleware unshift 顺序符合 Vite 插件约定。`no-store` 注释解释了为何 dev 不能用 immutable 缓存。
 - `scripts/gen-types.mjs`：`silentLogger` 的 `hasErrorLogged: () => false`（方法）和 `hasWarned: false`（属性）符合 Vite Logger 接口契约；`createServer({ middlewareMode: true })` 不会启动 HTTP server，`server.close()` 释放资源；12s 超时上限避免 hang。
 - `RemoteSearchSelect` 整体设计：分页式远程搜索 / 防抖 / requestSeq 防乱序 / 失败回滚 pageNum / `popper-class="remote-select-popper"` 限定非 scoped 样式作用域 / `:empty` 折叠无状态 footer — 这些点都写得很扎实。
@@ -283,12 +283,12 @@ defineExpose({ refresh: () => query(true) })
 
 ```bash
 # 验证 BUG-1
-cd D:\OB\ob_web\packages\micro\cashier
+cd ob_web\packages\micro\cashier
 node --input-type=module -e "
 import { fileURLToPath } from 'node:url'
 import { resolve } from 'node:path'
 import { existsSync } from 'node:fs'
-const __dirname = fileURLToPath(new URL('.', 'file:///D:/OB/ob_web/packages/micro/cashier/scripts/share-dev-server.mjs'))
+const __dirname = fileURLToPath(new URL('.', 'file:///<ob_web-repo-root>/packages/micro/cashier/scripts/share-dev-server.mjs'))
 const SHARE_DIST = resolve(resolve(__dirname, '..'), 'packages/share/dist')
 console.log('SHARE_DIST =', SHARE_DIST, 'EXISTS?', existsSync(SHARE_DIST))
 "

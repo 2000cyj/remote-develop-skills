@@ -35,7 +35,8 @@
 - [ ] 在仓库根跑：
 
 ```bash
-cd /c/Users/20614/orca/remote-develop-skills
+# 切到本仓库根（路径按本机实际 checkout 填）
+cd <本仓库根>
 for d in remote-*/; do
   [ -f "$d/SKILL.md" ] || { echo "MISSING $d/SKILL.md"; continue; }
   name=$(grep -E "^name:" "$d/SKILL.md" | head -1 | sed 's/name: *//;s/"//g')

@@ -1,9 +1,9 @@
 # 前后端代码 Bug 快速分析总览
 
 **日期**：2026-08-05  
-**范围**：`packages/micro/cashier` 前端工作区 + `D:\OB\bi-FOB\bi-cashier` 后端工作区  
+**范围**：`packages/micro/cashier` 前端工作区 + `bi-FOB\bi-cashier` 后端工作区  
 **性质**：只做检查，不修改业务代码  
-**报告目录**：`D:\OB\ob_web\packages\micro\cashier\docs\bug\2026-08-05-pre-commit-check\`
+**报告目录**：`ob_web\packages\micro\cashier\docs\bug\2026-08-05-pre-commit-check\`
 
 ---
 

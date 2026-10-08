@@ -1,6 +1,6 @@
 ---
 name: remote-cashier-java-standard
-description: Use when 用户 prompt 涉及 Java 后端代码修改、审查、新建，且 (1) prompt 含 Maven 模块名 bi-cashier-api/bi-cashier-component/bi-cashier-service/bi-cashier-web 中的任一个；或 (2) prompt 含 .java/.xml/.sql 文件路径且位于 D:/OB/bi-FOB/bi-cashier-* 下；或 (3) prompt 含目录路径且该目录下能扫到 .java/.xml/.sql 文件；或 (4) 显式触发短语「使用 oboJava 规范」「按 oboJava 规范修改」「按 oboJava 规范审查」中的任一个。命中本 Skill 后必须先用 read 工具加载全文，仅保留与本次任务相关的章节作为参考。仅适用于 bi-cashier-* 模块组，不要用于 bi-file/bi-user 等其他 BI/OBO 模块。
+description: Use when 用户 prompt 涉及 Java 后端代码修改、审查、新建，且 (1) prompt 含 Maven 模块名 bi-cashier-api/bi-cashier-component/bi-cashier-service/bi-cashier-web 中的任一个；或 (2) prompt 含 .java/.xml/.sql 文件路径且位于 bi-cashier-* Maven 模块目录下；或 (3) prompt 含目录路径且该目录下能扫到 .java/.xml/.sql 文件；或 (4) 显式触发短语「使用 oboJava 规范」「按 oboJava 规范修改」「按 oboJava 规范审查」中的任一个。命中本 Skill 后必须先用 read 工具加载全文，仅保留与本次任务相关的章节作为参考。仅适用于 bi-cashier-* 模块组，不要用于 bi-file/bi-user 等其他 BI/OBO 模块。
 ---
 
 # bi-cashier 模块 Java 开发规范

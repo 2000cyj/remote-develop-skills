@@ -69,7 +69,7 @@ spec:
     terminal:
       # 经理终端的启动目录。
       # 若本字段未设置，经理从未来启动器运行时的 process.cwd() 启动。
-      startDirectory: D:/OB/ob_web/packages/micro/cashier
+      startDirectory: ob_web/packages/micro/cashier
       # 经理终端启动命令。必须明确配置，不从任何其他字段推导。
       # 可替换为本机实际可运行的 Agent CLI 命令及其参数。
       command: claude
@@ -86,7 +86,7 @@ spec:
       role: frontend-engineer
       terminal:
         # 显式配置：前端成员从该目录启动。
-        startDirectory: D:/OB/ob_web/packages/micro/cashier
+        startDirectory: ob_web/packages/micro/cashier
         # 显式配置：前端成员自己的启动命令，不继承经理命令。
         command: claude
 
@@ -97,7 +97,7 @@ spec:
         # 未配置 startDirectory：后端成员继承经理的最终目录。
         # 若经理也未配置，则使用启动器 process.cwd()。
         # 如需在其他目录启动，取消下面一行的注释并改成真实路径。
-        # startDirectory: D:/OB/bi-FOB/bi-cashier
+        # startDirectory: bi-FOB/bi-cashier
         # 即使目录继承，命令也必须独立配置，绝不继承经理命令。
         command: codex
 
@@ -106,7 +106,7 @@ spec:
       role: integration-engineer
       terminal:
         # 联调成员示例：从不同目录启动。
-        startDirectory: D:/OB/ob_web
+        startDirectory: ob_web
         command: claude
 
     # ---- 测试成员 -----------------------------------------------------------
@@ -138,7 +138,7 @@ spec:
       # 邮箱终端的启动目录。
       # 字段未设置时：沿用经理最终目录；经理也未设置时：使用启动器 process.cwd()。
       # 字段已设置但目录不存在 / 不可访问 / 不可启动：邮箱启动失败，经理汇报用户决策，不得静默回退。
-      startDirectory: D:/OB/ob_web/packages/micro/cashier
+      startDirectory: ob_web/packages/micro/cashier
       # 邮箱终端的启动命令。必须显式给出，不继承 manager.terminal.command。
       # 必须保证可以承载一个"只接收消息、不主动派发"的进程；具体实现交给未来启动器。
       command: claude

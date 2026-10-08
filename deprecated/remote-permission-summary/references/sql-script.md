@@ -5,8 +5,8 @@
 ```bash
 node <<'NODESCRIPT'
 const fs = require("fs");
-const PKG = "D:/OB/ob_web/micro/cashier/docs/权限/package.json"; // ← 改成目标目录的实际路径
-const OUT = "D:/OB/ob_web/micro/cashier/docs/权限/权限.sql";      // ← 改成目标目录的实际路径
+const PKG = "ob_web/micro/cashier/docs/权限/package.json"; // ← 改成目标目录的实际路径
+const OUT = "ob_web/micro/cashier/docs/权限/权限.sql";      // ← 改成目标目录的实际路径
 const data = JSON.parse(fs.readFileSync(PKG, "utf8"));
 
 function suffix(e) {

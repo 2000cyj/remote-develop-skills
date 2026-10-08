@@ -528,7 +528,7 @@ orca snapshot --page <browser-page-id> --json
 - **已登记 repo**：28 条，含 `bi-FOB/bi-{basics,basics-data,cashier,core,file,flowables,gateway,invoke,kingdee,logistics,message,monitor,openapi,pack,personnel,plan,product-factory,reorder,reorder-system,skill,sql,system}`、`ob_web` 三包（main / cashier / share）、独立 `cashier`、`remote-develop-skills` 自身（UUID `dad07f73-9067-453a-a903-e6ee42db434c`）。
 - **同名歧义**：名为 `cashier` 的有 2 个 repo（`797c739d-...` micro-app vs `ccad9ddb-...` 独立 cashier），必须用 `id:<uuid>` 或 `path:<path>` 消歧。
 - **当前 worktree**：本会话所在
-  `0ee28200-afe7-44d0-aa4b-98f8110fa87f::C:/Users/20614/orca/workspaces/bi-cashier/dev-chenyanjun-one-3`，displayName `dev-chenyanjun-one-3`，父 `bi-cashier` 的 `dev-chenyanjun-one`。
+  `0ee28200-afe7-44d0-aa4b-98f8110fa87f::<bi-cashier-repo-root>/dev-chenyanjun-one-3`，displayName `dev-chenyanjun-one-3`，父 `bi-cashier` 的 `dev-chenyanjun-one`。
 
 ## 不要做的事
 

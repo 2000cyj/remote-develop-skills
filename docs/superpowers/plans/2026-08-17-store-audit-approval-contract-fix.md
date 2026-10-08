@@ -22,8 +22,8 @@
 ### Task 1: Add task ID to onboarding detail response
 
 **Files:**
-- Modify: `D:/OB/bi-FOB/bi-cashier/bi-cashier-api/src/main/java/com/obo/bi/cashier/vo/OnboardingDetailVO.java`
-- Modify: `D:/OB/bi-FOB/bi-cashier/bi-cashier-service/src/main/java/com/obo/bi/cashier/service/impl/OnboardingManageServiceImpl.java`
+- Modify: `bi-FOB/bi-cashier/bi-cashier-api/src/main/java/com/obo/bi/cashier/vo/OnboardingDetailVO.java`
+- Modify: `bi-FOB/bi-cashier/bi-cashier-service/src/main/java/com/obo/bi/cashier/service/impl/OnboardingManageServiceImpl.java`
 
 - [ ] Add a documented `taskId` property to `OnboardingDetailVO`.
 - [ ] In `detail`, query `flowableService.listCurrentTasks(uniqueValue)`, match the authenticated username against task assignee, and set only the matching task ID.

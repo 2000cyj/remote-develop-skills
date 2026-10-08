@@ -61,7 +61,7 @@
 配置文件：
 
 ```text
-D:/OB/bi-FOB/bi-cashier/bi-cashier-web/src/main/resources/bootstrap.yml
+bi-FOB/bi-cashier/bi-cashier-web/src/main/resources/bootstrap.yml
 ```
 
 配置内容：
@@ -384,7 +384,7 @@ Flowable 审核记录已到出纳意见
 修复文件：
 
 ```text
-D:/OB/bi-FOB/bi-cashier/bi-cashier-service/src/main/java/com/obo/bi/cashier/service/impl/OffboardingManageServiceImpl.java
+bi-FOB/bi-cashier/bi-cashier-service/src/main/java/com/obo/bi/cashier/service/impl/OffboardingManageServiceImpl.java
 ```
 
 完成判断同时支持：
@@ -404,7 +404,7 @@ Flowable 结束时，后端会：
 回归测试文件：
 
 ```text
-D:/OB/bi-FOB/bi-cashier/bi-cashier-service/src/test/java/com/obo/bi/cashier/service/impl/OffboardingUpdateAndSubmitSourceContractTest.java
+bi-FOB/bi-cashier/bi-cashier-service/src/test/java/com/obo/bi/cashier/service/impl/OffboardingUpdateAndSubmitSourceContractTest.java
 ```
 
 定向测试结果：
@@ -533,7 +533,7 @@ orca tab list --json
 ### 16.1 准备环境
 
 ```powershell
-Set-Location "D:/OB/ob_web/packages/micro/cashier"
+Set-Location "ob_web/packages/micro/cashier"
 
 orca status --json
 orca tab list --json

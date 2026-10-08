@@ -79,7 +79,7 @@ flowchart TD
 
 ```text
 成员：backend-engineer（后端）
-解析后的启动目录：D:/OB/bi-FOB/bi-cashier
+解析后的启动目录：bi-FOB/bi-cashier
 状态：workspace_unavailable（路径不存在或不可访问）
 影响：接口开发、联调与相关测试任务被阻塞
 不受影响：前端分析、产品范围确认

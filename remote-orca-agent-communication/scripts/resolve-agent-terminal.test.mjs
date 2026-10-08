@@ -4,12 +4,12 @@ import { resolveAgentTerminal } from './resolve-agent-terminal-lib.mjs';
 
 const live = {
   handle: 'term_new',
-  ptyId: 'repo::/project@@agent-vue',
+  ptyId: 'repo::<repo-root>@@agent-vue',
   incarnationId: 'incarnation-new',
   tabId: 'tab-new',
   leafId: 'leaf-new',
-  worktreeId: 'repo::/project',
-  worktreePath: '/project',
+  worktreeId: 'repo::<repo-root>',
+  worktreePath: '<repo-root>',
   agentIdentity: 'pi',
   title: 'Pi - agent-vue',
   connected: true,
@@ -45,7 +45,7 @@ test('recovers a replacement handle by durable ptyId after a restart', () => {
 });
 
 test('does not choose an ambiguous tab', () => {
-  const second = { ...live, handle: 'term_second', ptyId: 'repo::/project@@agent-tests', leafId: 'leaf-second' };
+  const second = { ...live, handle: 'term_second', ptyId: 'repo::<repo-root>@@agent-tests', leafId: 'leaf-second' };
   const result = resolveAgentTerminal([live, second], { tabId: live.tabId, worktreeId: live.worktreeId });
   assert.equal(result.ok, false);
   assert.equal(result.error.code, 'ambiguous_terminal');

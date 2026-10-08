@@ -15,7 +15,7 @@ Use `references/sub-skills.md` when 需要在 8 个内置 sub-skill 中选型。
 
 1. **确认 runtime 就绪**：先 `orca status` 看 app/runtime/graph 状态；未起来就跑 `orca open`（等 runtime 可达）或 `orca serve`（无窗口启动）。远程配对走 `orca environment add <pairing-code>` 或环境变量 `ORCA_PAIRING_CODE` / `ORCA_ENVIRONMENT`。
 2. **无 runtime 也要能查**：要拿权威命令 schema，**只读**跑 `orca agent-context --json`，它"works without a running Orca app, so it is safe over SSH and in headless contexts"。
-3. **定位对象**：一次性查询用 selector（`repo name:xxx`、`worktree path:...`、`worktree active`），多次操作转 handle（`terminal <id>`、`tab <pageId>`）。注意同名的 `cashier` repo 在本机有 2 个 UUID（`D:/OB/ob_web/packages/micro/cashier` 与 `D:/OB/cashier`），必须用 `id:<uuid>` 或 `path:<path>` 消歧。
+3. **定位对象**：一次性查询用 selector（`repo name:xxx`、`worktree path:...`、`worktree active`），多次操作转 handle（`terminal <id>`、`tab <pageId>`）。注意同名的 `cashier` repo 在本机可能登记了多个（典型情况：`ob_web` 项目里的 `packages/micro/cashier` 与独立的 `cashier` 项目），必须用 `id:<uuid>` 或 `path:<path>` 消歧——按本机实际登记列表为准。
 4. **执行操作**：按任务在 18 类里挑——建/拉 worktree → `orca worktree create --name X --agent codex --prompt "..."`；在已有 worktree 内追加 agent → `orca terminal create --worktree active --command codex`；读终端输出 → `orca terminal read` 或 `orca terminal wait --for exit`；内嵌浏览器 → 先 `orca tab create`，再使用顶层 `orca goto / snapshot / click / fill / wait / screenshot`（完整参数见 `references/commands.md`）。
 5. **跨 agent 协调**：用户说"给另一个 agent"或"全部交出去" → `orca-cli` 风格的 `worktree create --agent` 或 `terminal create --command`；用户明确要"监督 / 等待 / DAG / 决策门" → `orchestration`（见 `references/sub-skills.md`）。
 6. **完事报告**：调用结束时回报「实际跑过的命令 + 验证结果 + 未验证内容」；不要把 `agent-context` / `repo list` 这类只读查询当操作报。

@@ -11,7 +11,7 @@
 
 ### Step 1（前 2 个）
 ```bash
-cd "C:/Users/20614/orca/remote-develop-skills" && \
+cd "<本仓库根>" && \
   git mv docs-skills/basics-develop-skills-vue/basics-button-permission-vue remote-button-permission && \
   git mv docs-skills/basics-develop-skills-vue/basics-list-page-directory-vue remote-list-page-directory
 ```
@@ -19,7 +19,7 @@ cd "C:/Users/20614/orca/remote-develop-skills" && \
 
 ### Step 2（后 3 个）
 ```bash
-cd "C:/Users/20614/orca/remote-develop-skills" && \
+cd "<本仓库根>" && \
   git mv docs-skills/basics-develop-skills-vue/basics-permission-summary-vue remote-permission-summary && \
   git mv docs-skills/basics-develop-skills-vue/basics-ts-es-check-vue remote-ts-es-check && \
   git mv docs-skills/basics-develop-skills-vue/basics-claude-hooks-vue remote-claude-hooks
@@ -171,7 +171,7 @@ OK remote-claude-hooks
 
 ## Step 8：commit
 ```bash
-cd "C:/Users/20614/orca/remote-develop-skills" && \
+cd "<本仓库根>" && \
   git add remote-button-permission remote-list-page-directory remote-permission-summary remote-ts-es-check remote-claude-hooks && \
   git commit -m "feat(skills): migrate basics-develop-skills-vue children to remote-* format"
 ```

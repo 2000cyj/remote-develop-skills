@@ -41,7 +41,7 @@ Off: "stop router" / "ignore remote-develop-skills".
 | 跨 agent 派发 / 通过 Orca terminal 发送消息 / 重新定位 ptyId·incarnationId·tabId·leafId·worktreeId | `remote-orca-agent-communication/SKILL.md` |
 | Conventional commits 拆批 / 多仓库 commit + 推送 | `remote-commit-git/SKILL.md` |
 | 讨论写权限 / write-allowlist / allowlist 范围 / write·edit·apply_patch·multi_edit·bash·powershell 边界 | `remote-write-scope/SKILL.md` |
-| 在本仓库 (`C:\Users\20614\orca\remote-develop-skills`) 改 / 新增 `remote-*` skill / 写 SKILL.md frontmatter / 跑自检 | `remote-develop-skills-repo/SKILL.md` |
+| 在本仓库根目录改 / 新增 `remote-*` skill / 写 SKILL.md frontmatter / 跑自检 | `remote-develop-skills-repo/SKILL.md` |
 
 ## When no row matches
 
@@ -85,7 +85,8 @@ Per-skill directory directly under the repo root, with optional:
 ### Skill validation (run before publishing)
 
 ```bash
-cd /c/Users/20614/orca/remote-develop-skills
+# 切到本仓库根目录（路径按本机实际 checkout 位置）
+cd <本仓库根>
 for d in remote-*/; do
   [ -f "$d/SKILL.md" ] || { echo "MISSING $d/SKILL.md"; continue; }
   name=$(grep -E "^name:" "$d/SKILL.md" | head -1 | sed 's/name: *//;s/"//g')

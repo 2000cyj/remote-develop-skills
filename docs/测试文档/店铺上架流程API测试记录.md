@@ -58,14 +58,14 @@ userId: 410958
 配置位置：
 
 ```text
-D:/OB/bi-FOB/bi-cashier/bi-cashier-web/src/main/resources/bootstrap.yml
-D:/OB/bi-FOB/bi-flowables/bi-flowable-web/src/main/resources/bootstrap.yml
+bi-FOB/bi-cashier/bi-cashier-web/src/main/resources/bootstrap.yml
+bi-FOB/bi-flowables/bi-flowable-web/src/main/resources/bootstrap.yml
 ```
 
 ### 3.2 测试脚本
 
 ```text
-D:/OB/ob_web/packages/micro/cashier/scripts/onboarding-flow.mjs
+ob_web/packages/micro/cashier/scripts/onboarding-flow.mjs
 ```
 
 脚本支持动作：
@@ -101,7 +101,7 @@ Get-NetTCPConnection -State Listen |
 以下命令均在目录执行：
 
 ```text
-D:/OB/ob_web/packages/micro/cashier
+ob_web/packages/micro/cashier
 ```
 
 设置本次端口变量，仅用于 PowerShell 当前窗口：
@@ -951,7 +951,7 @@ processInstanceId
 ### 20.1 准备环境
 
 ```powershell
-Set-Location "D:/OB/ob_web/packages/micro/cashier"
+Set-Location "ob_web/packages/micro/cashier"
 
 # 读取当前 bi-cashier 端口，范围来自 bi-cashier-web/bootstrap.yml
 Get-NetTCPConnection -State Listen |

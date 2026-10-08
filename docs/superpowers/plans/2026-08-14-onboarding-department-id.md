@@ -116,10 +116,10 @@ Expected: exit code 0.
 ### Task 2: Accept and authorize `departmentId` in backend create and update
 
 **Files:**
-- Modify: `D:/OB/bi-FOB/bi-cashier/bi-cashier-api/src/main/java/com/obo/bi/cashier/dto/OnboardingCreateDTO.java`
-- Modify: `D:/OB/bi-FOB/bi-cashier/bi-cashier-api/src/main/java/com/obo/bi/cashier/dto/OnboardingUpdateDTO.java`
-- Modify: `D:/OB/bi-FOB/bi-cashier/bi-cashier-service/src/main/java/com/obo/bi/cashier/service/impl/OnboardingManageServiceImpl.java:124-218,249-314`
-- Test: the existing or newly created onboarding service test source under `D:/OB/bi-FOB/bi-cashier/bi-cashier-service/src/test/java/...`
+- Modify: `bi-FOB/bi-cashier/bi-cashier-api/src/main/java/com/obo/bi/cashier/dto/OnboardingCreateDTO.java`
+- Modify: `bi-FOB/bi-cashier/bi-cashier-api/src/main/java/com/obo/bi/cashier/dto/OnboardingUpdateDTO.java`
+- Modify: `bi-FOB/bi-cashier/bi-cashier-service/src/main/java/com/obo/bi/cashier/service/impl/OnboardingManageServiceImpl.java:124-218,249-314`
+- Test: the existing or newly created onboarding service test source under `bi-FOB/bi-cashier/bi-cashier-service/src/test/java/...`
 
 **Interfaces:**
 - Consumes: `OnboardingCreateDTO.departmentId: String`, `OnboardingUpdateDTO.departmentId: String`.

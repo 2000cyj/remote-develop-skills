@@ -26,7 +26,7 @@ Result<List<TaskCompleteWithNextVO>> completeTaskWithNext(
 源码位置：
 
 ```text
-D:/OB/bi-FOB/bi-flowables/bi-flowable-api/
+bi-FOB/bi-flowables/bi-flowable-api/
 src/main/java/com/obo/bi/flowable/api/BiFlowableClient.java
 ```
 
@@ -210,7 +210,7 @@ if (next?.processEnded) {
 
 ## 12. `ob_web` 业务接口包装方式
 
-`D:/OB/ob_web` 当前没有发现直接调用 `/api/flowable/bpmn/tasks/complete-with-next` 的统一前端 API。前端主要调用各业务审批接口，由业务服务内部调用 `completeTaskWithNext`。
+`ob_web` 项目当前没有发现直接调用 `/api/flowable/bpmn/tasks/complete-with-next` 的统一前端 API。前端主要调用各业务审批接口，由业务服务内部调用 `completeTaskWithNext`。
 
 ### 12.1 财务审核
 

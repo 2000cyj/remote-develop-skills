@@ -345,7 +345,7 @@ import type { OnboardingItem } from "../apis/type"                      // type-
 | 3 | 同包 utils/index.ts | apis/type | 业务归一化层在 utils 但 detail.vue 直接从 apis 拉 |
 | **4** | **同包 apis/index.ts** | **apis/type** | **修 ESLint `import/no-duplicates` 贪心合并** |
 
-**SKILL 升级点**：见 `SKILL.md` 第 4a 步"修复 import 路径后必须做路径校验"。本形态是 2026-09-21 实际修复 `D:/OB/ob_web/packages/micro/cashier/src/pages/StoreAuditOnboarding/addOrEdit/detail.vue` 时发现，已加入 skill 强制检查点。
+**SKILL 升级点**：见 `SKILL.md` 第 4a 步"修复 import 路径后必须做路径校验"。本形态是 2026-09-21 实际修复 `ob_web/packages/micro/cashier/src/pages/StoreAuditOnboarding/addOrEdit/detail.vue` 时发现，已加入 skill 强制检查点。
 
 ## TS2345：函数返回类型推断 `unknown | string`，调用方期待纯 `string`
 
@@ -402,7 +402,7 @@ function logValue(log: Record<string, unknown>, keys: string[]): string {
 
 **业务逻辑 0 改动**：`unknown` 在运行时本就是字符串（后端只返字符串字段），仅类型契约补齐。
 
-**SKILL 升级点**：见 `SKILL.md` 第 6 步"类型嫌疑主动扫描"中"函数返回类型推断 unknown / 缺签名"扫描项。本形态是 2026-09-21 实际修复 `D:/OB/ob_web/packages/micro/cashier/src/pages/StoreAuditOnboarding/addOrEdit/detail.vue` line 837 时发现。
+**SKILL 升级点**：见 `SKILL.md` 第 6 步"类型嫌疑主动扫描"中"函数返回类型推断 unknown / 缺签名"扫描项。本形态是 2026-09-21 实际修复 `ob_web/packages/micro/cashier/src/pages/StoreAuditOnboarding/addOrEdit/detail.vue` line 837 时发现。
 
 ## TS2322：mock 数据 vs 接口契约字段缺失
 
@@ -474,7 +474,7 @@ function company(...): CompanyAssignInfo {
 | TS2551（字段不存在） | 前端访问历史遗留字段名，后端已不返 |
 | **TS2322（mock 缺字段）** | **mock / test 文件本身接口与对象字面量不一致** |
 
-**SKILL 升级点**：见 `SKILL.md` 第 6 步"类型嫌疑主动扫描"新增的"mock / test 数据 vs 接口契约不一致"扫描项。本形态是 2026-09-21 实际修复 `D:/OB/ob_web/packages/micro/cashier/src/pages/StoreAuditOnboarding/addOrEdit/detail-mock.ts` line 70 时发现。
+**SKILL 升级点**：见 `SKILL.md` 第 6 步"类型嫌疑主动扫描"新增的"mock / test 数据 vs 接口契约不一致"扫描项。本形态是 2026-09-21 实际修复 `ob_web/packages/micro/cashier/src/pages/StoreAuditOnboarding/addOrEdit/detail-mock.ts` line 70 时发现。
 
 ## jsdoc/multiline-blocks：JSDoc 起始行同行接文字
 
@@ -520,8 +520,8 @@ grep -nE "^\s*/\*\* [^/\*\s]" src/ -r --include="*.ts" --include="*.vue"
 | **jsdoc/multiline-blocks** | **JSDoc 起始行 `/**` 同行接文字** |
 
 **SKILL 升级点**：见 `SKILL.md` 第 6 步"格式嫌疑主动扫描"新增的"JSDoc 起始行同行接文字"扫描项。本形态是 2026-09-21 实际修复
-- `D:/OB/ob_web/packages/micro/cashier/src/pages/StoreAuditOnboarding/addOrEdit/detail.vue` line 60/138/169/177
-- `D:/OB/ob_web/packages/micro/cashier/src/pages/AccountChangeDetails/index.vue` line 43/48
+- `ob_web/packages/micro/cashier/src/pages/StoreAuditOnboarding/addOrEdit/detail.vue` line 60/138/169/177
+- `ob_web/packages/micro/cashier/src/pages/AccountChangeDetails/index.vue` line 43/48
 时发现。
 
 ## 未使用代码（死代码 + 孤儿 API）
@@ -586,9 +586,9 @@ grep -nE '^export\s+(async\s+)?function\s+\w+' src/ -r --include="*.ts" --includ
 | **未使用代码（默认 ESLint 不抓）** | **项目 eslint.config.js 默认禁用 no-unused-vars 导致死代码 + 孤儿 API 残留** |
 
 **SKILL 升级点**：见 `SKILL.md` 第 6 步后新增的"未使用代码主动扫描"步骤。本形态是 2026-09-21 实际清理
-- `D:/OB/ob_web/packages/micro/cashier/src/pages/StoreAuditOnboarding/apis/index.ts` `listAllFileTagsApi`（孤儿 API）
-- `D:/OB/ob_web/packages/micro/cashier/src/pages/StoreAuditOnboarding/addOrEdit/detail.vue` line 308 `_detailCurrentNodeLabel` + line 414 `_handleAddToQueue`（下划线前缀死代码）
-- `D:/OB/ob_web/packages/micro/cashier/src/pages/StoreAuditOnboarding/addOrEdit/fill.vue` line 30 `_pageTitle`（下划线前缀死代码）
+- `ob_web/packages/micro/cashier/src/pages/StoreAuditOnboarding/apis/index.ts` `listAllFileTagsApi`（孤儿 API）
+- `ob_web/packages/micro/cashier/src/pages/StoreAuditOnboarding/addOrEdit/detail.vue` line 308 `_detailCurrentNodeLabel` + line 414 `_handleAddToQueue`（下划线前缀死代码）
+- `ob_web/packages/micro/cashier/src/pages/StoreAuditOnboarding/addOrEdit/fill.vue` line 30 `_pageTitle`（下划线前缀死代码）
 时发现。
 
 **反思**：之前 ESLint 清零时加下划线前缀保留"死代码"是错的——下划线让 ESLint 不报警，但死代码仍存在。下划线前缀**只在框架占位（Vue slot / 事件保留名）时**才合法；普通业务逻辑的"为了 ES 不报警加下划线"是错误逃生口。
@@ -665,8 +665,8 @@ grep -nE "(interface|type)\s+OnboardingSubAccount\b" src/ -r --include="*.ts" --
 | **TS2322（同名类型重复定义）** | **同名 interface / type 在两处独立 `export`，可选性不一致** |
 
 **SKILL 升级点**：见 `SKILL.md` 第 6 步“同名多源 import”扫描项补充“同名类型定义也要扫”。本形态是 2026-09-21 实际修复
-- `D:/OB/ob_web/packages/micro/cashier/src/pages/StoreAuditOnboarding/components/SubAccountEditor.vue` `OnboardingSubAccount` 重复定义
-- `D:/OB/ob_web/packages/micro/cashier/src/pages/StoreAuditOnboarding/addOrEdit/fill.vue` 从组件 import 改为从 DTO import
+- `ob_web/packages/micro/cashier/src/pages/StoreAuditOnboarding/components/SubAccountEditor.vue` `OnboardingSubAccount` 重复定义
+- `ob_web/packages/micro/cashier/src/pages/StoreAuditOnboarding/addOrEdit/fill.vue` 从组件 import 改为从 DTO import
 时发现。
 
 ## Tailwind 任意值需等价短写（IDE Tailwind IntelliSense 提示）
@@ -780,10 +780,10 @@ for p in pathlib.Path('src/').rglob('*.vue'):
 
 ```bash
 # 1. 看 share 包实际导出哪些类型
-grep -rn "ApiEnvelope" 'D:/OB/ob_web/packages/share/' --include="*.ts"
+grep -rn "ApiEnvelope" 'ob_web/packages/share/' --include="*.ts"
 
 # 2. 看其他业务模块怎么 import ApiEnvelope
-grep -rn "import.*ApiEnvelope" 'D:/OB/ob_web/packages/micro/cashier/src/' --include="*.ts"
+grep -rn "import.*ApiEnvelope" 'ob_web/packages/micro/cashier/src/' --include="*.ts"
 ```
 
 **期望**：所有业务模块都从**本地 type.ts** import（`./type` 或 `@/pages/<module>/apis/type`），不是 `@ob-web/share`。

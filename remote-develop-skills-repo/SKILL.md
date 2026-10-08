@@ -1,11 +1,11 @@
 ---
 name: remote-develop-skills-repo
-description: Use when 在 C:\Users\20614\orca\remote-develop-skills 仓库新增、修改、发布 remote-* skill，写 SKILL.md frontmatter、维护 references 目录、跑 README 自检脚本，或在 cc-switch / Codex installer / Orca CLI / 手动复制 之间选择本仓库 skill 的同步路径；不要用于消费 orca CLI 调用本身——那是 remote-orca-cli 的活。
+description: Use when 在本仓库根目录新增、修改、发布 remote-* skill，写 SKILL.md frontmatter、维护 references 目录、跑 README 自检脚本，或在 cc-switch / Codex installer / Orca CLI / 手动复制 之间选择本仓库 skill 的同步路径；不要用于消费 orca CLI 调用本身——那是 remote-orca-cli 的活。
 ---
 
 # remote-develop-skills 仓库运维
 
-本 skill 约束 `C:\Users\20614\orca\remote-develop-skills\` 仓库内 `remote-*` skill 的新增 / 修改 / 发布流程，以及它与 cc-switch、Codex installer、Orca CLI 之间的关系。**不要**用它去写业务代码或消费 `orca` 命令本身。
+本 skill 约束本仓库根目录下 `remote-*` skill 的新增 / 修改 / 发布流程，以及它与 cc-switch、Codex installer、Orca CLI 之间的关系。**不要**用它去写业务代码或消费 `orca` 命令本身。
 
 Use `recipes/release-checklist.md` when 发布新 skill 前逐项自检。
 Use `recipes/skill-coexistence.md` when 需要厘清本仓库 skill 与 Orca 自带 sub-skill、`remote-claude-hooks` 之间的边界。
@@ -18,7 +18,8 @@ Use `recipes/skill-coexistence.md` when 需要厘清本仓库 skill 与 Orca 自
 5. **跑 README 自检**（详见 `recipes/release-checklist.md`）：
 
    ```bash
-   cd /c/Users/20614/orca/remote-develop-skills
+   # 切到本仓库根目录（路径按本机实际 checkout 位置）
+   cd <本仓库根>
    for d in remote-*/; do
      [ -f "$d/SKILL.md" ] || { echo "MISSING $d/SKILL.md"; continue; }
      name=$(grep -E "^name:" "$d/SKILL.md" | head -1 | sed 's/name: *//;s/"//g')
@@ -35,7 +36,7 @@ Use `recipes/skill-coexistence.md` when 需要厘清本仓库 skill 与 Orca 自
    orca repo list | grep remote-develop-skills
    ```
 
-   期望：命中 `dad07f73-9067-453a-a903-e6ee42db434c`（本仓库自身的 UUID）。如果未命中，先 `orca repo add C:/Users/20614/orca/remote-develop-skills`。
+   期望：命中 `dad07f73-9067-453a-a903-e6ee42db434c`（本仓库自身的 UUID）。如果未命中，先 `orca repo add <repo>`，其中 `<repo>` 是当前 checkout 的仓库本地绝对路径（按用户所在机器填实际路径，不要硬编码）。
 
 ## Required Constraints
 
@@ -62,7 +63,7 @@ Use `recipes/skill-coexistence.md` when 需要厘清本仓库 skill 与 Orca 自
 
 | 路径 | 装什么 | 用法 | 适用 |
 |---|---|---|---|
-| **cc-switch** | 本仓库 `remote-*` skill | cc-switch 扫仓库根 `C:\Users\20614\orca\remote-develop-skills`；按配置同步到 `~/.codex/skills/` 或 `~/.claude/skills/` | 本机 / 团队内开发者 |
+| **cc-switch** | 本仓库 `remote-*` skill | cc-switch 扫本仓库根目录；按配置同步到 `~/.codex/skills/` 或 `~/.claude/skills/` | 本机 / 团队内开发者 |
 | **Codex installer** | 本仓库 `remote-*` skill | `Use $skill-installer to install skill from <url>` | 远程 / 临时环境 |
 | **手动复制** | 本仓库 `remote-*` skill | `cp -r remote-* ~/.codex/skills/` 或 `~/.claude/skills/` | 一次性 / 排错 |
 | **`orca skills install`** | **Orca 自带**的 8 个 sub-skill | `orca skills install` / `update` / `share` | **与本仓库无关**——常被误用 |

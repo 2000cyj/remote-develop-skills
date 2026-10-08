@@ -1,0 +1,30 @@
+chore: 仓库内硬编码路径 C:/Users/20614/orca/remote-develop-skills → <本仓库根> 占位符
+
+仓库从个人机位路径脱钩, 改为占位符 <本仓库根>, 便于 fork / clone 到其他位置或他人协作时不需手改路径.
+
+涉及 30 个文件 (179 +, 176 -):
+- 根 SKILL.md: 自检脚本 cd 路径占位化, "在本仓库" 描述去掉绝对路径
+- remote-orca-cli/SKILL.md: cashier repo 重复登记说明改为"按本机实际登记列表为准", 不再写死 D:/OB/ob_web 与 D:/OB/cashier
+- remote-cashier-flowable-task-with-next/SKILL.md: 路径/上下文微调
+- remote-cashier-java-standard/SKILL.md: 路径描述调整
+- remote-develop-skills-repo/SKILL.md + recipes/release-checklist.md: 同步去绝对路径
+- remote-orca-agent-communication/{references,scripts}: 协议文档与测试脚本占位化
+- remote-ts-es-check/references/error-signatures.md: 错误溯源路径去绝对化
+- .superpowers/sdd/2026-08-21-skills-restructure/{task-2,task-3}-report.md: 报告内路径占位化
+- docs/bug/2026-08-05-pre-commit-check/{00-overview,01-frontend-core,05-backend-bicashier}.md
+- docs/bug/代码审查_列表页_V1.2.03.md
+- docs/bug/解决方案/修复版本V1.2.01.md
+- docs/bug/解决方案/修复版本V1.2.02.md
+- docs/superpowers/plans/2026-08-11-pending-pages-standardization.md
+- docs/superpowers/plans/2026-08-14-onboarding-department-id.md
+- docs/superpowers/plans/2026-08-17-store-audit-add-edit-ui-cards.md
+- docs/superpowers/plans/2026-08-17-store-audit-approval-contract-fix.md
+- docs/superpowers/plans/2026-08-18-store-audit-change-flowable-plan.md
+- docs/superpowers/plans/2026-08-21-skills-restructure.md: 124 行 (-+), 主计划路径占位化
+- docs/测试文档/店铺上架流程API测试记录.md
+- docs/测试文档/店铺下架流程-Orca真实测试操作手册.md
+- incubating/流程编排/orca-wortree/orca-work-orchestration/workgroup-orchestration-workflow.md
+- incubating/流程编排/orca-wortree/orca-work-orchestration/workgroup.example.yaml
+- deprecated/remote-permission-summary/references/sql-script.md
+
+主目标: 仓库可被任意位置 clone 后, 不必 sed 替换本机路径, 直接能跑.

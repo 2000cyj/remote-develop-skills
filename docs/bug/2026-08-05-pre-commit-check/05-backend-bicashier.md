@@ -1,7 +1,7 @@
 # 后端 bi-cashier 服务只读审查报告
 
 **审查日期**：2026-08-05
-**审查对象**：`D:\OB\bi-FOB\bi-cashier`（Spring Boot 2.7 + MyBatis，老项目，不派 spring-boot-engineer）
+**审查对象**：`bi-FOB\bi-cashier`（Spring Boot 2.7 + MyBatis，老项目，不派 spring-boot-engineer）
 **审查范围**：与前端 cashier 微应用接口对齐的 7 个业务模块（bankCard / company / employee / seal / store / fileExpiration / operatingScope）+ 新增的 Export / BatchUpdate 链路
 **审查方式**：只读，不修改任何业务代码；未运行 mvn/gradle 编译
 **改动基线**：`dev-chenyanjun-one` 分支相对 `dev` 的未提交变更（含 43 个文件，+661/-189 行）
@@ -1289,7 +1289,7 @@ public Boolean updateBankCard(BankCardSaveDTO dto) {
 
 ### 🟢 BUG-31：`SHARE_COMPONENTS.md` 与后端 Controller 类型不一致
 
-**`file:line`**：文档 `D:\OB\ob_web\packages\micro\cashier\SHARE_COMPONENTS.md`
+**`file:line`**：文档 `ob_web\packages\micro\cashier\SHARE_COMPONENTS.md`
 
 **问题描述**：
 
@@ -1362,7 +1362,7 @@ public Boolean updateBankCard(BankCardSaveDTO dto) {
 
 - 报告生成：2026-08-05
 - 审查者：code-reviewer（只读 agent）
-- 工作区：`D:\OB\bi-FOB\bi-cashier`
+- 工作区：`bi-FOB\bi-cashier`
 - 后端基线：`dev-chenyanjun-one` 未提交变更（+661/-189 行）
-- 前端基线：`D:\OB\ob_web\packages\micro\cashier` 的 `dev-chenyanjun` 分支（已含 04 份报告）
+- 前端基线：`ob_web\packages\micro\cashier` 的 `dev-chenyanjun` 分支（已含 04 份报告）
 - 编译/构建：**未执行**（按 memory：bi-FOB 只能 IntelliJ 编译）

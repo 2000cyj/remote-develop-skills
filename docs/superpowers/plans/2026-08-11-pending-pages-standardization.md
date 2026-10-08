@@ -58,7 +58,7 @@
 运行：
 
 ```bash
-cd /d D:/OB/ob_web/packages/micro/cashier
+cd /d ob_web/packages/micro/cashier
 git status --short
 git diff --name-status
 git ls-files --others --exclude-standard
