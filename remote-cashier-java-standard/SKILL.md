@@ -345,6 +345,104 @@ grep -nE "^    private\s+(static\s+)?[\w<>,\[\]?\s]+\s+\w+\s*\(" bi-cashier-{com
 
 类级别 Javadoc（类名上方）保留——类 Javadoc 描述整个类的职责，不属于"方法头注释"。
 
+### 0.2 Controller public 方法不加方法 Javadoc（V20261009 新增）
+
+> 来源：`StoreAuditOffboardingController` 重构（2026-10-09）。原文件 14 个 public 方法上方都写了一行 `/** 中文描述 */`，与同行的 `@ApiOperation("中文描述")` 完全重复，属冗余维护。
+
+#### 协议
+
+| 位置 | 是否加 Javadoc | 说什么 |
+|------|--------------|------|
+| Controller public 方法（`XxxController.java` 内） | **禁止加** | 裸签名 + `@ApiOperation` 描述中文业务语义，**双层注释是冗余** |
+| Controller 私 helper（`private` / `static`） | **必须加** | 与 §0.1「实现类 helper」一致——helper 是闭包的、只在本类调，Javadoc 固化业务要求 |
+| Controller 类级别 | **必须加** | 整个 Controller 职责（与 §0 interface 类级别规则一致）|
+
+#### 反面案例（14 处之一，全部已修正）
+
+```java
+// ❌ Controller public 方法上方冗余 Javadoc
+/**
+ * 分页查询注销申请列表。
+ */
+@ApiOperation("分页查询注销申请列表")
+@RequestMapping("/page")
+public Result<PageResult<StoreAuditOffboardingListItemVO>> page(@RequestBody @Validated StoreAuditOffboardingPageDTO dto) {
+    return Result.success(offboardingManageService.page(dto));
+}
+```
+
+#### 正面做法（修复后）
+
+```java
+// ✅ Controller public 方法：裸签名 + @ApiOperation，无方法 Javadoc
+@ApiOperation("分页查询注销申请列表")
+@RequestMapping("/page")
+public Result<PageResult<StoreAuditOffboardingListItemVO>> page(@RequestBody @Validated StoreAuditOffboardingPageDTO dto) {
+    return Result.success(offboardingManageService.page(dto));
+}
+```
+
+#### 为何不让 Controller public 方法写 Javadoc
+
+1. **冗余无增量**：紧邻的 `@ApiOperation("中文")` 已经是中文业务语义描述，再写 `/** 中文 */` 完全是同样信息复制一遍
+2. **维护双倍成本**：改业务语义时要同步改两处（Javadoc + @ApiOperation），但这两个字段没有 `IDE` 跳转关联（一个是方法头注释，一个是 Swagger 注解），改了一边忘了另一边经常发生
+3. **Controller 是 1 行转发层**：按 §7「Controller 禁止编写业务逻辑」，Controller 方法体只有 `return Result.success(offboardingManageService.xxx(dto))` 一行——**没有业务逻辑可描述**，Javadoc 即使写也是抄方法名（如 `/** 分页查询 */` 配 `page()`），是纯空壳注释
+4. **业务语义源头在 ManageService 接口**：真实业务语义、入参/出参约束、异常场景应在 `IXxxManageService` 接口 Javadoc（§0）里写。Controller 只是 URL→DTO 路由+转发的薄壳，**不**承载业务语义
+5. **@ApiOperation 已经是 Controller 的「接口契约」**：Swagger 注解生成 API 文档（前端、测试、联调 都看这里），天然是 Controller 层的「业务语义输出」，与 @RestController 语义一致
+
+#### 与 §0 / §0.1 的关系
+
+| 位置 | 规则 | 出处 |
+|------|------|------|
+| interface 方法 | **必须**加 Javadoc | §0 |
+| Impl `@Override` 方法 | **禁止**加 Javadoc | §0.1（V20260916）|
+| Controller public 方法 | **禁止**加 Javadoc | §0.2（本节，V20261009）|
+| 私 helper（Impl / Controller 内） | **必须**加 Javadoc | §0.1 + 本节 |
+| 类级别 Javadoc | **必须**加 | §0 |
+
+#### 审查硬指标
+
+```bash
+# 1. 扫所有 Controller public 方法上方是否还有 /** ... */ 紧邻（违规）
+grep -rEn "@RequestMapping\|@PostMapping\|@GetMapping\|@PutMapping\|@DeleteMapping" \
+  bi-cashier-web/src/main/java/com/obo/bi/cashier/**/controller/*.java \
+  | while IFS=: read -r file line _; do
+      # @RequestMapping 上一行是 */，或上上一行是 /**（无其他代码）→ 违规
+      if sed -n "$((line-1))p" "$file" | grep -qE "^\s*\*\*/\s*$"; then
+        # 排除类级别 Javadoc：上一个 @RequestMapping/@RestController 之前是不是类级 /** ?
+        if ! sed -n "$((line-2))p" "$file" | grep -qE "^\s*public\s+class\s+"; then
+          echo "$file:$line public 方法上方有 Javadoc 结束符（违规）"
+        fi
+      fi
+      if sed -n "$((line-2))p" "$file" | grep -qE "^\s*/\*\*"; then
+        if ! sed -n "$((line-3))p" "$file" | grep -qE "^\s*public\s+class\s+"; then
+          echo "$file:$line public 方法上方有 Javadoc 起始符（违规）"
+        fi
+      fi
+    done
+
+# 2. 配套检查：Controller 私 helper 必须有 Javadoc
+grep -nE "^    private\s+(static\s+)?[\w<>,\[\]?\s]+\s+\w+\s*\(" \
+  bi-cashier-web/src/main/java/com/obo/bi/cashier/**/controller/*.java \
+  | while IFS=: read -r file line match; do
+      if ! sed -n "$((line-1))p" "$file" | grep -qE "^\s*\*\*/\s*$" && \
+         ! sed -n "$((line-2))p" "$file" | grep -qE "^\s*/\*\*"; then
+        echo "$file:$line Controller private helper 无 Javadoc（违规）"
+      fi
+    done
+```
+
+#### 判定为违规
+
+- Controller public 方法上方紧邻 `/** ... */`（`*/` 与方法签名之间 ≤ 2 行且中间无其他代码） → 违规
+- 即使是 1 行 `/** 一句话 */`（如 `/** 分页查询。 */`）也是违规——`@ApiOperation` 已表达
+
+#### 例外
+
+1. **类级别 Javadoc 保留**——类 Javadoc 描述整个 Controller 职责（与 §0 一致）
+2. **有实际业务约束的方法**（如带 `if-throw` 的硬拒绝逻辑）→ 不用 Javadoc，**用 `//` 阶段化注释**（按 §6）——Controller 通常不该有业务逻辑，例外场景下用普通行注释而非 Javadoc
+3. **Controller 私 helper**（私有方法做 DTO→DTO 转换、字段映射）→ 必须有 Javadoc（与 §0.1 helper 规则一致）
+
 ### 1. 类文件布局（自上而下）
 
 ```
@@ -502,6 +600,7 @@ public PageResult<OperatingScope> pageOperatingScope(OperatingScopePageDTO dto) 
 | 分层、**Controller 模式规范**、Service 聚合、Component、Mapper、Helper、Convert、**调用链规范** | `references/architecture-layers.md` |
 | **Interface 注释规范完整版**（方法/常量/字段变量 Javadoc、Feign Client、DTO/VO 字段） | `references/coding-quality.md`（"注释规范"章节） |
 | **实现类（Impl）`@Override` 方法不加方法 Javadoc**（V20260916 新增：接口必带 / Impl @Override 必不带 / 自定义 helper 必带） | 本文件 `§0.1` + 实战重构案例 `#19` |
+| **Controller public 方法不加方法 Javadoc**（V20261009 新增：@ApiOperation 已是中文语义，Javadoc 是双层冗余；Controller 是 1 行转发层，无业务逻辑可描述）| 本文件 `§0.2` |
 | **MP Lambda vs 手写 XML 决策、动态条件、聚合查询** | `references/mybatis-vs-xml.md` |
 | **文件附件联合写入（FileExpiryRecord + bi-file + 标签库）** | `references/file-attachment-pattern.md` |
 | **调用链 4 层逐行模板** | `references/call-chain-templates.md` |
@@ -516,6 +615,7 @@ public PageResult<OperatingScope> pageOperatingScope(OperatingScopePageDTO dto) 
   - **例外**：`FileExpiryRecord`、`FileExpiryRule` 等纯关联/配置表可在明确业务场景下物理删除（如删除关联规则时级联清理记录），必须在方法注释中说明原因。
 - 业务异常禁止吞掉，必须 `throw new BusinessException("中文提示")`；禁止 `e.printStackTrace()`。
 - Controller 禁止编写业务逻辑（集合转换、循环赋值、批量查询），只允许调用 Service 并包装 `Result`。
+- **禁止 Controller public 方法上加方法 Javadoc**（V20261009 新增）——`@ApiOperation("中文")` 已经是中文业务语义描述，再写 `/** 中文 */` 是双层冗余；Controller 是 1 行转发层，业务语义源头在 `IXxxManageService` 接口 Javadoc（§0）。详见本文档 `§0.2` + 红线。
 - 禁止跨服务本地手写 Feign Client 接口，统一从 `bi-xxx-api` 引入。
 - 禁止在业务表建表 SQL 中遗漏 `deleted` 字段（除非明确说明不软删）。
 - 禁止将**数据访问层**（`IXxxService` / 不含 `Manage` 的 Service 类）写到 `bi-cashier-service` 模块（参见本文档"目录归属规则"）。
