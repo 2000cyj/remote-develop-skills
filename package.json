@@ -6,6 +6,7 @@
     "pi-package"
   ],
   "pi": {
+    "extensions": ["./pi-extension/index.js"],
     "skills": [
       "./SKILL.md",
       "./remote-cashier-flowable-task-with-next/SKILL.md",

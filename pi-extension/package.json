@@ -1,0 +1,7 @@
+{
+  "name": "remote-develop-skills-pi-extension",
+  "version": "1.0.2",
+  "private": true,
+  "type": "module",
+  "main": "./index.js"
+}
