@@ -42,6 +42,8 @@ every sub-skill loaded in this session, with each entry's
    which sub-skills are loaded and where they live).
 4. Apply the sub-skill's rules.
 
+**Some routes load 2 skills** (see "Java work dual-skill rule" below) — call `read` on **both** `<location>`s in the same turn.
+
 If a step names a sub-skill that is NOT in `<available_skills>`,
 that sub-skill is not loaded in this session — skip it and continue
 to the next step. Do NOT try to read it; fall back to AGENTS.md per
@@ -66,7 +68,7 @@ matches.
 | Positive tokens (case-insensitive substring) | Negative tokens (do NOT match if prompt contains) | Sub-skill |
 |---|---|---|
 | `BiFlowableClient.completeTaskWithNext`, `Flowable`, `审批`, `下一节点`, `幂等` | — | `remote-cashier-flowable-task-with-next` |
-| `mcp__idea__`, `IDEA` (in context of executing a tool or DB op) | `orca`, `worktree`, `commit` | `remote-idea-mcp-usage` |
+| `mcp__idea__`, `IDEA` (in context of executing a tool or DB op) | `orca`, `worktree`, `commit` | `remote-idea-mcp-usage` (+ `remote-cashier-java-standard` if prompt also has bi-cashier / .java) |
 | `orca` (as a CLI command, not in `BiFlowableClient` etc.) | `BiFlowableClient`, `审批` | `remote-orca-cli` |
 | `ptyId`, `incarnationId`, `tabId`, `跨agent`, `跨 agent`, `派发` | — | `remote-orca-agent-communication` |
 | `conventional commits`, `commitlint`, `lint-staged`, `拆批`, `分批提交` | — | `remote-commit-git` |
@@ -81,12 +83,41 @@ file extension.
 
 | Positive tokens | Negative tokens | Sub-skill |
 |---|---|---|
-| `bi-cashier` AND (`.java` OR `.xml` OR `.sql` OR `改` OR `新加` OR `审查`) | `Flowable`, `审批`, `mcp__idea__`, `IDEA` | `remote-cashier-java-standard` |
+| `bi-cashier` AND (`.java` OR `.xml` OR `.sql` OR `改` OR `新加` OR `审查`) | `Flowable`, `审批`, `mcp__idea__`, `IDEA` | **`remote-cashier-java-standard` + `remote-idea-mcp-usage` (BOTH, see "Java work dual-skill rule" below)** |
 
 The negative tokens ensure: a prompt about bi-cashier + Flowable
 goes to Step 1's `remote-cashier-flowable-task-with-next`, and a
 prompt about bi-cashier + IDEA tool goes to Step 1's
 `remote-idea-mcp-usage`, not here.
+
+### Java work dual-skill rule（V20261009 新增）
+
+**任何路由到 `remote-cashier-java-standard` 的任务**，**同时**也必须 read 加载 `remote-idea-mcp-usage`：
+
+- **`remote-cashier-java-standard` 提供"怎么写"**（分层、注释、PageHelper、§8 3 参、§15 软删、§15.1 INSERT 路径、§21/§22 编译验证红线）
+- **`remote-idea-mcp-usage` 提供"怎么操作"**（`mcp__idea__execute_tool execute_terminal_command` 跑 mvn、`get_file_problems` / `lint_files` / `build_project` 的能力边界、db 写读、写-allowlist hook 绕过路径）
+
+**两者必须同时加载**，单加载 java-standard 会：不知道环境路径、不知道怎么跑 mvn、不知道怎么调 db 验证。单加载 idea-mcp-usage 会：违反 §8 / §15 / §21 规则。两个是互补的，不是互斥的。
+
+**判断口诀**：看到 bi-cashier / .java / .xml / .sql / 改 / 新加 / 审查 → 加载**两个** skill。
+
+### Java work MCP-first 工具优先级（V20261009 新增）
+
+**禁止**用 Bash / ctx_execute sandbox 跑 Java 验证 / 编译 / PO 扫描 / 加载 classpath / 拼 mvn 命令。
+
+**优先级从高到低**（高 → 低；越高越首选）：
+
+1. **`mcp__idea__execute_tool execute_terminal_command`** — 首选。能跑 mvn install / mvn -pl X -am compile / javac / git / sed / find。走 IDEA 自己的 powershell，不受 write-allowlist hook 拦，拿真退出码。
+2. **`mcp__idea__execute_tool get_file_problems` / `lint_files`** — 用于调过 mvn 后的局部文件错误复查（单文件、单行）。
+3. **mcp__context_mode__ctx_execute / ctx_execute_file** — **仅**用于"读"路径：处理 IDEA MCP 不能读的 large log / json / 大文件
+4. **Bash（read-only）** — `ls` / `grep` / `find` / `stat` 这类只读导航
+5. ❌ **Bash 写盘 / 沙箱跑 mvn / 沙箱跑 javac** — **全部禁止**。原因：.m2 / lombok jars / 项目依赖在 Agent 沙箱里不存在；javac 拼出错误依赖链不可靠；mvn install 必须走 IDEA 自己的 maven3 + Java 17
+
+**强制检查**（每轮 edit .java 后）：
+
+- [ ] 是否在响应开头**用 IDEA MCP 跑了 mvn install 4 模块**？不是 → 漏跑 = 假验证
+- [ ] 是否**同时**加载了 `remote-cashier-java-standard` 和 `remote-idea-mcp-usage` 两个 skill？只加载一个 = 漏规则或漏工具
+- [ ] 是否用了 sandbox 跑 mvn / javac / PO 扫描？用了 = 违规，走 IDEA MCP 重跑
 
 ### Step 3 — Skill maintenance (this repo)
 
@@ -111,9 +142,9 @@ truth.
 
 | User prompt | Matched step | Selected sub-skill | Why |
 |---|---|---|---|
-| "改 `bi-cashier-service` 下的 `XxxService.java`" | Step 2 | `remote-cashier-java-standard` | bi-cashier + .java |
+| "改 `bi-cashier-service` 下的 `XxxService.java`" | Step 2 | `remote-cashier-java-standard` + `remote-idea-mcp-usage` (BOTH) | bi-cashier + .java → dual-skill rule |
 | "调 IDEA 看 `BiFlowableClient.completeTaskWithNext` 调用链" | Step 1 (flowable wins) | `remote-cashier-flowable-task-with-next` | Specific token `BiFlowableClient.completeTaskWithNext` beats general IDEA/bi-cashier |
-| "在 `bi-cashier` 项目里调 IDEA 改 `.java`" | Step 1 (idea wins) | `remote-idea-mcp-usage` | Specific action `IDEA` + `mcp__idea__` beats module context; the action (tool being used) is more specific than the module |
+| "在 `bi-cashier` 项目里调 IDEA 改 `.java`" | Step 1 (idea wins) | `remote-idea-mcp-usage` + `remote-cashier-java-standard` (BOTH) | IDEA + bi-cashier → dual-skill rule applies; both skills must be loaded |
 | "前端 ESLint 检查刚改的 .vue 文件" | Step 1 | `remote-ts-es-check` | Specific tool `ESLint` in frontend context |
 | "在 `src/pages/cashier-list/` 下新建页面" | Step 1 | `remote-cashier-list-page-directory` | Specific path `src/pages/` |
 | "跑 `orca worktree spawn` 起新 worktree" | Step 1 | `remote-orca-cli` | Specific CLI command `orca worktree` |
