@@ -208,6 +208,8 @@ if (CollUtil.isNotEmpty(list)) {
 | private 形参内部从不引用 | `findField` / 阅读方法体确认 | 删形参 + 调用方传入的实参 |
 | 未使用的 `import xxx;` | IDE `get_file_problems(errorsOnly=true)` | 删整行 |
 
+> ⚠️ **2026-10 修正**：`get_file_problems` 也可能被骗（hook block .java 路径 / IDEA 索引滞后），改用 `references/code-compile-verification.md` 兜底方案：mvn 直接编 / javac / PO 字段静态扫描 + `.class mtime` 反向验证。**不要**依赖 `mcp__idea__execute_tool build_project`（fire-and-forget）。详见 SKILL.md §21。
+
 **告警 ≠ 未使用 → 保留**：
 
 | 告警 | 看似冗余的真实原因 |
@@ -226,6 +228,8 @@ if (CollUtil.isNotEmpty(list)) {
 2. 真 0 引用 → 同步删：接口 + 实现 + 调用方；编译校验
 3. 形参被删但调用方仍传 → 调用方同步删对应实参（IDE 会标红没传够 / 类型不匹配）
 4. 用 `get_file_problems(errorsOnly=true)` 而非 `build_project`（IDEA MCP 全量编译会超时，按单文件 errors 检查已足够）
+
+> ⚠️ **2026-10 修正**：本条经验已**部分失效**。`build_project` 是 fire-and-forget（返回成功 ≠ 编译通过），`get_file_problems` 在 hook block .java 路径或索引滞后时也拿不到结果。改用 `references/code-compile-verification.md` 完整兜底：首选 mvn，备选 javac 直编，**最起码**做 PO 字段引用扫描 + `.class mtime ≥ .java mtime` 反向验证。详见 SKILL.md §21。
 
 **反面案例**（2026-08 已整改）：
 

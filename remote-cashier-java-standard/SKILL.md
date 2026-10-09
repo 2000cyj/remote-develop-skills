@@ -2156,3 +2156,96 @@ StorePageDTO storeDto = BeanCopyUtils.copy(dto, StorePageDTO::new);
 - `references/code-structure.md` §8.7「2026-09 新增 5 类反例」— 完整代码示例
 - `SKILL.md` §13.6「方法简化」+ `SKILL.md` §7「禁止简单数据筛选赋值 wrapper helper」— 同一原则的早期沉淀
 - `references/code-review-checklist.md` §9「自检 quick 命令」— 新增扫 1-调用 wrapper 的 grep
+
+---
+
+## 红线（必须遵守）
+
+> 任何"已构建通过" / "编译验证完成" / "已通过编译" 的声明，**必须**附可重放的证据（mvn 退出码、javac 退出码、`.class mtime` 反向证明、PO getter 静态扫描结果中**任一**）。
+>
+> 仅凭 `mcp__idea__execute_tool build_project` 返回 `{isSuccess: true, problems: []}` **不**构成编译通过的证据。详见 §21 编译验证。
+
+## 21. 编译验证（V20261009 新增）
+
+> **TL;DR**：`mcp__idea__execute_tool build_project --module <X>` 在本工作流里**不是编译证据**。它是 fire-and-forget 信号——发起一次 IDEA Make 任务即返回，不等结果。返回的 `problems=[]` 是 build 启动前的初始空状态，不是"无错误"。
+
+### 21.1 必须遵守的 3 条
+
+1. **改完 bi-cashier-* 任一 Java 后，必须做编译验证**（不光是改 Service Impl，改 PO / DTO / Controller / XML 也要）—— 因为改一个字段可能让别的文件 `::getX` 引用断裂
+2. **首选**真 `mvn -pl <module> -am compile`；无 mvn 时退到 `javac` 直接编 + `.m2/runtime` jar 兜底；**最起码**用 `.class mtime ≥ .java mtime` 反向证明 + PO 字段引用扫描
+3. **报告里必须**写明用了哪种验证手段 + 实际命令 + 退出码 / 产物状态；不写 = 视为没验证
+
+### 21.2 验证手段能力边界
+
+| 手段 | 能验证 | 不能验证 |
+|------|--------|----------|
+| `build_project` (MCP) | 提交成功 | 编译是否真跑、有无错误、产物是否更新 |
+| `get_file_problems` (MCP) | IDEA 索引已扫到的错误 | 索引滞后错误；hook block 路径时直接拿不到 |
+| `mvn compile` | 全部（首选） | — |
+| `javac` 直编 | 语法 + 引用错（缺 jar 时只报缺依赖） | 依赖缺失会被误报 |
+| `.class mtime ≥ .java mtime` | 反向证明 javac 产出新 .class | 无法区分"成功"和"失败没产出" |
+| PO 字段静态扫描 | `::getX` / `.getX()` 引用错误 | 类型 / 泛型 / 注解处理错误 |
+
+### 21.3 真实事故复盘（2026-10 店铺注销 V2.0.2 casAdvance 10 参改 DTO）
+
+| 时间 | 事件 | .class 状态 |
+|------|------|------------|
+| 14:00-14:10 | 改 API DTOs/VOs | 14:16 编译时产出新 .class ✅ |
+| 14:26 | 改 bi-cashier-component 5 个 java（casAdvance DTO 化）| **没产出新 .class** ❌ |
+| 14:26 | 调 `build_project --module bi-cashier-component` | 返回 `{isSuccess: true, problems: []}` |
+| 14:29 | 用户问"这文件明显报错你构建没分析出来啊" | 才去查 mtime 发现是假阳性 |
+
+**根因三层叠加**：
+
+1. MCP `build_project` 是 fire-and-forget（投递成功 ≠ 编译成功）
+2. IDEA Make 引擎是增量（VFS dirty 标记没刷新 → 跳过未标记文件）
+3. `problems=[]` 是 build 启动前查到的初始空视图
+
+**修复**：
+
+1. 在 `bi-cashier-component/.../casAdvance(StoreAuditOffboardingApplication)` 删 2 行 broken `applyIfNotNull(::getCurrentHandlerName, ::getProcessInstanceId)`（PO V2.0.2 已删这俩字段）
+2. 10 形参 DTO 化为 `StoreAuditOffboardingCasAdvanceDTO`（顺手清 §8 违规）
+3. 4 个调用方改走 `buildCasDto(...)` helper
+4. 静态 PO getter 扫描：0 错误；`.class mtime` 反向：5 个文件全 OK
+
+### 21.4 推荐验证脚本（无 mvn 环境 fallback）
+
+完整脚本见 `references/code-compile-verification.md`。简化版（PO 字段引用扫描）：
+
+```python
+import os, re
+po = open(r'D:/OB/bi-FOB/bi-cashier/bi-cashier-component/src/main/java/.../XxxPO.java').read()
+po_getters = {'get' + m.group(1)[0].upper() + m.group(1)[1:]
+              for m in re.finditer(r'private\s+\S+\s+(\w+)\s*;', po)}
+po_getters |= {'getId','getCreateTime','getCreateUser','getUpdateTime','getUpdateUser','getDeleted'}
+
+for f in <改了的所有 .java>:
+    c = open(f).read()
+    for m in re.finditer(r'XxxPO::(\w+)', c):
+        if m.group(1) not in po_getters:
+            print(f'❌ {f}:L{line}: ::{m.group(1)} NOT in PO')
+```
+
+### 21.5 报告模板
+
+```text
+✅ 验证手段: mvn compile / javac direct / PO scan
+✅ 验证命令: <粘贴>
+✅ 验证结果: <BUILD SUCCESS / 0 errors / exit 0>
+✅ 验证覆盖: <改了 X 个 .java, 全部 .class mtime >= 源 mtime>
+⚠️ 未验证: <如 mvn 不可用 / 缺 jar / 只能静态扫描兜底>
+```
+
+**禁止**：
+
+```text
+❌ "已用 IDEA MCP build_project 验证通过"   ← fire-and-forget, 无效证据
+❌ "编译验证完成"  ← 没说怎么验证的，等于没验证
+```
+
+### 21.6 关联规则
+
+- `references/code-compile-verification.md` — 完整手册（含脚本、场景、判断口径）
+- `remote-idea-mcp-usage/SKILL.md` — IDEA MCP 工具的能力边界
+- `code-structure.md` §8.5 — 把原 "用 get_file_problems 而非 build_project" 提示更新为指向本节
+- `code-review-checklist.md` §9 — 新增 `.class mtime` 自检 quick 命令

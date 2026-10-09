@@ -156,4 +156,40 @@ grep -nE "private\s+\w+\s+(resolve|translate|convert|map|format|to|build)\w+\(" 
 
 # 抽方法的黄金原则：不要为只使用一次的方法抽 helper，除非该方法 ≥30 行或特别绕
 # 每次写完 helper 自查：grep "helperName\(" 计数调用方数 ≤ 1 且 body ≤ 30 行 → 删除并内联
+
+# 编译验证（V20261009 新增）—— IDEA MCP build_project 是 fire-and-forget，不能当 PASS 证据
+# Step 1: 静态 PO 字段引用扫描（找 ::getX 引用不存在的字段）
+#   先收集 PO 字段（含 BaseEntity 继承），再 grep 改了的所有 .java 的 ::getX
+# Step 2: .class mtime 反向验证（找"改了 java 但 .class 没刷"的反例）
+#   任何改了的 .java 缺对应 .class，或 .class mtime < .java mtime = ❌ 真没编过
+python3 -c "
+import os, re, time
+CASHIER = r'D:/OB/bi-FOB/bi-cashier'
+CHANGED = [<改了的所有 .java 相对路径>]
+# Step 1
+po_path = os.path.join(CASHIER, 'bi-cashier-component/src/main/java/com/obo/bi/cashier/po/<XxxPO>.java')
+po = open(po_path).read()
+po_getters = {'get' + m.group(1)[0].upper() + m.group(1)[1:]
+              for m in re.finditer(r'private\s+\S+\s+(\w+)\s*;', po)}
+po_getters |= {'getId','getCreateTime','getCreateUser','getUpdateTime','getUpdateUser','getDeleted'}
+errs = 0
+for rel in CHANGED:
+    full = os.path.join(CASHIER, rel)
+    c = open(full, encoding='utf-8').read()
+    for m in re.finditer(r'XxxPO::(\w+)', c):
+        if m.group(1) not in po_getters:
+            errs += 1
+            print(f'❌ {rel}::{m.group(1)} NOT in PO')
+# Step 2
+for rel in CHANGED:
+    full = os.path.join(CASHIER, rel)
+    java_mt = os.path.getmtime(full)
+    cls = full.replace('\\src\\main\\java', '\\target\\classes').replace('.java', '.class')
+    if not os.path.exists(cls):
+        print(f'❌ {rel} → .class MISSING'); errs += 1
+    elif os.path.getmtime(cls) < java_mt:
+        print(f'❌ {rel} → .class STALE (java {int(java_mt - os.path.getmtime(cls))}s newer)'); errs += 1
+print(f'COMPILE_VERIFY: {errs} errors')
+"
+# 详细场景与判读：见 references/code-compile-verification.md + SKILL.md §21
 ```
