@@ -37,40 +37,119 @@ function loadSkillPaths() {
   }
 }
 
-/** 从 SKILL.md 提取 routing table。SKILL.md 格式：
- *  | trigger 描述（中文 + 代码 / 术语） | `remote-xxx/SKILL.md` |
- *  返回 [{ name, tokens: string[] }]，tokens 是 trigger 描述里
+// 常用 stop words（中文 + 英文），会被过滤，避免误命中
+const STOP_WORDS = new Set([
+  // 英文
+  "and", "or", "not", "in", "as", "the", "a", "an", "of", "to", "for", "with", "by", "on",
+  "is", "are", "was", "were", "be", "been", "this", "that", "it", "its",
+  "do", "does", "did", "no", "yes", "but", "if", "then", "so", "than",
+  "context", "case", "insensitive", "substring", "token", "match", "priority",
+  "command", "cli", "etc",
+  // 中文 stop words（不常有，但防护一下）
+  "与", "或", "不", "在", "里", "上", "下", "的", "了", "和",
+]);
+
+/** 从 trigger 描述里抽 token：
+ *  1) 优先反引号包裹的词（明确列出的技术词），
+ *  2) 补充 prose 里的具体词（例 "rds repo maintenance" 中的 "rds" / "maintenance"）。
+ *  过滤 "AND" / "OR" / "in" / "context" 等 stop words，避免误命中。
+ */
+function extractBacktickTokens(text) {
+  const seen = new Set();
+  const result = [];
+  function add(raw) {
+    if (!raw) return;
+    let token = raw.trim();
+    if (!token) return;
+    token = token.replace(/^[\(\["'「『]+|[\)\]"'」』]+$/g, "");
+    if (!token) return;
+    if (STOP_WORDS.has(token.toLowerCase())) return;
+    const hasCJK = /[\u4e00-\u9fa5]/.test(token);
+    if (!hasCJK && token.length < 2) return;
+    const key = token.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    result.push(key);
+  }
+  // 1) 优先：反引号包裹的词
+  const re = /`([^`]+?)`/g;
+  let m;
+  while ((m = re.exec(text)) !== null) add(m[1]);
+  // 2) 补充：prose 里的具体技术词（例 "rds repo maintenance" 中的 "rds"）
+  const prose = text.replace(/`[^`]+?`/g, " ");
+  const proseTokens = prose
+    .toLowerCase()
+    .replace(/[\(\)\[\]"',;:!?*_~]/g, " ")
+    .split(/[\s,，。、;；/\\|`~!@#$%^&*()\[\]{}<>?:""''+=]+/)
+    .map((s) => s.trim())
+    .filter((s) => s.length >= 3);  // prose 词更严，≥ 3 字符
+  for (const t of proseTokens) add(t);
+  return result;
+}
+
+/** 从 SKILL.md 提取 routing table。
+ *  优先 3 列格式（新版）：
+ *    | Positive tokens | Negative tokens | Sub-skill name |
+ *  兑底 2 列格式（老版）：
+ *    | trigger 描述 | `remote-xxx/SKILL.md` |
+ *  返回 [{ name, rawTrigger, tokens }]，tokens 是 positive trigger 列里
  *  所有 ≥ 2 字符的 token（去标点 + 小写），作为子串匹配关键词。
+ *  Negative 列不参与 rds extension 的路由计算（rds 只是个查询工具，
+ *  实际路由决策在 LLM，看 SKILL.md 里的 decision algorithm + negative filters）。
  */
 function loadRouterTable() {
   if (!existsSync(ROUTER_SKILL)) return [];
   const text = readFileSync(ROUTER_SKILL, "utf8");
   const rows = [];
-  const re = /^\|\s*([^|]+?)\s*\|\s*`?(remote-[a-z0-9-]+)\/?(?:SKILL\.md)?`?\s*\|/gm;
+
+  // 1) 3 列格式：positive | negative | sub-skill
+  //    sub-skill 列不出现 /SKILL.md 后缀（新版规范：按 name 而非 path 路由）
+  //    trigger 列必须是 keywords 形式（多个 token，含反引号或逗号），
+  //    以过滤 examples 表里的 prose 句子列（4 列格式被 3 列正则意外匹配）。
+  //    token 提取只保留反引号包裹的词（`` `xxx` ``），丢弃 "AND" / "OR"
+  //    / "in" / "as" / "context" 等 prose stop words，避免 false positive。
+  const re3 = /^\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*`?(remote-[a-z0-9-]+)`?\s*\|/gm;
   let m;
-  while ((m = re.exec(text)) !== null) {
+  while ((m = re3.exec(text)) !== null) {
     const raw = m[1];
     if (/^[\s|:-]+$/.test(raw)) continue;  // 跳过表头 / 分隔行
-    const tokens = raw
-      .toLowerCase()
-      .replace(/[`*_~]/g, " ")
-      .split(/[\s,，。、;；/\\|`~!@#$%^&*()\[\]{}<>?:""''+=]+/)
-      .map((s) => s.trim())
-      .filter((s) => s.length >= 2);
-    rows.push({ name: m[2].trim(), rawTrigger: raw.trim(), tokens });
+    if (!raw.includes("`") && !raw.includes(",")) continue;  // 跳过 prose 句子
+    if (/^[""「]/.test(raw)) continue;  // 跳过 examples 表里的引号包裹句子
+    const tokens = extractBacktickTokens(raw);
+    if (tokens.length === 0) continue;
+    rows.push({ name: m[3].trim(), rawTrigger: raw.trim(), tokens, source: "3col" });
+  }
+  if (rows.length > 0) return rows;
+
+  // 2) 兑底 2 列格式：trigger | remote-xxx/SKILL.md
+  //    老 SKILL.md 用 2 列 + 中文描述，同上用 extractBacktickTokens 抽 token。
+  const re2 = /^\|\s*([^|]+?)\s*\|\s*`?(remote-[a-z0-9-]+)\/?(?:SKILL\.md)?`?\s*\|/gm;
+  while ((m = re2.exec(text)) !== null) {
+    const raw = m[1];
+    if (/^[\s|:-]+$/.test(raw)) continue;
+    const tokens = extractBacktickTokens(raw);
+    if (tokens.length === 0) continue;
+    rows.push({ name: m[2].trim(), rawTrigger: raw.trim(), tokens, source: "2col" });
   }
   return rows;
 }
 
-/** 简单 router：query 字符串与每个 sub-skill 的 trigger tokens 做子串匹配 */
+/** 简单 router：query 字符串与每个 sub-skill 的 trigger tokens 做子串匹配。
+ *  priority 策略：行号越靠前 (SKILL.md 里越靠前的 decision step) 优先级越高。
+ *  score = matched_tokens * 1000 + (table.length - row_index)
+ *  这样 Step 1 (specific) 永远赢 Step 2 (general) 即使 token 命中少。
+ *  跟 LLM 读 SKILL.md decision algorithm 的“越靠前优先”原则一致。
+ */
 function routeQuery(table, query) {
   if (!query) return [];
   const q = query.toLowerCase();
   const hits = [];
-  for (const row of table) {
+  for (let i = 0; i < table.length; i += 1) {
+    const row = table[i];
     const matched = row.tokens.filter((t) => q.includes(t) || t.includes(q));
     if (matched.length > 0) {
-      hits.push({ name: row.name, score: matched.length, matched });
+      const priorityBonus = table.length - i;  // 0..table.length-1
+      hits.push({ name: row.name, score: matched.length * 1000 + priorityBonus, matched });
     }
   }
   hits.sort((a, b) => b.score - a.score);

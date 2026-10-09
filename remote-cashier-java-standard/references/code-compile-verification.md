@@ -29,6 +29,83 @@ description: Use when bi-cashier 后端代码修改后需要验证编译产物�
 
 ## 2. 强制流程：改完 Java 后必须做的事
 
+### 2.1 Agent 自检表（当轮响应中检查）
+
+每次 `edit` / `write` 完结后**当轮**逐项检查：
+
+- [ ] 本轮是否改了 bi-cashier-* 下 .java / .xml / .sql？→ 是 → 跑 §2.2 一句话脚本；→ 否 → 跳过
+- [ ] 本轮是否声称"已构建 / 编译通过 / 修复完成"？→ 是 → 报告里必须含 §3 报告模板 5 行；→ 否 → 跳过
+- [ ] 本轮是否仅加了文档 / 注释 / ref 路径修复？→ 是 → 跳过 Java 验证
+
+### 2.2 一句话验证脚本（mcp__context_mode__ctx_execute 直接跑）
+
+```python
+import subprocess, os, re, time, shutil
+CASHIER = r'D:/OB/bi-FOB/bi-cashier'
+JAVAC = r'D:\Hbuilder\HBuilderX\plugins\amazon-corretto\bin\javac.exe'
+OUT = r'<workspace>/.javac_verify'
+shutil.rmtree(OUT, ignore_errors=True); os.makedirs(OUT)
+
+# 1) 最近 2h 改过的文件
+changed = []
+for mod in ['bi-cashier-api', 'bi-cashier-component', 'bi-cashier-service', 'bi-cashier-web']:
+    for root, _, fs in os.walk(os.path.join(CASHIER, mod, 'src', 'main', 'java')):
+        for f in fs:
+            if f.endswith('.java') and (time.time() - os.path.getmtime(os.path.join(root, f))) / 60 < 120:
+                changed.append(os.path.join(root, f))
+if not changed: print('no recent changes'); raise SystemExit
+
+# 2) PO getter 静态扫描
+po_errs = 0
+for f in changed:
+    c = open(f, encoding='utf-8').read()
+    m = re.search(r'extends\s+ServiceImpl<\s*(\w+),\s*(\w+)\s*>', c)
+    if not m: continue
+    po_class = m.group(2)
+    po_file = None
+    for r, _, fs in os.walk(os.path.join(CASHIER, 'bi-cashier-component', 'src', 'main', 'java', 'com', 'obo', 'bi', 'cashier', 'po')):
+        if po_class + '.java' in fs: po_file = os.path.join(r, po_class + '.java'); break
+    if not po_file: continue
+    po = open(po_file, encoding='utf-8').read()
+    gets = set('get' + m.group(1)[0].upper() + m.group(1)[1:] for m in re.finditer(r'private\s+\S+\s+(\w+)\s*;', po))
+    gets |= {'getId', 'getCreateTime', 'getUpdateUser', 'getUpdateTime', 'getCreateUser', 'getDeleted', 'getVersion'}
+    c_nc = re.sub(r'//.*', '', c)
+    for m in re.finditer(r'\w+::get(\w+)', c_nc):
+        if 'get' + m.group(1) not in gets:
+            po_errs += 1; print(f'  ❌ {f.split(chr(92))[-1]}: ::get{m.group(1)} NOT in PO')
+
+# 3) javac 语法检查
+src_dirs = [os.path.join(CASHIER, m, 'src/main/java') for m in ['bi-cashier-api', 'bi-cashier-component', 'bi-cashier-service', 'bi-cashier-web']]
+for r, _, _ in os.walk(r'D:/OB/bi-FOB/bi-core'):
+    if 'src/main/java' in r and 'target' not in r: src_dirs.append(r)
+cp = ';'.join(src_dirs)
+jv_errs = 0
+for f in changed:
+    p = subprocess.run([JAVAC, '-encoding', 'UTF-8', '-cp', cp, '-d', OUT, '-Xlint:none', '-proc:none', f],
+                       capture_output=True, env={**os.environ, 'JAVA_HOME': r'D:\Hbuilder\HBuilderX\plugins\amazon-corretto'}, timeout=60)
+    real = [l for l in p.stderr.decode('utf-8', errors='replace').split('\n')
+            if '错误:' in l and not any(s in l for s in ['找不到符号', '程序包', '继承自', '不兼容', '方法不会覆盖', '已使用', '未使用', '已过时', 'non-varargs', '方法引用无效'])]
+    jv_errs += len(real)
+    if real: print(f'  ❌ {f.split(chr(92))[-1]}: {len(real)} real errors')
+
+shutil.rmtree(OUT, ignore_errors=True)
+print(f'\nPO scan: {po_errs} errors')
+print(f'javac:   {jv_errs} real errors')
+```
+
+### 2.3 本轮漏跑的复盘（2026-10）
+
+**问题**：店铺授权管理 / 店铺注销 V2 完成后，用户连续 3 轮指出“setDeleted(0) 还没处理” / “这都检查不到啊” / “为什么没有构建”。
+
+**根因**：第 1 轮 §15.1 整改后**未跑 javac / PO scan**就报“完成”，导致：
+- 漏了 `setDeleted(0)` / `setVersion(0)` 这 2 类 INSERT 路径冗余
+- 漏了 §15 软删除反模式 `setDeleted(1) + baseMapper.update()`
+- 漏了 1 个隐蔽的 “多条调用路径都坑” 问题
+
+**反事实分析**：即使 PO 扫描报不了 setDeleted 这种赋值型反例，**批 1 之后响应里强制 报告 §3 模板**会迫使 Agent 在写报告时反思一遍，往往就能发现这些静默反例。
+
+
+
 按以下顺序选一种执行；中间任何一步失败必须重做或换验证手段：
 
 ### 方案 A（首选，CI/有 mvn 机器）：真 mvn

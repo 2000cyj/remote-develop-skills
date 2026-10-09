@@ -54,6 +54,7 @@ PR 评审按层次分别检查。每个 checklist 都对应 skills 文档的章�
 - [ ] **任何 `lambdaUpdate().set(Xxx::getDeleted, 1)` 模式都禁止**：软删除一律走 `delete*` / `remove*`（`removeById(id)` / `deleteById(id)` / `remove(lambdaQuery().eq(业务键))`），MP 自动 `.set(deleted, 1)`，详见 SKILL.md §15
 - [ ] **`selectById(...)` 后不写 `if (po.getDeleted() == 1) return null;`**（MP 已自动过滤软删记录，该分支是死代码）
 - [ ] **不手动 `setCreateTime` / `setUpdateTime` / `setCreateUser` / `setUpdateUser`**（BaseEntity + `MyMetaObjectHandler` 已自动填，手动调用是冗余且有多源不一致风险），详见 SKILL.md §15.1
+- [ ] **INSERT 路径不手动 `setDeleted(0)` / `setVersion(0)`**（DB `DEFAULT 0` + MP `FieldStrategy.NOT_NULL` 双层兌底），详见 SKILL.md §15.1 INSERT 路径补充
 - [ ] **类 extends 写法**：`extends ServiceImpl<XxxMapper, T>` 必须通过 `import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;` 引入，禁止在 `extends` 后写全限定类名
 - [ ] **Mapper XML 手写 SQL 必须保留 `WHERE deleted = 0`**：XML 不走 MP `@TableLogic` 拦截器，手写条件**不是**死代码；agent sweep 时只删 Component Service 里的 `.eq(getDeleted, 0)`，**不删** XML 里的 `WHERE deleted = 0`；XML `<update>` 软删需手写 `SET deleted = 1`（详见 SKILL.md §15 警示与 §17 错例）
 - [ ] **数据级唯一性：Component 层判重 + throw，Manage 层仅调用**：判重逻辑下沉 Component，以 `validateXxxUnique(业务键, excludeId)`（**void**）提供，内部 `this.count(LambdaQueryWrapper.eq(业务键).ne(id, excludeId)) > 0` 后 `log.warn` + `throw new BusinessException(...)`；禁止 Component 返 `Boolean` + Manage 判后 throw 的双层样板代码；仅当外部业务需区分存在 vs 不存在时才返 `Boolean isXxxExists`（详见 SKILL.md §18）
@@ -151,6 +152,11 @@ grep -rEn "\.(setCreateTime|setUpdateTime|setCreateUser|setUpdateUser)\(" \
     bi-cashier-{component,service}/src/main/java/ --include="*.java"
 # 预期：0 命中（除非带业务理由注释）
 
+# §15.1 INSERT 路径补：setDeleted(0) / setVersion(0) 死代码（V20261009 补）
+grep -rEn "\.(setDeleted|setVersion)\(\s*0\s*\)" \
+    bi-cashier-{component,service}/src/main/java/ --include="*.java"
+# 预期：0 命中
+
 # extends 全限定 ServiceImpl 反例（必须 import 后用短名）
 grep -rEn "extends\s+com\.baomidou\.mybatisplus\.extension\.service\.impl\.ServiceImpl" bi-cashier-{component,service}/src/main/java/
 
@@ -162,6 +168,27 @@ grep -nE "private\s+\w+\s+(resolve|translate|convert|map|format|to|build)\w+\(" 
 
 # 抽方法的黄金原则：不要为只使用一次的方法抽 helper，除非该方法 ≥30 行或特别绕
 # 每次写完 helper 自查：grep "helperName\(" 计数调用方数 ≤ 1 且 body ≤ 30 行 → 删除并内联
+
+# .class mtime 反向证明（V20261009 新增）
+# 报告"已构建通过"前必跑：若 stale > 0 则是 game
+SRC=D:/OB/bi-FOB/bi-cashier
+# 以 改过的 .java 与对应 .class mtime 对比
+for src in $(find $SRC/bi-cashier-{api,component,service,web}/src/main/java -name '*.java' -mmin -120); do
+  name=$(basename $src .java)
+  cls=$(find $SRC/bi-cashier-{api,component,service,web}/target/classes -name "$name.class" 2>/dev/null | head -1)
+  if [ -z "$cls" ]; then
+    echo "❓ $name.class 未编过"
+  elif [ "$cls" -nt "$src" ]; then
+    echo "✅ $name.class 新于 .java"
+  else
+    echo "❌ $name.class stale"
+  fi
+done
+# 预期：✅ 命中数 == 改了 .java 数
+
+# javac 过滤陷阱（V20261009 新增）
+# 禁止: grep -v 过滤 "找不到符号" / "不兼容" / "方法不会覆盖" — 这些是真错
+# 允许: grep -v 过滤 "未使用" / "已过时" — 只是 warning
 
 # 编译验证（V20261009 新增）—— IDEA MCP build_project 是 fire-and-forget，不能当 PASS 证据
 # Step 1: 静态 PO 字段引用扫描（找 ::getX 引用不存在的字段）

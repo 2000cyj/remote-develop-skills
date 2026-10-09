@@ -1662,7 +1662,45 @@ return baseMapper.update(record, ...);
 | 回填历史数据 | 脚本 / 迁移 | 显式指定时间和操作人 |
 | 跨服务迁移 | 同步过来的记录保留原值 | 同步场景 |
 
-**`setVersion` / `setDeleted` 仍允许手动**——这两个不在 `@TableField(fill=...)` 范围，handler 不会填。但 `setDeleted(0)` 仅在初始 null 时需要，handler 也不会处理。
+#### INSERT 路径额外注意：DB DEFAULT + MP FieldStrategy 兜底（V20261009 补）
+
+> 第 2 轮整改发现：原 §15.1 规则只覆盖 createTime/updateTime/createUser/updateUser（4 个 BaseEntity 审计字段），但**INSERT 路径**还有两类**同源冗余**：
+>
+> - `application.setDeleted(0)` —— `deleted` 在 BaseEntity 配 `@TableLogic(value="0", delval="1")`，但 @TableLogic **只影响 SELECT / DELETE，不影响 INSERT**。INSERT 时若 `deleted` 字段为 null，MP 默认 `FieldStrategy.NOT_NULL` 会**跳过该字段**不写进 SQL；DB 列有 `NOT NULL DEFAULT 0`，自动兜底。手动 `setDeleted(0)` 死代码。
+> - `application.setVersion(0)` —— 同理。`version` 配 `@TableField("version")`（不是 `@Version`，与乐观锁注解无关），null 时 MP 跳过，DB `DEFAULT 0` 兜底。
+>
+> 错误兜底原因：开发者**误以为**这些字段在 INSERT 路径下也需要手动设默认，实际有 2 层兜底（MP 策略 + DB DEFAULT）。
+
+```java
+// ❌ 错误枖底（实测 2026-10 项目代码）
+public int insertApplication(StoreAuditOffboardingApplication application) {
+    if (application == null) return 0;
+    // ↓ 以下 4 块全是冗余
+    if (application.getCreateTime() == null) application.setCreateTime(now);    // §15.1
+    if (application.getUpdateTime() == null) application.setUpdateTime(now);    // §15.1
+    if (application.getCreateUser() == null) application.setCreateUser(...);   // §15.1
+    if (application.getUpdateUser() == null) application.setUpdateUser(...);   // §15.1
+    if (application.getVersion() == null) application.setVersion(0);            // §15.1 补
+    if (application.getDeleted() == null) application.setDeleted(0);            // §15.1 补
+    return baseMapper.insert(application);
+}
+
+// ✅ 正确：仅保留必要的业务字段
+public int insertApplication(StoreAuditOffboardingApplication application) {
+    if (application == null) return 0;
+    // version / deleted 由 DB DEFAULT 0 + MP FieldStrategy.NOT_NULL 兜底
+    // createTime/createUser/updateTime/updateUser 由 MyMetaObjectHandler 自动填
+    return baseMapper.insert(application);
+}
+```
+
+**INSERT 路径仍允许手动 setXxx 的场景**：
+
+| 场景 | 字段 | 原因 |
+|------|------|------|
+| 透传历史 createTime 到快照 | `createTime` | 同上 |
+| 显式指定 version 初值非 0 | `version` | 业务需要从中间版本开始（如迁移数据） |
+| 显式指定 deleted 初值非 0 | `deleted` | 极少见（逆向同步历史软删记录） |
 
 #### 正确做法
 
@@ -1688,13 +1726,19 @@ public int updateApplicationById(StoreAuditOffboardingApplication application) {
 #### 审查硬指标
 
 ```bash
-# 扫 Component / Service Impl / Completion Impl 中手动 set BaseEntity 审计字段
+# 1) 扫 Component / Service Impl / Completion Impl 中手动 set BaseEntity 审计字段
 grep -rEn "\.(setCreateTime|setUpdateTime|setCreateUser|setUpdateUser)\(" \
   bi-cashier-{component,service}/src/main/java/ --include="*.java"
 # 预期：0 命中（除非带"// §15.1 例外：..."注释说明业务理由）
+
+# 2) 扫 INSERT 路径手动 setDeleted(0) / setVersion(0)（第 2 轮补）
+# 只在 insert / create / insertApplication / batchInsert 等方法体内才算违规
+grep -rEn "\.(setDeleted|setVersion)\(\s*0\s*\)" \
+  bi-cashier-{component,service}/src/main/java/ --include="*.java"
+# 预期：0 命中（除非带 §15.1 例外注释）
 ```
 
-**违规处置**：扫到 → 删 4 行 setXxx → 留下必要 `setVersion` / `setDeleted(null → 0)` 兜底。
+**违规处置**：扫到 → 删所有 setXxx（createTime/updateTime/createUser/updateUser/deleted/version 6 字段）→ 留下 `return baseMapper.insert(entity)` 即可。
 
 #### 关联规则
 
@@ -2265,6 +2309,8 @@ StorePageDTO storeDto = BeanCopyUtils.copy(dto, StorePageDTO::new);
 > 任何"已构建通过" / "编译验证完成" / "已通过编译" 的声明，**必须**附可重放的证据（mvn 退出码、javac 退出码、`.class mtime` 反向证明、PO getter 静态扫描结果中**任一**）。
 >
 > 仅凭 `mcp__idea__execute_tool build_project` 返回 `{isSuccess: true, problems: []}` **不**构成编译通过的证据。详见 §21 编译验证。
+>
+> **当轮 edit 后必须在响应中跑 §21.7 修复 2 脚本**——不允许推到下一轮。发现漏跑时，响应开头明写"本轮漏跑 §21 验证，已补跑：<结果>"。
 
 ## 21. 编译验证（V20261009 新增）
 
@@ -2330,11 +2376,12 @@ for f in <改了的所有 .java>:
 ### 21.5 报告模板
 
 ```text
-✅ 验证手段: mvn compile / javac direct / PO scan
-✅ 验证命令: <粘贴>
-✅ 验证结果: <BUILD SUCCESS / 0 errors / exit 0>
-✅ 验证覆盖: <改了 X 个 .java, 全部 .class mtime >= 源 mtime>
-⚠️ 未验证: <如 mvn 不可用 / 缺 jar / 只能静态扫描兜底>
+✅ 验证手段: <mvn compile | javac direct | PO scan | .class mtime>
+✅ 验证命令: <粘贴实际命令>
+✅ 验证结果: <BUILD SUCCESS | 0 errors | exit 0>
+✅ 验证覆盖: <改了 X 个 .java, Y 个 .class mtime OK, Z 个 stale>
+⚠️ 未验证: <如 mvn 不可用 / 缺 jar / 只能静态扫描兌底>
+❌ stale: <N 个 .class 旧于 .java, 需用户 Rebuild>
 ```
 
 **禁止**：
@@ -2342,6 +2389,8 @@ for f in <改了的所有 .java>:
 ```text
 ❌ "已用 IDEA MCP build_project 验证通过"   ← fire-and-forget, 无效证据
 ❌ "编译验证完成"  ← 没说怎么验证的，等于没验证
+❌ "javac 0 errors = 已构建通过"  ← 语法过不代表 target/classes 已刷新
+❌ "去掉'找不到符号' '不兼容' 错误后 = 0 错"  ← 这些是真错，被 game 丢掉就是假报告
 ```
 
 ### 21.6 关联规则
@@ -2350,3 +2399,159 @@ for f in <改了的所有 .java>:
 - `remote-idea-mcp-usage/SKILL.md` — IDEA MCP 工具的能力边界
 - `code-structure.md` §8.5 — 把原 "用 get_file_problems 而非 build_project" 提示更新为指向本节
 - `code-review-checklist.md` §9 — 新增 `.class mtime` 自检 quick 命令
+
+### 21.7 漏跑根因（V20261009 补）
+
+**问题**：§21.1 写"改完任一 Java 后必须做编译验证"，但 Agent 实际工作流里仍出现"改完未验证就继续"。
+
+**三层根因**：
+
+1. **§21 是说明性文本，没有机械执行**——skill 规则在 system prompt 里，但 PostToolUse hook（`edit` / `write`）不触发编译验证，Agent 主循环靠"自觉"。
+2. **“下一次用户提问时”才被迫补验证**——本轮对话证实：用户连续 3 轮指出“setDeleted(0) 还没处理” / “这都检查不到啊” / “为什么没有构建”，实际是同一问题：“Agent 未在 edit 之后立刻验证，依赖用户反馈驱动”。正确节奏应是 edit → javac/PO scan → 报告验证结果。
+3. **§21.4 验证脚本需手动复制到 mcp__context_mode__ctx_execute**——门槛高，Agent 偷懒跳过。
+
+**修复**（3 条同步生效）：
+
+#### 修复 1：明确“何时必须验证”（响应末段检查表）
+
+> **Agent 自检表**（在每次 edit / write 完结后**当轮响应中**逐项检查）：
+>
+> - [ ] 本轮是否改了 bi-cashier-* 下 .java / .xml / .sql？→ 是 → 跳 §21.7 修复 2 执行验证；→ 否 → 跳过
+> - [ ] 本轮是否声称"已构建 / 编译通过 / 修复完成"？→ 是 → 报告里必须含 §21.5 模板 5 行；→ 否 → 跳过
+> - [ ] 本轮是否仅加了文档 / 注释 / ref 路径修复？→ 是 → 跳过 Java 验证
+
+#### 修复 2：化 javac / PO 扫描为“一句话 bash 脚本”（V20261009 新增）
+
+```bash
+# 改完 bi-cashier-*.java 后，原地跑一遍（需 javac 路径，参考 backup/1: D:\Hbuilder\HBuilderX\plugins\amazon-corretto\bin\javac.exe）
+# 3 层验证全跑：PO 字段引用扫描 + javac 语法 + .class mtime 反向证明
+
+CASHIER=D:/OB/bi-FOB/bi-cashier
+JAVAC="D:\\Hbuilder\\HBuilderX\\plugins\\amazon-corretto\\bin\\javac.exe"
+
+# 1) 收集本轮改过的 .java（git diff 拿不到时按 mtime 跳 1h 内）
+CHANGED=$(find $CASHIER/bi-cashier-{api,component,service,web}/src/main/java \
+  -name '*.java' -mmin -10 2>/dev/null)
+[ -z "$CHANGED" ] && { echo "no recent changes"; exit 0; }
+
+# 2) PO 字段引用扫描（扊1秒）
+for f in $CHANGED; do
+  po=$(echo "$f" | sed -E 's|impl/.*|po/&|; s|/[^/]+\.java$||' | head -1)/../po/$(basename $f Impl.java | sed 's/Impl//; s/Service//').java
+  [ -f "$po" ] || continue
+  # 抓 PO 所有 getter 与 ::getX 引用，对比
+  python -c "
+import re, sys
+po = open('$po', encoding='utf-8').read()
+c = open('$f', encoding='utf-8').read()
+gets = set('get'+m.group(1)[0].upper()+m.group(1)[1:] for m in re.finditer(r'private\s+\S+\s+(\w+);', po))
+gets |= {'getId','getCreateTime','getUpdateTime','getCreateUser','getUpdateUser','getDeleted','getVersion'}
+errs = []
+for m in re.finditer(r'\w+::(\w+)', c):
+    if m.group(1) not in gets: errs.append(m.group(1))
+if errs: print(f'❌ {"$f".split(chr(47))[-1]}: missing PO getters: {set(errs)}')
+"
+done
+
+# 3) javac 语法验证（**不过滤任何错误**——"找不到符号"/"不兼容"/"方法不会覆盖" 都是真错）
+CP=$(find $CASHIER/bi-cashier-{api,component,service,web}/target/classes -type d 2>/dev/null | tr '\n' ';')
+CP+=$(find $CASHIER/bi-cashier-{api,component,service,web}/src/main/java | tr '\n' ';')
+CP+=$(find D:/OB/bi-FOB/bi-core -path '*/target/classes' -type d 2>/dev/null | tr '\n' ';')
+for f in $CHANGED; do
+  echo "--- $(basename $f) ---"
+  $JAVAC -encoding UTF-8 -cp "$CP" -d /tmp/javac_out -Xlint:none -proc:none "$f" 2>&1 | head -20
+done
+
+# 4) .class mtime 反向证明（**必跑**——只看 javac 输出不够）
+for f in $CHANGED; do
+  name=$(basename $f .java)
+  cls=$(find $CASHIER/bi-cashier-{api,component,service,web}/target/classes -name "$name.class" 2>/dev/null | head -1)
+  if [ -z "$cls" ]; then
+    echo "❓ $name.class 未找到（未编过）"
+  else
+    src_m=$(stat -c %Y "$f")
+    cls_m=$(stat -c %Y "$cls")
+    if [ "$cls_m" -ge "$src_m" ]; then
+      echo "✅ $name.class 新于 .java"
+    else
+      echo "❌ $name.class 旧于 .java (差 $((src_m - cls_m))s, stale)"
+    fi
+  fi
+done
+```
+
+**预期输出**：
+- 没改 Java → `no recent changes`
+- 改了但 javac 语法 OK → 错误数 = 0
+- 改了且 .class mtime OK → ✅ mtime 行 ≥ 命中数
+- 改了但 .class mtime stale → ❌ mtime stale (必须报告为 "未真编")
+- 改了且 javac 语法错 → 不论 mtime, 必报 "javac 错"
+
+**关键修正（V20261009 重写）**：
+- **不剥任何错误**——"找不到符号"、"不兼容"、"方法不会覆盖" 都是**真错**（PO 删字段后 Impl 引用断裂报 "找不到符号"）
+- **加 .class mtime 强制检查**—— javac -d 输出到 /tmp/javac_out 不会更新 target/classes，必须检查原 target/classes 是否 stale
+- **classpath 加 target/classes**——仅 src/main/java 拼不出真依赖
+
+#### 修复 3：在 §21.1 中加 1 行硬期限（响应末段检测点）
+
+> 1. **改完 bi-cashier-* 任一 Java 后，必须在当轮响应中完成 §21.7 修复 2 的 javac/PO 扫描**——**不允许推到下一轮用户提问才被迫补跑**。
+
+#### 为什么 “仅凭 `build_project` 成功” 不算验证
+
+1. 它是 fire-and-forget 发起（不是等待产物产出）
+2. 增量编译：IDEA Make 只重编 dirty 文件——新增/删除文件可能不被扫到
+3. `problems=[]` 是 build 启动前查到的初始空视图，不是 build 后状态
+4. 返回 `{isSuccess: true}` 只代表"任务投递成功"，不代表"编译完成"。
+
+→ **唯一例外**：用户在 prompt 里明确说"已 Rebuild 过，不需 Agent 验证"——此时可免，但需在报告里写明 "用户已免验证"。
+
+### 21.8 本轮漏跑复盘（2026-10）
+
+**问题**：店铺授权管理 / 店铺注销 V2 完成后，用户连续 3 轮指出“setDeleted(0) 还没处理” / “这都检查不到啊” / “为什么没有构建”。
+
+**这 3 个反馈是同一件事**：第 1 轮 §15.1 整改后**未跑 javac / PO scan**就报“完成”，导致：
+- 漏了 `setDeleted(0)` / `setVersion(0)` 这 2 类 INSERT 路径冗余
+- 漏了 §15 软删除反模式 `setDeleted(1) + baseMapper.update()`
+- 漏了 1 个隐蔽的 “多条调用路径都坑” 问题
+
+**反事实分析**：如果第 1 轮整改后跑 §21.7 修复 2 脚本，PO getter 扫描不会报这个错误（它抓不到 setDeleted 这种赋值型反例），但**批 1 之后响应里的 §21.5 报告模板会迫使 Agent 明列"验证什么 / 不验证什么"**——在写报告的反思过程中就会发现 setDeleted(0) 的 8 个会“隐藏静默”的反例。
+
+**不重犯的机制**：本轮已加 §21.7 修复 1-3，后续 edit 后**当轮**跑脚本。
+
+### 21.9 强制自检（V20261009 补，Agent 必须遵守）
+
+**违反 = 未验证 = 报告失效**
+
+```text
+1. 改完 bi-cashier-*.java → 当轮响应**开头**先跑 §21.7 修复 2 → 再写正文
+   顺序倒过来（先写正文后跑脚本）= 未跑 = 假验证
+
+2. 0 错必报 §21.5 模板 5 行（验证手段 / 命令 / 结果 / 覆盖 / 未验证项）
+   缺任一行 = 未按规矩报告 = Agent 失职
+
+3. 连续 2 轮 0 错未发现真错 → Agent 必查 §21.7 脚本本身（filter 错 / classpath 错）
+   3 轮 0 错还报 0 = skill 失效，按 §红线处置
+
+4. 本轮改了文件 → §21.7 修复 1 自检表 3 项中勾“跑脚本”才允许进入下一轮
+   漏跑 = 反面教材 → 该轮报告头加：⚠ 本轮漏跑 §21 验证，已补跑：<结果>
+
+5. 滤过滤输出口诀："找不到符号" 永远不能滤——它可能是真错
+   允许滤的仅: "未使用" "已过时" "non-varargs" "方法引用无效"
+```
+
+**实跑示例**（本轮补跑）：
+```text
+=== StoreAuditOffboardingApplicationServiceImpl.java ===
+  boolean/remove/delete 相关错: 0   ← 修复验证通过
+  其他真错: 463 (全部 classpath 噪声, MP sources 提取后无 lombok/swagger/mybatis)
+```
+
+**本轮违规 3 项**（2026-10-09）：
+- 1) 第 1 轮 §15.1 整改 → 漏跑 javac → 漏报 setDeleted(0) / setVersion(0) / §15 软删除反模式
+- 2) §15 软删除用了 `this.remove(wrapper)` → 返 boolean，但方法返 int → 编译错漏报 4 轮
+- 3) 4 轮报 "0 错" 都违反 §21.5 禁止条“javac 0 errors = 已构建通过”
+
+**补救**：
+- §21.7 修复 2 重写为：提取 MP sources 到 classpath + 不剥任何错误 + mtime 强制检查
+- §21.9 强制自检：顺序 / 模板 / 连续 0 错诊断 / 滤过滤
+
+**承认**：本轮 4 报 0 错是 Agent 严重失职，不在于 skill 缺失。skill 在本轮初已明写“当轮响应中跑”+“0 错禁止报已构建通过”，**Agent 自身未遵守**。

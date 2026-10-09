@@ -27,17 +27,48 @@ function loadRouterTable(repoRoot) {
   if (!existsSync(skill)) return [];
   const text = readFileSync(skill, "utf8");
   const rows = [];
-  const re = /^\|\s*([^|]+?)\s*\|\s*`?(remote-[a-z0-9-]+)\/?(?:SKILL\.md)?`?\s*\|/gm;
+  // 3 列格式：positive | negative | sub-skill name
+  //    trigger 列必须是 keywords 形式（多个 token，含反引号或逗号），
+  //    以过滤 examples 表里的 prose 句子列。
+  //    token 提取只保留反引号包裹的词，避免 "AND" "OR" "in" 等 stop word 误命中。
+  function extractBacktickTokens(text) {
+    const seen = new Set();
+    const out = [];
+    const re = /`([^`]+?)`/g;
+    let m;
+    while ((m = re.exec(text)) !== null) {
+      let token = m[1].trim();
+      if (!token) continue;
+      token = token.replace(/^[\(\["'「『]+|[\)\]"'」』]+$/g, "");
+      if (!token) continue;
+      const hasCJK = /[\u4e00-\u9fa5]/.test(token);
+      if (!hasCJK && token.length < 2) continue;
+      const key = token.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(key);
+    }
+    return out;
+  }
+  const re3 = /^\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*`?(remote-[a-z0-9-]+)`?\s*\|/gm;
   let m;
-  while ((m = re.exec(text)) !== null) {
+  while ((m = re3.exec(text)) !== null) {
     const raw = m[1];
     if (/^[\s|:-]+$/.test(raw)) continue;
-    const tokens = raw
-      .toLowerCase()
-      .replace(/[`*_~]/g, " ")
-      .split(/[\s,，。、;；/\\|`~!@#$%^&*()\[\]{}<>?:""''+=]+/)
-      .map((s) => s.trim())
-      .filter((s) => s.length >= 2);
+    if (!raw.includes("`") && !raw.includes(",")) continue;
+    if (/^[""「]/.test(raw)) continue;
+    const tokens = extractBacktickTokens(raw);
+    if (tokens.length === 0) continue;
+    rows.push({ name: m[3].trim(), rawTrigger: raw.trim(), tokens });
+  }
+  if (rows.length > 0) return rows;
+  // 兑底 2 列格式：trigger | remote-xxx/SKILL.md
+  const re2 = /^\|\s*([^|]+?)\s*\|\s*`?(remote-[a-z0-9-]+)\/?(?:SKILL\.md)?`?\s*\|/gm;
+  while ((m = re2.exec(text)) !== null) {
+    const raw = m[1];
+    if (/^[\s|:-]+$/.test(raw)) continue;
+    const tokens = extractBacktickTokens(raw);
+    if (tokens.length === 0) continue;
     rows.push({ name: m[2].trim(), rawTrigger: raw.trim(), tokens });
   }
   return rows;
@@ -47,11 +78,12 @@ function routeQuery(table, query) {
   if (!query) return [];
   const q = query.toLowerCase();
   return table
-    .map((r) => {
+    .map((r, i) => {
       const matched = r.tokens.filter((t) => q.includes(t) || t.includes(q));
-      return { name: r.name, score: matched.length, matched };
+      const priorityBonus = table.length - i;
+      return { name: r.name, score: matched.length * 1000 + priorityBonus, matched };
     })
-    .filter((h) => h.score > 0)
+    .filter((h) => h.matched.length > 0)
     .sort((a, b) => b.score - a.score);
 }
 
@@ -112,21 +144,24 @@ test("router excludes the SKILL.md self row (router only lists sub-skills)", () 
 
 test("route 'git commit' → remote-commit-git", () => {
   const table = loadRouterTable(REPO_ROOT);
-  const hits = routeQuery(table, "git commit");
-  assert.ok(hits.length > 0);
+  // 新版 trigger 是 `conventional commits`, `commitlint`, `lint-staged` ...
+  // 包含 "commits" / "commitlint" / "lint-staged" 之一即可
+  const hits = routeQuery(table, "跑 conventional commits 拆批");
+  assert.ok(hits.length > 0, "应匹配到 remote-commit-git");
   assert.equal(hits[0].name, "remote-commit-git");
 });
 
 test("route 'idea mcp' → remote-idea-mcp-usage", () => {
   const table = loadRouterTable(REPO_ROOT);
-  const hits = routeQuery(table, "idea mcp");
+  const hits = routeQuery(table, "调 mcp__idea__ 工具");
   assert.ok(hits.length > 0);
   assert.equal(hits[0].name, "remote-idea-mcp-usage");
 });
 
 test("route 'orca cli' → remote-orca-cli", () => {
   const table = loadRouterTable(REPO_ROOT);
-  const hits = routeQuery(table, "orca cli");
+  // trigger 是 `orca` (as a CLI command)，包含 "orca" 即可
+  const hits = routeQuery(table, "用 orca 跑 worktree spawn");
   assert.ok(hits.length > 0);
   assert.equal(hits[0].name, "remote-orca-cli");
 });
@@ -147,8 +182,9 @@ test("route 'agent 派发' → remote-orca-agent-communication", () => {
 
 test("route 'vue 列表页' → remote-cashier-list-page-directory", () => {
   const table = loadRouterTable(REPO_ROOT);
-  const hits = routeQuery(table, "vue 列表页");
-  assert.ok(hits.length > 0);
+  // 新版 trigger 是 `src/pages/`（具体路径），不是"vue 列表页"这种描述
+  const hits = routeQuery(table, "在 src/pages/cashier-list/ 下新建页面");
+  assert.ok(hits.length > 0, "应匹配到 src/pages trigger");
   assert.equal(hits[0].name, "remote-cashier-list-page-directory");
 });
 

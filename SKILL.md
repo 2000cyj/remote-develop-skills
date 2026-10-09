@@ -5,11 +5,10 @@ description: >
   work, Vue 3 front-end work, bi-cashier modifications, bi-flowable
   tasks, IDEA tooling, orca-cli, TypeScript type checks, git commits,
   or write-permission discussions. This skill is a ROUTER — it points
-  you to the specialized sub-skill for the topic at hand. Read the
-  routing table below; pick the row that matches; use the read tool
-  on that sub-skill's SKILL.md (the location is in your
-  <available_skills> block) before proceeding. When the task doesn't
-  match any row, fall back to the workspace's AGENTS.md and general
+  you to the specialized sub-skill for the topic at hand. Follow the
+  4-step decision algorithm below; pick the first matching step; load
+  that sub-skill's SKILL.md from <available_skills> (do NOT guess
+  paths). When no step matches, fall back to AGENTS.md and general
   practice.
 argument-hint: "[topic]"
 license: MIT
@@ -19,8 +18,8 @@ license: MIT
 
 This skill routes coding tasks in the orca-workflow workspace to
 specialized sub-skills. Always read this router first when the
-workspace is orca-workflow; then load the sub-skill the routing
-table points at.
+workspace is orca-workflow; then load the sub-skill the decision
+algorithm below points at.
 
 ## Persistence
 
@@ -37,34 +36,93 @@ every sub-skill loaded in this session, with each entry's
 `<location>` (absolute path to its `SKILL.md`). To load a sub-skill:
 
 1. Read this router (you are doing it now).
-2. Match the user's task to a row in the routing table below.
-3. Call the read tool on the matched sub-skill's `<location>`
-   (do NOT guess paths; the `<available_skills>` block is the
-   source of truth for which sub-skills are loaded and where they
-   live).
+2. Run the 4-step decision algorithm below; pick the first match.
+3. Call the read tool on the matched sub-skill's `<location>` (do
+   NOT guess paths; `<available_skills>` is the source of truth for
+   which sub-skills are loaded and where they live).
 4. Apply the sub-skill's rules.
 
-If a row in the routing table names a sub-skill that is NOT in
-`<available_skills>`, that sub-skill is not loaded in this session —
-do NOT try to read it; fall back to AGENTS.md per "When no row
-matches" below.
+If a step names a sub-skill that is NOT in `<available_skills>`,
+that sub-skill is not loaded in this session — skip it and continue
+to the next step. Do NOT try to read it; fall back to AGENTS.md per
+"When no step matches" below.
 
-## Routing table
+## Decision algorithm
 
-| Task signal | Sub-skill (name from `<available_skills>`) |
-|---|---|
-| Java 8 / `bi-cashier-api` / `bi-cashier-component` / `bi-cashier-service` / `bi-cashier-web` 改 `.java` / `.xml` / `.sql` | `remote-cashier-java-standard` |
-| Vue 3 + cashier 列表页 / 在 `src/pages/` 下新建或改造页面/业务模块目录 / apis·components·config·enum·utils 归属 | `remote-cashier-list-page-directory` |
-| `BiFlowableClient.completeTaskWithNext` 调用链 / 审批结果与幂等 / 下一节点信息查询 | `remote-cashier-flowable-task-with-next` |
-| 前端 ESLint / vue-tsc 范围检查 / 仅扫当前任务编辑过的文件 | `remote-ts-es-check` |
-| 调 IDEA 工具 / `mcp__idea__*` / 后端 Java·Spring Boot·数据库 | `remote-idea-mcp-usage` |
-| 调 `orca` CLI / worktree / terminal / 内置浏览器 | `remote-orca-cli` |
-| 跨 agent 派发 / 通过 Orca terminal 发送消息 / 重新定位 ptyId·incarnationId·tabId·leafId·worktreeId | `remote-orca-agent-communication` |
-| Conventional commits 拆批 / 多仓库 commit + 推送 | `remote-commit-git` |
-| 讨论写权限 / write-allowlist / allowlist 范围 / write·edit·apply_patch·multi_edit·bash·powershell 边界 | `remote-write-scope` |
-| 在本仓库根目录改 / 新增 `remote-*` skill / 写 SKILL.md frontmatter / 跑自检 | `remote-develop-skills-repo` |
+Run these 4 steps **in order**. **Pick the first step that
+matches.** A step matches when **all** of its positive tokens appear
+in the prompt AND **none** of its negative tokens appear.
 
-## When no row matches
+Token matching is **case-insensitive substring match** (token as a
+substring of the prompt). Multi-word tokens are split on `,` and `+`
+in the table below.
+
+### Step 1 — Specific tool / API / file path (highest priority)
+
+A specific tool name, API method, or file path in the prompt is
+the strongest signal. These wins over general module or technology
+matches.
+
+| Positive tokens (case-insensitive substring) | Negative tokens (do NOT match if prompt contains) | Sub-skill |
+|---|---|---|
+| `BiFlowableClient.completeTaskWithNext`, `Flowable`, `审批`, `下一节点`, `幂等` | — | `remote-cashier-flowable-task-with-next` |
+| `mcp__idea__`, `IDEA` (in context of executing a tool or DB op) | `orca`, `worktree`, `commit` | `remote-idea-mcp-usage` |
+| `orca` (as a CLI command, not in `BiFlowableClient` etc.) | `BiFlowableClient`, `审批` | `remote-orca-cli` |
+| `ptyId`, `incarnationId`, `tabId`, `跨agent`, `跨 agent`, `派发` | — | `remote-orca-agent-communication` |
+| `conventional commits`, `commitlint`, `lint-staged`, `拆批`, `分批提交` | — | `remote-commit-git` |
+| `write-allowlist`, `allowlist`, `写权限`, `写盘` | — | `remote-write-scope` |
+| `vue-tsc`, `ESLint` (in frontend / Vue / TS context) | `bi-cashier`, `.java` | `remote-ts-es-check` |
+| `src/pages/`, `src/pages` | `bi-cashier`, `Java` | `remote-cashier-list-page-directory` |
+
+### Step 2 — Module + file type (medium priority)
+
+When no Step 1 row matches, look for a specific Maven module +
+file extension.
+
+| Positive tokens | Negative tokens | Sub-skill |
+|---|---|---|
+| `bi-cashier` AND (`.java` OR `.xml` OR `.sql` OR `改` OR `新加` OR `审查`) | `Flowable`, `审批`, `mcp__idea__`, `IDEA` | `remote-cashier-java-standard` |
+
+The negative tokens ensure: a prompt about bi-cashier + Flowable
+goes to Step 1's `remote-cashier-flowable-task-with-next`, and a
+prompt about bi-cashier + IDEA tool goes to Step 1's
+`remote-idea-mcp-usage`, not here.
+
+### Step 3 — Skill maintenance (this repo)
+
+When the prompt is about modifying the rds repository itself
+(router + sub-skill authoring), not about business code.
+
+| Positive tokens | Negative tokens | Sub-skill |
+|---|---|---|
+| `remote-*` skill, `SKILL.md` frontmatter, `cc-switch`, `Codex installer`, `自检` (in the context of rds repo maintenance) | `bi-cashier`, `Vue`, `IDEA` | `remote-develop-skills-repo` |
+
+### Step 4 — No match
+
+If no step above matches, do NOT pick a sub-skill. Fall back to
+`AGENTS.md` and general practice. Do NOT silently apply rules from
+a sub-skill that didn't match.
+
+## Examples
+
+These are concrete `prompt → sub-skill` cases to anchor the
+algorithm. Use them as a reference, not as the only source of
+truth.
+
+| User prompt | Matched step | Selected sub-skill | Why |
+|---|---|---|---|
+| "改 `bi-cashier-service` 下的 `XxxService.java`" | Step 2 | `remote-cashier-java-standard` | bi-cashier + .java |
+| "调 IDEA 看 `BiFlowableClient.completeTaskWithNext` 调用链" | Step 1 (flowable wins) | `remote-cashier-flowable-task-with-next` | Specific token `BiFlowableClient.completeTaskWithNext` beats general IDEA/bi-cashier |
+| "在 `bi-cashier` 项目里调 IDEA 改 `.java`" | Step 1 (idea wins) | `remote-idea-mcp-usage` | Specific action `IDEA` + `mcp__idea__` beats module context; the action (tool being used) is more specific than the module |
+| "前端 ESLint 检查刚改的 .vue 文件" | Step 1 | `remote-ts-es-check` | Specific tool `ESLint` in frontend context |
+| "在 `src/pages/cashier-list/` 下新建页面" | Step 1 | `remote-cashier-list-page-directory` | Specific path `src/pages/` |
+| "跑 `orca worktree spawn` 起新 worktree" | Step 1 | `remote-orca-cli` | Specific CLI command `orca worktree` |
+| "给另一个 agent 发 terminal 消息，ptyId 找不到了" | Step 1 | `remote-orca-agent-communication` | Specific token `ptyId` |
+| "把这一批改动按 conventional commits 拆批提交" | Step 1 | `remote-commit-git` | Specific token `conventional commits` |
+| "在 rds 仓库加个新 skill `remote-foo`" | Step 3 | `remote-develop-skills-repo` | Repo maintenance |
+| "更新 README.md" | None | (no skill) | Step 4 — fall back to AGENTS.md |
+
+## When no step matches
 
 Default behavior: follow `AGENTS.md` + standard practices. Do NOT
 silently apply rules from a wrong sub-skill — if you're unsure, ask.
