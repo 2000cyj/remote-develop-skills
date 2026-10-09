@@ -1603,6 +1603,107 @@ grep -rEn "extends\s+com\.baomidou\.mybatisplus\.extension\.service\.impl\.Servi
 - `references/code-review-checklist.md §3` — Component Service 评审新增检查项
 
 
+### 15.1 PO 继承 BaseEntity 时，createTime / updateTime / createUser / updateUser 由 `@TableField(fill=...)` + `MyMetaObjectHandler` 自动填充（V20261009 新增）
+
+> 来源：店铺注销 V2.0.2 重构，扫 53 个 bi-cashier 后端文件发现 15 处 `setCreateTime` / `setUpdateTime` / `setCreateUser` / `setUpdateUser` 手动调用，全是冗余且有多源不一致风险。
+
+#### 机制
+
+`com.obo.core.common.model.BaseEntity` 在 4 个审计字段上都加了 `@TableField(fill = ...)`：
+
+| 字段 | 注解 | 自动时机 |
+|------|------|----------|
+| `createTime` | `FieldFill.INSERT` | 插入时 |
+| `createUser` | `FieldFill.INSERT` | 插入时 |
+| `updateTime` | `FieldFill.INSERT_UPDATE` | 插入 + 更新时 |
+| `updateUser` | `FieldFill.INSERT_UPDATE` | 插入 + 更新时 |
+
+`bi-cashier-web/.../MyMetaObjectHandler`（`@Component implements MetaObjectHandler`）已注册到 Spring 容器，MP 在 `baseMapper.insert / updateById / update` 调用时自动触发 `insertFill` / `updateFill`，从 `BaseContext.getUserName()` 取当前用户 + `LocalDateTime.now()` 取当前时间。
+
+#### 反面案例（bi-cashier 实际代码 2026-10）
+
+```java
+// ❌ StoreAuditOffboardingApplicationServiceImpl.insertApplication
+public int insertApplication(StoreAuditOffboardingApplication application) {
+    if (application == null) return 0;
+    LocalDateTime now = LocalDateTime.now();
+    String operator = SecurityContextHolder.getUserName();   // ← 源 1
+    if (application.getCreateTime() == null) application.setCreateTime(now);    // §15.1
+    if (application.getUpdateTime() == null) application.setUpdateTime(now);    // §15.1
+    if (application.getCreateUser() == null) application.setCreateUser(operator); // §15.1
+    if (application.getUpdateUser() == null) application.setUpdateUser(operator); // §15.1
+    if (application.getVersion() == null) application.setVersion(0);
+    if (application.getDeleted() == null) application.setDeleted(0);
+    return baseMapper.insert(application);
+    // ↓ 此处 MyMetaObjectHandler.insertFill 再次写 createTime/createUser/updateTime/updateUser
+    //   - 值同 → no-op
+    //   - 值不同（SecurityContextHolder vs BaseContext 源不一致） → 静默覆盖手动值
+}
+
+// ❌ StoreAuditOffboardingStoreServiceImpl.batchUpdateOffboardingDate
+record.setUpdateTime(LocalDateTime.now());   // §15.1
+record.setUpdateUser(operatorId);            // §15.1
+return baseMapper.update(record, ...);
+// ↓ updateFill 再次写 updateTime/updateUser
+```
+
+#### 危害（不止冗余）
+
+1. **冗余代码**：MyMetaObjectHandler 已填，set 是 4-5 行死代码
+2. **多源不一致风险**：`SecurityContextHolder.getUserName()` vs `BaseContext.getUserName()` —— 多数场景一致，但跨线程 / Feign / 异步任务里不一定
+3. **静默覆盖**：`MetaObjectHandler.setFieldValByName` 在新值与已存在值不同时**直接覆盖**手动值，坏数据**安静地**被覆盖
+4. **测试不可见**：单测 mock 掉 baseMapper 不会跑 MyMetaObjectHandler，看不出 bug
+
+#### 唯一允许手动 setXxx 的场景
+
+| 场景 | 示例 | 说明 |
+|------|------|------|
+| 透传历史 createTime 到快照 PO | `snap.setCreateTime(vo.getCreateTime())` | 拷贝原值，不该被自动填覆盖 |
+| 回填历史数据 | 脚本 / 迁移 | 显式指定时间和操作人 |
+| 跨服务迁移 | 同步过来的记录保留原值 | 同步场景 |
+
+**`setVersion` / `setDeleted` 仍允许手动**——这两个不在 `@TableField(fill=...)` 范围，handler 不会填。但 `setDeleted(0)` 仅在初始 null 时需要，handler 也不会处理。
+
+#### 正确做法
+
+```java
+// ✅ 删掉 4 行 setXxx，直接 insert
+public int insertApplication(StoreAuditOffboardingApplication application) {
+    if (application == null) return 0;
+    // 业务字段由调用方填
+    // createTime / createUser / updateTime / updateUser 由 MyMetaObjectHandler 自动填
+    if (application.getVersion() == null) application.setVersion(0);
+    if (application.getDeleted() == null) application.setDeleted(0);
+    return baseMapper.insert(application);
+}
+
+// ✅ 删掉 2 行 setXxx，直接 update
+public int updateApplicationById(StoreAuditOffboardingApplication application) {
+    if (application == null || application.getId() == null) return 0;
+    // updateTime / updateUser 由 MyMetaObjectHandler 自动填
+    return baseMapper.updateById(application);
+}
+```
+
+#### 审查硬指标
+
+```bash
+# 扫 Component / Service Impl / Completion Impl 中手动 set BaseEntity 审计字段
+grep -rEn "\.(setCreateTime|setUpdateTime|setCreateUser|setUpdateUser)\(" \
+  bi-cashier-{component,service}/src/main/java/ --include="*.java"
+# 预期：0 命中（除非带"// §15.1 例外：..."注释说明业务理由）
+```
+
+**违规处置**：扫到 → 删 4 行 setXxx → 留下必要 `setVersion` / `setDeleted(null → 0)` 兜底。
+
+#### 关联规则
+
+- `SKILL.md` §15 — `deleted` 由 `@TableLogic` 自动；本节是同思路扩展到 create/update 字段
+- `references/code-review-checklist.md §3` — Component Service 评审加「禁止手动 setCreateTime/setUpdateTime/setCreateUser/setUpdateUser」检查项
+- `references/architecture-layers.md §3.3` — 同
+- `MyMetaObjectHandler.java` (`bi-cashier-web/.../config/interceptor/`) — 注册点，删了会导致全模块审计字段为 null
+
+
 ### 16. VO 按业务视图命名（Page / List / Detail 各自独立），不复用同类型（V20260914）
 
 > 来源：`OperatingScopeServiceImpl.queryOperatingScopeById` 与 `OperatingScopeManageServiceImpl.listAllOperatingScope` 在上轮「OperatingScopeVO 重命名为 OperatingScopePageVO」后继续复用 `OperatingScopePageVO`，造成"分页 VO 被详情/列表场景借用"的语义错位（V20260914）。

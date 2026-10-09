@@ -53,6 +53,7 @@ PR 评审按层次分别检查。每个 checklist 都对应 skills 文档的章�
 - [ ] **不显式 `.eq(Xxx::getDeleted, 0)`**（PO 继承 BaseEntity 时由 `@TableLogic` 自动加 `WHERE deleted = 0`；写出来是冗余），详见 SKILL.md §15
 - [ ] **任何 `lambdaUpdate().set(Xxx::getDeleted, 1)` 模式都禁止**：软删除一律走 `delete*` / `remove*`（`removeById(id)` / `deleteById(id)` / `remove(lambdaQuery().eq(业务键))`），MP 自动 `.set(deleted, 1)`，详见 SKILL.md §15
 - [ ] **`selectById(...)` 后不写 `if (po.getDeleted() == 1) return null;`**（MP 已自动过滤软删记录，该分支是死代码）
+- [ ] **不手动 `setCreateTime` / `setUpdateTime` / `setCreateUser` / `setUpdateUser`**（BaseEntity + `MyMetaObjectHandler` 已自动填，手动调用是冗余且有多源不一致风险），详见 SKILL.md §15.1
 - [ ] **类 extends 写法**：`extends ServiceImpl<XxxMapper, T>` 必须通过 `import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;` 引入，禁止在 `extends` 后写全限定类名
 - [ ] **Mapper XML 手写 SQL 必须保留 `WHERE deleted = 0`**：XML 不走 MP `@TableLogic` 拦截器，手写条件**不是**死代码；agent sweep 时只删 Component Service 里的 `.eq(getDeleted, 0)`，**不删** XML 里的 `WHERE deleted = 0`；XML `<update>` 软删需手写 `SET deleted = 1`（详见 SKILL.md §15 警示与 §17 错例）
 - [ ] **数据级唯一性：Component 层判重 + throw，Manage 层仅调用**：判重逻辑下沉 Component，以 `validateXxxUnique(业务键, excludeId)`（**void**）提供，内部 `this.count(LambdaQueryWrapper.eq(业务键).ne(id, excludeId)) > 0` 后 `log.warn` + `throw new BusinessException(...)`；禁止 Component 返 `Boolean` + Manage 判后 throw 的双层样板代码；仅当外部业务需区分存在 vs 不存在时才返 `Boolean isXxxExists`（详见 SKILL.md §18）
@@ -144,6 +145,11 @@ grep -rEnA1 "lambdaUpdate\(\)" bi-cashier-{component,service}/src/main/java/ | g
 
 # selectById 后多余 getDeleted==1 判断反例
 grep -rEn "\.getDeleted\(\)\s*==\s*1" bi-cashier-{component,service}/src/main/java/
+
+# §15.1 手动 set BaseEntity 审计字段反例（V20261009 新增）
+grep -rEn "\.(setCreateTime|setUpdateTime|setCreateUser|setUpdateUser)\(" \
+    bi-cashier-{component,service}/src/main/java/ --include="*.java"
+# 预期：0 命中（除非带业务理由注释）
 
 # extends 全限定 ServiceImpl 反例（必须 import 后用短名）
 grep -rEn "extends\s+com\.baomidou\.mybatisplus\.extension\.service\.impl\.ServiceImpl" bi-cashier-{component,service}/src/main/java/
