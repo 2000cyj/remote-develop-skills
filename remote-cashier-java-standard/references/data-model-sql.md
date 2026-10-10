@@ -335,6 +335,50 @@ private LocalDate openDate;
 
 **不要**在 PO 中重复声明这些字段。**不要**在 Service 中手 `po.setCreateUser(...)` / `po.setUpdateUser(...)` / `po.setUpdateTime(LocalDateTime.now())` —— 一律删除。
 
+### 6.5 业务主键 / 业务唯一值（与 `SKILL.md` §4.6 双侧写定）
+
+> **强约束**：业务调用链上（Controller 入参、Manage / Component Service 定位、Mapper XML 条件与外键、DTO/VO 字段、跨业务引用）**优先使用本表的「业务唯一值」**；**只有在没有业务唯一值** 时才退而使用数据库 id。id 保留是为了 BaseEntity / `@TableLogic` 软删兼容，不在业务层流转。
+
+**“业务唯一值”** 判定门權：
+
+1. PO 里有业务语义上的“唯一识假一列”（如 `uniqueValue` / `platformCode` / `nodeCode` / `code` / `bizCode` / `taskCode` / `dictCode`）；
+2. SQL DDL 上 是否 打了 UNIQUE 索引 **不是** 门權，**业务语义上能被识别为唯一** 就是。
+
+**当前 bi-cashier 项目业务主键列表**（例举，仅供参考）：
+
+| 表 | 业务主键 | 字段类型 | 说明 |
+|----|----------|----------|------|
+| `cashier_store` | `unique_value` | VARCHAR | 店铺唯一值（全局唯一） |
+| `cashier_bank_card` | `unique_value` | VARCHAR | 银行卡唯一值 |
+| `cashier_company` | `unique_value` | VARCHAR | 公司唯一值 |
+| `cashier_store_entry_platform` | `platform_code` | VARCHAR | 店铺入驻平台业务码（新增，详見 §8.5） |
+| `cashier_audit_application` | `application_no` | VARCHAR | 审批申请单号 |
+
+**子表外键** 示例（`StoreEntryPlatform` 业务主键为 `platformCode`）：
+
+```sql
+-- ✅ 子表外键使用主表业务唯一值
+CREATE TABLE cashier_store_entry_platform_field (
+    id BIGINT NOT NULL AUTO_INCREMENT,
+    platform_code VARCHAR(50) NOT NULL,   -- 不是 platform_id BIGINT
+    field_code VARCHAR(32) NOT NULL,
+    required TINYINT NOT NULL DEFAULT 1,
+    ...
+    UNIQUE KEY uk_platform_field (platform_code, field_code),  -- 唯一约束也业务化
+    KEY idx_platform_code (platform_code)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+```
+
+**不是业务主键的 id 保留**：
+
+- `BaseEntity` 需要的 `id` 主键保留，是软删 / 审计字段兼容；
+- `MyBatis-Plus` `BaseMapper.updateById` / `removeById` / `getById` / `selectById` 内部调用仍可用 id（这是 MP 内部动作，不是业务选择）；
+- 业务上的「怎么找到这条记录」这一步必须以业务唯一值为输入。
+
+**DTO/VO 响应原则**：业务主键透出 id 是“主表 / 跨业务 上能识别的”——**坚决禁止**。DTO/VO 只能以业务唯一值作为记录标识字段，id 在 API 响应中出现会被解读为「外部可调的主键」。
+
+详细设计与反例、审查硬指标見 `SKILL.md` §4.6。
+
 ### 7. 软删除字段
 
 统一 0/1：
