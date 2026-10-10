@@ -323,15 +323,17 @@ private LocalDate openDate;
 
 ### 6. BaseEntity 继承字段
 
+> **强约束**（与 `SKILL.md` §4.5 双侧写定）：bi-cashier 项目下 `bi-cashier-component/.../po/Xxx.java` **必须** `extends com.obo.core.common.model.BaseEntity implements Serializable`。**禁止在 PO 中重声明审计字段**，**禁止在 Service/Impl 中手动 set 审计字段**（BaseEntity 自带 `@TableField(fill = INSERT/INSERT_UPDATE)` + 全局 MetaObjectHandler 自动填）。写 PO 之前先看本节，写完 PO 之后跑 `SKILL.md` §4.5 列的 3 条 grep 自检。
+
 `extends BaseEntity` 自动获得：
 
-- `id`（主键）
-- `createUser` / `updateUser`（操作人）
-- `createTime` / `updateTime`（操作时间）
-- `deleted`（软删除标志，0=未删，1=已删）
-- `tenantId`（多租户 ID）
+- `id`（主键，`@TableId(type = IdType.AUTO)`）
+- `createUser` / `updateUser`（操作人，`@TableField(fill = INSERT/INSERT_UPDATE)`）
+- `createTime` / `updateTime`（操作时间，`@TableField(fill = INSERT/INSERT_UPDATE)`）
+- `deleted`（软删除标志，0=未删，1=已删，`@TableLogic(value="0", delval="1")`）
+- `tenantId`（多租户 ID，`@TableField(fill = INSERT)`）
 
-**不要**在 PO 中重复声明这些字段。
+**不要**在 PO 中重复声明这些字段。**不要**在 Service 中手 `po.setCreateUser(...)` / `po.setUpdateUser(...)` / `po.setUpdateTime(LocalDateTime.now())` —— 一律删除。
 
 ### 7. 软删除字段
 

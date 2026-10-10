@@ -113,6 +113,58 @@ description: Use when 用户 prompt 涉及 Java 后端代码修改、审查、�
      - `grep -rEn "@lombok\.(Data|Builder).*\b(class|@?public class)\s+(XxxContext|XxxReq|XxxResp|XxxDTO|XxxVO)\b" bi-cashier-{component,service,web}/src/main/java/`
      - 命中且**不在** `bi-cashier-api/.../dto/Xxx.java` 文件内 → 违规
      - Service 接口（如 `XxxRecorder.java` / `IXxxService.java`）内 `@lombok.Data class XxxContext` 100% 违规
+4.5. **PO 必须 `extends BaseEntity`，禁止手写审计字段（强约束）**：
+   - **硬约束**：`bi-cashier-component/.../po/Xxx.java` **必须** `extends com.obo.core.common.model.BaseEntity implements Serializable`，由父类提供 `id` / `createUser` / `updateUser` / `createTime` / `updateTime` / `deleted` / `tenantId` 及其对应的 `@TableId` / `@TableField` / `@TableLogic` 注解与自动填策略。
+   - **禁止在 PO 中重新声明 BaseEntity 已有的字段**：`@TableField("create_user")` / `@TableField("create_time")` / `@TableField("update_user")` / `@TableField("update_time")` / `@TableField("deleted")` / `@TableField("tenant_id")` 一律不写在 PO 里；手写 `private Long id;` 也属违规（BankCard / Store 模式是「重写 `@TableId`」+ 「保留类型声明」二选一，推荐后者，不重写）。
+   - **禁止 Service 手动填审计字段**：`po.setCreateUser(currentUser)` / `po.setUpdateUser(...)` / `po.setUpdateTime(LocalDateTime.now())` 一律删除；由 BaseEntity 自带的 `@TableField(fill = FieldFill.INSERT / INSERT_UPDATE)` + 全局 `MetaObjectHandler` 自动填。如果 Service 中出现这些 set 调用，说明误用了旧式手动填口径，必删。
+   - **理由**：手写审计字段会导致 (1) 字段声明在父类与子类各写一份，维护期改一处忘另一处必出字段漂移；(2) 与项目惯例 100% 不一致——`BankCard` / `Store` / `StoreChangeInfo` / `AccountChangeDetails` / `OperatingScope` 全部继承 BaseEntity；(3) `get_file_problems` 0 error 只能查编译级问题，看不出「惯例级 drift」，不在 self-check 覆盖范围内。
+   - **审查硬指标（写完 PO 必跑）**：
+     ```bash
+     # 1. 找出 bi-cashier-component 下没继承 BaseEntity 的 PO
+     grep -L "extends BaseEntity" D:/OB/bi-FOB/bi-cashier/bi-cashier-component/src/main/java/com/obo/bi/cashier/po/*.java
+     # 命中（输出文件名）→ 违规
+     # 2. 扫当前 PO 是否重声明 BaseEntity 字段
+     grep -E "@TableField\(\"(create_user|create_time|update_user|update_time|deleted|tenant_id)\"\)" <本任务新建/修改的 PO>
+     # 命中 → 违规
+     # 3. 扫 Manage / ServiceImpl 是否手 set 审计字段
+     grep -E "set(CreateUser|UpdateUser|UpdateTime|CreateTime)\(" D:/OB/bi-FOB/bi-cashier/bi-cashier-service/src/main/java/com/obo/bi/cashier/service/impl/<XxxManageServiceImpl>.java
+     # 命中（除日志形参外）→ 违规
+     ```
+   - **正例**：
+     ```java
+     // ✅ bi-cashier-component/po/BankCard.java
+     @Data
+     @TableName("cashier_bank_card")
+     public class BankCard extends BaseEntity implements Serializable {
+         @TableId(type = IdType.AUTO)
+         private Long id;   // 重新声明仅为保留类型信息；注解继承父类
+         private String uniqueValue;
+         // ...业务列；不要写 createUser / createTime 等
+     }
+
+     // ✅ ManageImpl 写法
+     po.setPlatformName(dto.getPlatformName().trim());
+     po.setPlatformCode(dto.getPlatformCode().trim());
+     po.setConfigRemark(dto.getConfigRemark());
+     storeEntryPlatformService.save(po);   // createUser/updateUser 由 BaseEntity auto-fill 写入
+     ```
+   - **反例（本次 storeEntryPlatform 初版踩坑）**：
+     ```java
+     // ❌ PO 重复声明
+     public class StoreEntryPlatform implements Serializable {
+         @TableField("create_user") private String createUser;
+         @TableField("update_user") private String updateUser;
+         @TableField("create_time") private LocalDateTime createTime;
+         @TableField("update_time") private LocalDateTime updateTime;
+         @TableField("deleted")     private Integer deleted;
+         // ...
+     }
+     // ❌ Service 手 set 审计
+     po.setCreateUser(currentUser);
+     po.setUpdateUser(currentUser);
+     existed.setUpdateTime(LocalDateTime.now());
+     ```
+   - **交叉引用**：`references/data-model-sql.md` §6（BaseEntity 继承字段清单） + §9（反例 ❌ 重复声明 BaseEntity 字段）。两者在 SKILL.md 与 references 双侧都有，缺一不可——SKILL.md 给出「写前必看」的强约束，references 给出「字段列表」的实现细节。
 5. **分页返回**：`Result<PageResult<XxxVO>>`（不能是裸 `Result<PageResult>`）。
 6. **Controller** 必须标注 `@Api`、`@ApiOperation`（中文）。**禁止**标注 `@BusLogs`——切面已废弃（`BusLogAop.java` 全注释，无生效切面），加注解会给读者错误的"必须添加"预期（详见 `references/architecture-layers.md` §1.2）。
 7. **API 入参对象化**：≥ 2 个独立变量的 Controller 入参**必须**收进一个 DTO 用 `@RequestBody` 收，禁止 `@RequestParam` 与 `@RequestBody` 混用同一个业务键（`uniqueValue` / `nodeCode`），也禁止业务键塞进 URL 路径段（`@PathVariable`）。`@RequestParam` 仅服务于"单变量且不会再扩"接口（详见 `references/architecture-layers.md` §15）。
