@@ -477,6 +477,57 @@ description: Use when 用户 prompt 涉及 Java 后端代码修改、审查、�
 - 抽 helper 的合法动机只有 2 个：① 同一段逻辑出现 ≥ 2 处（消除重复）② 主方法 ≥ 80 行需要拆解可读性
 - 一次性 / 顺序性强 / 不会再用 → 不要硬抽，保留主流程扁平写法（详见 `references/code-structure.md` §8 表格 + §8.7）
 
+4.9. **PO 业务字段必须显式标注 `@TableField`（强约束）**：
+   - **硬约束**：`bi-cashier-component/.../po/Xxx.java` 的**业务字段**（除 `id` 之外的所有本表专属列）**必须**显式标注 `@TableField("snake_case_column_name")`，与 DB 列名 1:1 锁定；**禁止**依赖 MyBatis-Plus 默认的「驼峰 → 下划线」隐式转换。
+   - **理由**：
+     1. **显式映射抗漂移**：DB 列重命名（加 `_archive` 后缀 / 拼写修正）时，显式 `@TableField` 会让 MP 启动期反射失败立刻报错，**不会**让接口静默返回 `null` 或 `0`；依赖隐式规则的代码会在运行时「字段对不上、值是默认值」才发现。
+     2. **项目惯例 100% 显式**：`BankCard` / `Company` / `StoreEntryPlatformField` / `OperatingScope` 等 30+ PO 全部显式标注 `@TableField("xxx")`；只有 `StoreEntryPlatform`（主表）三个业务字段漏标，是**不一致**而非「风格选择」。
+     3. **grep 审查需要**：显式 `@TableField` 让审查可一行 grep 验证「列名与 DB 一致」；隐式规则无法在 commit 前拦截漂移。
+     4. **继承字段不算**：BaseEntity 已经为 `createUser / updateUser / createTime / updateTime / deleted / tenantId` 显式标注，子类不要重写（详见 §4.5）；本节只约束**本表专属业务列**。
+   - **正例**：
+     ```java
+     @Data
+     @TableName("cashier_bank_card")
+     public class BankCard extends BaseEntity implements Serializable {
+         @TableId(type = IdType.AUTO)
+         private Long id;                                          // 主键：@TableId 标注
+
+         @TableField("account_number")                            // 业务字段：@TableField 显式列名
+         private String accountNumber;
+
+         @TableField("bank_name")
+         private String bankName;
+         // createUser / updateUser 等继承自 BaseEntity，不重写
+     }
+     ```
+   - **反例**（本项目 `StoreEntryPlatform` 初版踩坑 · 2026-10-10）：
+     ```java
+     // ❌ 业务字段漏标 @TableField，依赖 MP 默认驼峰 → 下划线
+     @Data
+     @TableName("cashier_store_entry_platform")
+     public class StoreEntryPlatform extends BaseEntity implements Serializable {
+         @TableId(type = IdType.AUTO)
+         private Long id;
+
+         private String platformName;      // ❌ 缺 @TableField("platform_name")
+         private String platformCode;      // ❌ 缺 @TableField("platform_code")
+         private String configRemark;      // ❌ 缺 @TableField("config_remark")
+     }
+     ```
+   - **审查硬指标**（写完 PO 必跑）：
+     ```bash
+     # 找出 bi-cashier-component 下业务字段未标注 @TableField 的 PO
+     # 规则：PO 字段除 @TableId 的 id / 继承自 BaseEntity 的字段外，其余私有字段前一行必须含 @TableField
+     # 简化检查：扫描所有 bi-cashier-component/.../po/*.java，列出每个 PO 的「业务字段」行，再 grep 上一行是否有 @TableField
+     for f in D:/OB/bi-FOB/bi-cashier/bi-cashier-component/src/main/java/com/obo/bi/cashier/po/*.java; do
+       echo "=== $f ==="
+       grep -nE "private\s+\w+\s+\w+\s*;" "$f" \
+         | grep -vE "private (Long|String|Integer|LocalDate|LocalDateTime|BigDecimal) (id|createUser|updateUser|createTime|updateTime|deleted|tenantId)\s*;"
+     done
+     # 上述命令输出每个 PO 的业务字段行号；逐一检查这些行号前一行是否含 @TableField；未含即违规
+     ```
+   - **交叉引用**：`SKILL.md` §4.1（MP 注解作用域，只允许在 PO 出现）、§4.5（继承 BaseEntity 与审计字段显式标注）；`references/data-model-sql.md` §6（BaseEntity 继承字段清单）。
+
 ### 代码生成范围
 
 | 模块 | 内容 |
