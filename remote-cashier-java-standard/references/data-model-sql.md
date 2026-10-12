@@ -28,6 +28,8 @@ return this.remove(
 );
 ```
 
+- **⚠️ MP 3.5.3+ 已知 bug**：`this.remove(lambdaQuery)` 会触发 OGNL `can not use this method for "getSqlSegment"` 异常。**本模块 `this.remove(lambdaQuery)` 已被覆盖**，统一改走 `baseMapper.delete(new LambdaQueryWrapper<>())`，这是「禁止 `new LambdaQueryWrapper<>`」规约的**唯一**合法破例场景。详见 SKILL.md「业务键软删除一律走 `remove`」节下的「MP 3.5.3+ 已知 bug」子节。
+
 - 按主键软删除直接 `removeById` / `deleteById`：
 
 ```java

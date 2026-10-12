@@ -833,6 +833,77 @@ grep -nE "^    private\s+(static\s+)?[\w<>,\[\]?\s]+\s+\w+\s*\(" \
 2. **有实际业务约束的方法**（如带 `if-throw` 的硬拒绝逻辑）→ 不用 Javadoc，**用 `//` 阶段化注释**（按 §6）——Controller 通常不该有业务逻辑，例外场景下用普通行注释而非 Javadoc
 3. **Controller 私 helper**（私有方法做 DTO→DTO 转换、字段映射）→ 必须有 Javadoc（与 §0.1 helper 规则一致）
 
+### 0.3 Controller 返回值规范：无返回值的写接口必须 `Result.success(Boolean.TRUE)`，禁止裸 `Result.success()`（V20261010 新增）
+
+**协议**：
+
+- 删除 / 提交 / 审核 / 启停 / 状态变更 / 触发一次副作用后无业务载荷的写接口 → 返回类型 `Result<Boolean>`，方法体末尾 **必须** `return Result.success(Boolean.TRUE);`
+- **禁止** `return Result.success();`（即 `Result<Void>` / 裸 `Result`），即使后端 Service 不返回数据
+
+#### 反面案例
+
+```java
+// ❌ 删/改/状态变更写接口返回 Void / 裸 Result
+@ApiOperation("删除平台手机号")
+@PostMapping("/deleteStoreEntryPlatformPhone")
+public Result<Void> deleteStoreEntryPlatformPhone(@RequestParam("phone") String phone) {
+    manageService.deleteStoreEntryPlatformPhone(phone);
+    return Result.success();            // data = null → 前端 if (ok) 进不去
+}
+```
+
+#### 正面做法
+
+```java
+// ✅ 统一 Result<Boolean> + Result.success(Boolean.TRUE)
+@ApiOperation("删除平台手机号")
+@PostMapping("/deleteStoreEntryPlatformPhone")
+public Result<Boolean> deleteStoreEntryPlatformPhone(@RequestParam("phone") String phone) {
+    manageService.deleteStoreEntryPlatformPhone(phone);
+    return Result.success(Boolean.TRUE);
+}
+```
+
+#### 为何强制 `Boolean.TRUE`
+
+1. **前端 `requestData<boolean>` 业务约定**。HTTP 层在 `code !== 0` 时已经 `reject`+`ElMessage`，剩下 resolve 出来的就是写入成功的载荷。前端默认写法：
+
+   ```ts
+   const ok = await deleteXxxApi(...)
+   if (ok) {                                // ✅ Boolean.TRUE → 进得去
+     ElMessage.success("删除成功")
+     void getList()                         // 列表页必须刷新
+   }
+   ```
+
+   后端返回 `data: null` 时 `if (ok)` 永远 falsy → 列表不刷新、提示不弹 → 误以为操作失败。
+
+2. **项目惯例**：所有「按业务键软删 / 状态变更 / 写后无载荷」接口都返回 `Result<Boolean>` 并 `Result.success(Boolean.TRUE)`（参见 `StoreEntryPlatformController.deleteStoreEntryPlatform` / `BankCardController.deleteBankCard` / `CompanyController.deleteCompany` / `SealController.deleteSeal`）。
+
+#### 适用范围
+
+| 场景 | 返回类型 | 写入 |
+|---|---|---|
+| 按业务键软删 / 硬删（无后续业务对象返回）| `Result<Boolean>` | `Result.success(Boolean.TRUE)` |
+| 启停 / 启用 / 禁用 / 状态机迁移 | `Result<Boolean>` | `Result.success(Boolean.TRUE)` |
+| 提交 / 审核 / 撤回前 | `Result<Boolean>` | `Result.success(Boolean.TRUE)` |
+| 触发定时器 / 触发通知 / 触发 MQ 等副作用 | `Result<Boolean>` | `Result.success(Boolean.TRUE)` |
+| 详情 / 分页 / 拿业务对象 | `Result<XxxVO>` / `Result<PageResult<XxxVO>>` | `Result.success(vo)` / `Result.success(pageResult)` |
+| 校验存在性（`isXxxExists`）| `Result<Boolean>` | `Result.success(exists)`（**注意**：这里是真实布尔，**不是** `Boolean.TRUE`）|
+
+#### 审查硬指标（提交前必跑）
+
+```bash
+# Controller 层裸 Result.success() / Result<Void>（除校验真误的 / 拿业务对象的外）
+grep -rEn "return Result\.success\(\);|public Result<Void>"   bi-cashier-web/src/main/java/com/obo/bi/cashier/controller/   | grep -vE "isXxxExists|existsIn"
+# 预期：0 命中
+```
+
+**例外**：
+
+1. **校验类接口**（`isXxxExists` / `existsIn` / `checkXxx` 等）：返回真实布尔 `Result.success(boolean exists)`，**不**写死 `Boolean.TRUE`。
+2. **返回业务对象**的接口（`Result<XxxVO>` / `Result<PageResult<XxxVO>>`）：走常规解包，不需要 `Boolean.TRUE`。
+
 ### 1. 类文件布局（自上而下）
 
 ```
@@ -2037,6 +2108,54 @@ return this.remove(
                 .eq(Xxx::getAccountNumber, accountNumber)
                 .eq(Xxx::getBankCode, bankCode)
 );
+
+#### ⚠️ MP 3.5.3+ 已知 bug：`IService.remove(Wrapper)` 会触发 OGNL 异常（V20261010 新增例外）
+
+**问题**：`this.remove(this.lambdaQuery().eq(业务键, ...))` 抛：
+
+```
+org.mybatis.spring.MyBatisSystemException: nested exception is
+org.apache.ibatis.builder.BuilderException: Error evaluating expression
+'ew.sqlSegment != null and ew.sqlSegment != ''''
+Cause: org.apache.ibatis.ognl.OgnlException: sqlSegment
+Cause: com.baomidou.mybatisplus.core.exceptions.MybatisPlusException:
+can not use this method for "getSqlSegment"
+```
+
+**根因**：MP 3.5.3+ 把 `AbstractChainWrapper.getSqlSegment()` 锁死（OGNL / 外部都禁止调）。`IService.remove(Wrapper)` 内部生成的 update SQL 模板里有：
+
+```xml
+<bind name="_ew_BC" value="ew.sqlSegment != null and ew.sqlSegment != ''" />
+```
+
+这个 `<bind>` 走 OGNL 触发 `getSqlSegment()` → 抛 `can not use this method for "getSqlSegment"`。**关键**：异常路径**只**经 `IService.remove(Wrapper)`，**不**经 `BaseMapper.delete(Wrapper)`（后者 XML 是简单 `<delete>`，没有 `<bind>`，不触发 OGNL）。
+
+**修复**：从 `this.remove(wrapper)` 改走 `baseMapper.delete(wrapper)`。这是项目惯例「禁止 `new LambdaQueryWrapper<>`」规则的**唯一**合法破例场景。
+
+```java
+// ❌ 报错（MP 3.5.3+ 上 IService.remove 内部模板带 <bind> 触发 OGNL）
+return this.remove(this.lambdaQuery().eq(StoreEntryPlatform::getPlatformCode, code));
+
+// ✅ 绕开 IService.remove 内部模板，直接走 BaseMapper.delete(Wrapper) 的简单 XML
+return baseMapper.delete(
+        new LambdaQueryWrapper<StoreEntryPlatform>()
+                .eq(StoreEntryPlatform::getPlatformCode, code)
+) > 0;
+```
+
+**判定要点**（提交前必查）：
+
+| 调用方式 | MP 3.5.3 行为 |
+|---|---|
+| `this.remove(this.lambdaQuery().eq(业务键))` | ❌ 抛 OGNL 异常 |
+| `this.removeById(id)` | ✅ 走 `BaseMapper.deleteById`，**不**触发 |
+| `baseMapper.deleteById(id)` | ✅ 同上 |
+| `baseMapper.delete(new LambdaQueryWrapper<>().eq(业务键))` | ✅ 走 `BaseMapper.delete(Wrapper)` 简单 `<delete>` |
+| `this.remove(new QueryWrapper<>().eq(业务键))` | ❌ 同 `this.remove(lambdaQuery)`，一样报错 |
+
+**前提**：业务唯一键上没有 NULL 字段约束、唯一索引（库表唯一索引由 `BaseMapper.delete` 透传到 SQL，与 wrapper 行为等价）。
+
+**为什么 `new LambdaQueryWrapper<>()` 这里允许**：常规场景下 `this.lambdaQuery()` 链式更安全（无需 import 类型）；但 `this.remove()` 不能传链式 wrapper，必须构造一个独立 wrapper 实例传给 `baseMapper.delete()`。本例外仅限此场景。
 ```
 
 #### 类 extends ServiceImpl 写法规范
