@@ -835,3 +835,85 @@ import { confirmDelete } from "@/pages/StoreAuditOnboarding/utils/confirm"
 **业务逻辑 0 改动**：纯 import 路径修正，运行时无影响。
 
 **SKILL 升级点**：见 `SKILL.md` 步骤 4a 路径校验 + 步骤 6 类型嫌疑主动扫描。本形态是 2026-09-21 实际修复 `StoreAuditOnboarding/addOrEdit/detail.vue` 时发现——5 个其他 `.ts` 文件同路径都 resolve 成功，仅 `.vue` 失败。**修复规则：`.vue` 文件优先用 `@/pages/...` 绝对路径，避免相对路径在 vue-tsc 解析时的偶发失败**。
+
+## TS2345：spread 后字段类型不兼容（形参 union literal，源 string）
+
+**签名**：
+```
+addOrEdit/fill.vue(163,11): error TS2345: Argument of type
+{ rowNo: number; companyUniqueValue: string | undefined; companyName: string;
+  ...; entryPlatform: string | undefined; subAccounts?: {...}[]; }[]
+is not assignable to parameter of type OnboardingItem[]
+
+Types of property entryPlatform are incompatible.
+Type 'string | undefined' is not assignable to type 'AuditPlatform | undefined'
+Type 'string' is not assignable to type 'AuditPlatform | undefined'
+```
+
+**根因**：函数形参接口 `OnboardingItem.entryPlatform: AuditPlatform`（`AuditPlatform = "tmall" | "jd" | "pdd" | "douyin" | "kuaishou" | "amazon" | "other"`，7 枚举字面量）；调用方 `shops.value.map(item => ({...item, rowNo, companyUniqueValue, companyName}))` 生成的 storesPayload 里 `entryPlatform` 是 `string`（`ShopFormValue.entryPlatform: string`）。spread 后传给 `validateOnboardingFill(storesPayload: OnboardingItem[])` → 形参期望 `AuditPlatform | undefined`，收到 `string | undefined`，报 TS2345。
+
+**为什么会写 string**：**实际数据是任意 string**（`storeEntryPlatform` 字典里的 `platformCode` 可为 `test_pdd` / `test2` / `jd` / `pdd` 等），用 7 枚举限死反而表达不了真实数据。
+
+**为什么 ESLint 没报**：
+- TS2345 是 type-aware 错误，ESLint 默认无 `parserOptions.project`，无 type-aware 规则
+- `vue-tsc --noEmit` 才能扫出，但本 skill 默认不跑
+
+**为什么 TS2551 / TS18048 / TS2345 未知函数返回形态也扫不到**：它们的扫描项都是"函数/字段访问型"（如 `Record<string, unknown>` + `|| "兑底"`），不覆盖"spread 后赋值给 union literal 字段"这种跨对象类型不兼容。
+
+**判断方法（grep 主动扫，不依赖 vue-tsc）**：
+
+```bash
+# 步骤 1：找 union literal 字段定义（内联 string union，2-10 个 literal）
+grep -nE '\?\s*:\s*"[a-z_]+"(\s*\|\s*"[a-z_]+"){1,9}' src/ -r --include="*.ts" --include="*.vue"
+# 命中例：
+#   src/pages/StoreAuditOnboarding/apis/type.ts:23:  storeCountBucket?: "all" | "zero" | "1-5" | "6-20" | "20+"
+
+# 步骤 2：找 union literal 类型别名（需以 union 为体）
+grep -nE '^export type \w+ = "[a-z_]+"(\s*\|\s*"[a-z_]+"){1,9}\s*$' src/ -r --include="*.ts"
+# 命中例：
+#   src/pages/StoreAuditOnboarding/apis/type.ts:27:export type AuditPlatform = "tmall" | "jd" | "pdd" | "douyin" | "kuaishou" | "amazon" | "other"
+
+# 步骤 3：找 spread 源（调用方）：{ ...item, ... } 或 .map 后调函数
+grep -nE 'return \{\s*\.\.\.' src/ -r --include="*.ts" --include="*.vue"
+# 命中例：
+#   addOrEdit/fill.vue:154:  const storesPayload = shops.value.map((item, idx) => {
+#   addOrEdit/fill.vue:155:    return {
+#   addOrEdit/fill.vue:156:      ...item,
+#   addOrEdit/fill.vue:157:      rowNo: idx + 1,
+
+# 步骤 4：找赋值给 *Payload 后传给函数的模式
+grep -nE 'const \w+Payload\s*=\s*.+\.map\(' src/ -r --include="*.ts" --include="*.vue"
+# 命中例：
+#   addOrEdit/fill.vue:154:  const storesPayload = shops.value.map((item, idx) => {
+```
+
+**交叉判断**：步骤 1/2 命中的每个 union literal 字段名 vs 步骤 3/4 的 spread 源对象字面量里**同名字段**：
+- spread 源同名字段是 `string` / `string | undefined` → **本形态**，报 TS2345
+- spread 源同名字段类型已对齐 union literal → 无问题
+- 找不到同名字段 → spread 源没赋这个字段，安全
+
+**修复方向**（需业务判断，不擅自修）：
+
+| 方向 | 适用场景 | 改动范围 |
+|---|---|---|
+| (A) 接口字段放宽到 `string` | 实际数据本来就是任意 string（平台字典 code / 业务流水号等），用 union literal 限死反而表达不了 | 仅修改 `type.ts` 该字段类型，0 业务改动 |
+| (B) 加 type guard | 数据应严控到 union literal 值，但调用方临时存了 string | 在 spread 后加 `(storesPayload as OnboardingItem[])` 断言或运行时校验 |
+| (C) 改 spread 源字段类型为 union literal | 不推荐，源数据本身是 string 不可控 | 改 `ShopFormValue.entryPlatform: AuditPlatform` 会在其它位置连锁报错 |
+
+**本次 case 修法**（A）：
+```ts
+// src/pages/StoreAuditOnboarding/apis/type.ts
+- /** 入驻平台（来自申请单的目标平台，必填，spec §3.4） */
+- entryPlatform?: AuditPlatform
++ /**
++  * 入驻平台（来自申请单的目标平台，必填，spec §3.4）
++  *  ponytail: 实际平台字典里 code 是任意 string（test_pdd/test2 等），不能用 AuditPlatform 7 枚举限死。
++  */
++ entryPlatform?: string
+```
+
+**业务逻辑 0 改动**：实际数据一直是 string，运行时无任何变化。
+
+**反思**：union literal 字段是"业务希望数据严控到某几个值"的契约表达，但前端表单里用户在 select 里可能选到字典外的值（如 `test_pdd`）—— 字典值不在 union literal 内就报错。**业务实际**：union literal 应只用于"后端 API 枚举返回值"等真枚举场景；前端表单 / spread 源用 string 才对。
+
+**SKILL 升级点**：见 `SKILL.md` 步骤 6 "类型嫌疑主动扫描"新增的"spread 后跨对象类型不兼容"扫描项。本形态是 2026-10-10 实际修复 `ob_web/packages/micro/cashier/src/pages/StoreAuditOnboarding/addOrEdit/fill.vue` line 163 时发现——skill 之前的扫描项（TS2551 / TS18048 / TS2345 函数返回 unknown）都覆盖不到。

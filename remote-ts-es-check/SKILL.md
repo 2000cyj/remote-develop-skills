@@ -86,6 +86,24 @@ ESLint 必须解析完整文件才能正确理解 Vue/TS 语法，因此检查�
    - 命中 → Read 相关 `type.ts` / `*.d.ts` 对比字段名/类型
    - 不一致 → 报告"预存问题"，**不擅自修**
    - 用户要求全面验证 → 跑 `npx vue-tsc --noEmit | grep <pattern>` 全项目扫描（必须标注范围）
+   - **spread 后跨对象类型不兼容（防 TS2345：形参是 union literal，spread 传入 string）**：调用方使用 `return { ...item, ... }` 或 `...shops.value.map(...)` 后传给函数，函数形参的 interface 字段是 `field: "a" | "b" | ...`（< 10 元素的 string union literal），而 spread 源对应字段是 `string`。ESLint 抓不到（type-aware 错误），vue-tsc 默认不跑。
+     ```bash
+     # 步骤 1：找 union literal 字段定义（内联 string union）
+     grep -nE '\?\s*:\s*"[a-z_]+"(\s*\|\s*"[a-z_]+"){1,9}' src/ -r --include="*.ts" --include="*.vue"
+     # 步骤 2：找 union literal 类型别名（import 形式）
+     grep -nE '^export type \w+ = "[a-z_]+"(\s*\|\s*"[a-z_]+"){1,9}\s*$' src/ -r --include="*.ts"
+     # 步骤 3：找 spread 源（调用方）
+     grep -nE 'return \{\s*\.\.\.' src/ -r --include="*.ts" --include="*.vue"
+     # 步骤 4：找 .map 后立即调函数 / 或赋值给 Payload 后调
+     grep -nE 'const \w+Payload\s*=\s*.+\.map\(' src/ -r --include="*.ts" --include="*.vue"
+     ```
+     交叉看步骤 1/2 的"含 union literal 字段"和步骤 3/4 的 spread 源，**名字相同的字段** → 报告"spread 源字段是 string，但目标接口字段是 union literal"。修复方向（需业务判断，不擅自修）：
+     - (A) 接口字段放宽到 `string`（当实际数据本来就是任意 string，如平台字典 code）
+     - (B) 加 type guard（`as Union`）转换
+     - (C) 改 spread 源字段类型为 union literal（不推荐，业务实际是 string）
+     参考 `references/error-signatures.md` 中的 "TS2345 形态：spread 后字段类型不兼容"。
+
+
 
 7. **格式嫌疑主动扫描**（即使 ESLint 0 报错也要做）：
    - **JSDoc 起始行同行接文字**（防 jsdoc/multiline-blocks）：grep 文件内所有 `/**` 行，若 `/**` 后紧跟非空字符（非换行、非空格引导的 ` *`），则该注释违规。修复：把首行 `/**` 单独成行，文字挪到下一行 ` * <text>`，未行用 ` */`。参考 `references/error-signatures.md` 中的 "jsdoc/multiline-blocks 形态"。
