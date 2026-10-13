@@ -1223,4 +1223,267 @@ import type { FormItemRule } from "element-plus"
 | TS2304 未 import 类型（形态 D）| TS2304 | `const x: X = ...` | 用了类型但没 import |
 | **TS2322 `as Record<string, X>` 错 X**（形态 E）| TS2322 | cast 后值类型 | X 是 `unknown` / `any` 下游接不住 |
 
-**SKILL 升级点**：见 `SKILL.md` 步骤 6 "类型嫌疑主动扫描"新增的"`as Record<string, X>` 错 X 类型"扫描项。本形态是 2026-10-10 实际修复 `ob_web/packages/micro/cashier/src/pages/StoreAuditOnboarding/addOrEdit/components/SubAccountForm.vue` line 338 / 360 时发现——前 5 个升级都查"类型对不对 / 在不在 import"，不查"cast 后值类型下游接不接得住"。cashier 项目 11 处 `unknown` / `any` cast 里有 7+ 处下游会报 TS2322，是高频率的隐错。
+**SKILL 升级点**：见 `SKILL.md` 步骤 6 "类型嫌疑主动扫描"新增的"`as Record<string, X>` 错 X 类型"扫描项。本形态是 2026-10-10 实际修复 `ob_web/packages/micro/cashier/src/pages/StoreAuditOnboarding/addOrEdit/components/SubAccountForm.vue` line 338 / 360 时发现——前 5 个升级都查“类型对不对 / 在不在 import”，不查“cast 后值类型下游接不接得住”。cashier 项目 11 处 `unknown` / `any` cast 里有 7+ 处下游会报 TS2322，是高频率的隐错。
+
+## TS2345 / TS2339 形态：`as const` 元素 union 传给函数形参字段不对齐
+
+**签名**（两阶段）：
+```
+// 阶段 1：形参字段不足（TS2345）
+formatValue.ts(196, 56): error TS2345: Argument of type
+  '{ readonly key: "account"; readonly label: "取数宝账号"; } | { readonly key: "password"; ... readonly mask: true; } | ... 5 more ...'
+  is not assignable to parameter of type '{ mask?: boolean | undefined; yesno?: boolean | undefined; }'
+  Type '{ readonly key: 'account'; readonly label: '取数宝账号'; }' has no properties in common with type
+  '{ mask?: boolean | undefined; yesno?: boolean | undefined; }'
+
+// 阶段 2：形参是精确 literal union，访问某字段（TS2339）
+formatValue.ts(199, 7): error TS2339: Property 'mask' does not exist on type
+  '{ readonly key: "account"; readonly label: "取数宝账号"; } | { ... readonly mask: true; } | ...'
+  Property 'mask' does not exist on type '{ readonly key: 'account'; readonly label: '取数宝账号'; }'
+```
+
+**根因**：`as const` 把数组 / 对象元素变成**精确 literal union**——每个元素只有自己有的字段（如 `{ key: "account", label: "取数宝账号" }` **没** mask/yesno；`{ key: "password", label: "密码", mask: true }` **没** yesno）。
+
+调用 `formatValue(raw, f)` 传 `f: SUB_ACCOUNT_FIELDS[number]` 时，TS 严格检查每个 union 成员与形参的兼容性：
+
+| 形参形态 | 错误 | 原因 |
+|---|---|---|
+| `f: { mask?, yesno? }` | TS2345 | union 第一项 `account` 根本没 `mask/yesno` 字段 |
+| `f: typeof X[number]` | TS2339（内部 `f.mask`）| 形参是精确 literal union，`account` 元素没 `mask` |
+| `f: { key, label, mask?, yesno? }` | ✓ | union literal `key: "account"` 可赋给 `key: string`（subtype → supertype）|
+
+**本次 case 错误 - 错误 - 正确三连**：
+
+```ts
+// 错（1）原版：f: { mask?, yesno? } —— union 第一项 account 缺字段报 TS2345
+function formatValue(raw: unknown, f: { mask?: boolean, yesno?: boolean }): string { ... }
+
+// 错（2）我上次修法：f: typeof SUB_ACCOUNT_FIELDS[number] —— 形参是精确 union，内部 f.mask 报 TS2339
+function formatValue(raw: unknown, f: typeof SUB_ACCOUNT_FIELDS[number]): string {
+  if (f.mask) return "********"  // TS2339：account 元素没 mask
+}
+
+// 正：f: { key, label, mask?, yesno? } —— 共有字段 + supertype + 可选
+function formatValue(raw: unknown, f: { key: string, label: string, mask?: boolean, yesno?: boolean }): string {
+  if (f.mask) return "********"  // ✓ boolean | undefined narrowing
+}
+```
+
+**为什么前 6 个升级项都不报**：本形态涉及 "**`as const` 元素 union 与函数形参字段对齐**"——skill 之前 6 个升级（TS2345 spread / 透传 / TS2339 Set / fieldCode / TS2304 未 import / TS2322 错 X）都查"spread / 简写 / Set / cast / import"，**不查"`as const` 元素 + 函数形参"**这种业务常见形态。
+
+**判断方法（grep 主动扫）**：
+
+```bash
+# 步骤 1：找所有 as const 数组 / 对象
+grep -nE '\]\s*as\s+const|\}\s*as\s+const' src/ -r --include="*.ts" --include="*.vue"
+
+# 步骤 2：对每个 as const 所在文件，找函数形参是对象字面量类型 或 typeof X[number]
+grep -nE 'function\s+\w+\([^)]*:\s*\{[^}]+\}|function\s+\w+\([^)]*:\s*typeof\s+\w+\[number\]' src/ -r --include="*.ts" --include="*.vue"
+
+# 步骤 3：看函数体访问的字段 vs 形参声明字段 / vs 元素 union 字段
+# 形参是 typeof X[number] 形式 + 内部访问 X 元素中“部分才有”的字段 → TS2339
+# 形参是 { ... } 对象 + 字段少于调用方 X 元素中“每个都有”的字段 → TS2345
+```
+
+**Cashier 验证**：`as const` 数组 cashier 7 处：
+
+| 文件 | 元素字段示例 | 传给函数 |
+|---|---|---|
+| `AccountChangeDetails/index.vue:148` | `SUB_ACCOUNT_FIELDS` 元素 10 个 literal 对象 | `formatValue` / `renderSide` |
+| `AccountChangeDetails/addOrEdit/detail.vue:55` | 详情描述 | 详情渲染 |
+| `StoreAuditOnboarding/enum/index.ts:25` | `SHOP_STATUS_*` 枚举 | `getLabel` |
+| `storeEntryPlatform/enum/index.ts:36` | `subAccountFieldPool` 8 项 | `SubAccountForm` 字段池 |
+| `company/index.vue:247` | 标签 / 显示 | 列表渲染 |
+| `company/addOrEdit/add.vue:76` | 业务异常统计 | 表格渲染 |
+| `StoreAuditOnboarding/addOrEdit/enum/index.ts:26` | 字段 | 表格列 |
+
+**判断哪些是错修**：
+
+| 形参 | 错 / 正 | 原因 |
+|---|---|---|
+| `f: { mask?: boolean, yesno?: boolean }` | **错**（TS2345）| 缺 `key/label` 共有字段 |
+| `f: typeof X[number]`（精确 union）| **错**（TS2339）| 形参是精确 literal union，访问部分元素才有的字段报 TS2339 |
+| `f: { key: string, label: string, mask?: boolean, yesno?: boolean }` | **正** | 共有字段 + supertype + 可选 |
+
+**修法（ponytail rung 1 最小改）**：
+
+1. 提取 `as const` 数组 / 对象的元素 union
+2. 列出 union **每个成员都有的字段**（必传）= `key/label` 等
+3. 列出 union **部分有的字段**（可选）= `mask/yesno` 等
+4. 形参 = `{ 必传字段: supertype, ..., 可选字段?: supertype }` —— **避免"字面量多反少漏"的双向错**
+5. 避免 `f: typeof X[number]`（精确 literal union）除非函数只读不写某个字段
+
+**与其它形态的区别**：
+
+| 形态 | 错误码 | 报点 | 根因 |
+|---|---|---|---|
+| TS2551 字段不存在 | TS2551 | 调用方用了字段名 | 字段名拼错 / 接口过时 |
+| TS2345 spread 后类型不兼容（形态 A）| TS2345 | `return { ...item }` 传参 | 形参是 union literal，源是 string |
+| TS2345 透传形参（形态 B）| TS2345 | 对象字面量字段透传 | 同形态 A，无 spread |
+| TS2339 Set<T> vs Array（形态 C）| TS2339 | `set.length` / `set.some` | props 误声明 Set，内部用 Array 方法 |
+| TS2304 未 import 类型（形态 D）| TS2304 | `const x: X = ...` | 用了类型但没 import |
+| TS2322 `as Record<string, X>` 错 X（形态 E）| TS2322 | cast 后值类型 | X 是 `unknown` / `any` 下游接不住 |
+| **TS2345 / TS2339 `as const` 元素 union 传给函数形参**（形态 F）| TS2345 / TS2339 | `formatValue(raw, f)` 形参字段 | 形参缺共有字段 / 形参是精确 union |
+
+**SKILL 升级点**：见 `SKILL.md` 步骤 6 "类型嫌疑主动扫描"新增的"`as const` 元素 union 传给函数形参字段不对齐"扫描项。本形态是 2026-10-10 实际修复 `ob_web/packages/micro/cashier/src/pages/AccountChangeDetails/index.vue` line 196 时发现——前 6 个升级都查"spread / 简写 / Set / cast / import"，不查"`as const` 元素 union 与函数形参字段对齐"。cashier 项目 7 处 `as const` 数组中常传给 `getLabel` / `format` / `toXxx` 助手函数，错修高频。
+
+## 7 次漏检总根因
+
+| 顺序 | 错误码 | 根因 | 错位点 | skill 升级 |
+|---|---|---|---|---|
+| 1 | TS2345 spread | 调用方 spread 源 = string / number；形参 = union literal | **调用方侧 vs 形参侧** | 加 "spread 跨对象" |
+| 2 | TS2345 透传 | 对象字面量 ES6 简写 vs 形参 union literal | **调用方侧 vs 形参侧** | 加 "对象字段透传" |
+| 3 | TS2339 Set vs Array | props 类型 `Set<T>`，内部用 Array 方法 | **声明 vs 实际方法** | 加 "Set<T> vs Array 误用" |
+| 4 | TS2339 fieldCode | `enabled: string[]` (union 限死后改 string)，但 `f.fieldCode` | **改错方向** | 复用第 3 项 |
+| 5 | TS2304 未 import | 类型 `FormRules` 用在 `<...>` 注解但 import 漏 | **声明位置 vs import 列表** | 加 "未 import 类型" |
+| 6 | TS2322 cast 错 X | `as Record<string, unknown>` 让值变 unknown | **cast 侧 vs 下游期望** | 加 "`as Record<string, X>` 错 X" |
+| **7** | **TS2345 / TS2339 `as const` 元素形参不对齐** | **形参字段 vs 元素 union 字段不对齐** | **形参侧 vs 元素 union 侧** | **加 "`as const` 元素 union 传给函数形参"** |
+| **8** | **TS7053 / TS2322 后端契约跟前端类型对齐 3 子形态** | **后端 JSON key / VO 字段名 / VO 字段类型 union 跟前端 type / 形参 / 返回类型 漂移** | **跨仓契约（Java VO vs TS type）** | **加 "后端契约跟前端类型对齐 3 子形态"** |
+
+**通用根因**："**类型契约声明**"与"**实际数据/调用方式**"**两边不对齐**。skill 升级的核心是**从错误码走到数据流**——主动 grep 各种 "声明 vs 实际" 形态，让 agent 在没 vue-tsc 时也能主动发现。
+
+**已升级的 8 类扫描项**覆盖：
+- 调用方形态：spread (A) / 简写 (B) / 元素 union (F)
+- 形参 / props 形态：Set<T> (C) / 形参字段 (F) / 后端 JSON key 映射 (G-1) / VO 字段名 (G-2) / 索引返回类型 (G-3)
+- 主动 cast：`as unknown` (E) / 错 X 类型 (E) / 形参 literal union (F)
+- import 列表：未 import (D)
+
+## TS7053 / TS2322 形态 G：后端契约跟前端类型对齐（3 子形态）
+
+**现场**（2026-10-13）：`ob_web/packages/micro/cashier/src/pages/AccountChangeDetails` 改造「原/新 14 列 + JSON snapshot」后，后端 Java 删 14 列 + 新增 `subaccount_field_snapshot` JSON 列，前端 type / helper 函数 / 后端 VO 三处契约名没对齐，一次性报 3 个 TS 错误。
+
+### 子形态 G-1：TS7053 — 后端 JSON key 跟函数形参 key 不一致
+
+```ts
+// 后端 Java 写 JSON：{"original":{...},"new":{...}}
+// 前端 interface 跟后端对齐
+interface SubAccountSnapshot { original?: SnapshotSide, new?: SnapshotSide }
+
+// 但函数形参沿用旧命名 "orig" | "new"
+function readFieldValue(side: "orig" | "new", key: string) {
+  const snap = JSON.parse(json) as SubAccountSnapshot
+  return snap[side]?.[snapKey]  // ❌ TS7053: 'orig' | 'new' can't index SubAccountSnapshot（接口只有 "original" | "new"）
+}
+```
+
+**根因**：函数形参是业务命名（`orig` / `new`），接口 key 是后端契约（`original` / `new`）—— **业务命名 ≠ JSON key**。
+
+**修法（ponytail rung 1 最小改）**：函数内做映射，不动接口 / 不动调用方：
+
+```ts
+// ponytail: 后端 JSON key 是 "original"/"new"，函数形参是 "orig"/"new"，调用处统一映射
+const snapSide = side === "orig" ? "original" : "new"
+return snap[snapSide]?.[snapKey]
+```
+
+**为什么前 7 个升级不报**：本形态是 **「后端契约名 ≠ 前端业务名」**，前 7 个都查 TS 类型层（spread / Set / cast / import / element union），**不查"前后端契约名漂移"**。
+
+### 子形态 G-2：TS2322 — 前端 type 字段名跟后端 VO 字段名拼错
+
+```ts
+// 后端 VO 实际字段名
+public class AccountChangeDetailsVO {
+  private String originalPasswordCipher;  // 真实是 Cipher
+  private String newPasswordCipher;
+}
+
+// 前端 type 猜名字（错！）
+interface AccountChangeDetailsVO {
+  originalPasswordMasked?: string  // ❌ 跟后端 VO 字段名不匹配
+  newPasswordMasked?: string
+}
+
+// 调用方想读 password 字段
+const LEGACY_FIELD_TO_VO: Record<string, { orig: keyof AccountChangeDetailsVO, ... }> = {
+  password: { orig: "originalPasswordCipher", ... }  // ❌ TS2322: '"originalPasswordCipher"' is not assignable to type 'keyof AccountChangeDetailsVO'
+}
+```
+
+**根因**：前端 type 写错了字段名（**Masked** vs **Cipher**）；后端 VO 是 source of truth，**前端必须跟后端字段名一致**。
+
+**修法**：
+```ts
+// 改前端 type 跟后端 VO 对齐（不能猜）
+interface AccountChangeDetailsVO {
+  originalPasswordCipher?: string
+  newPasswordCipher?: string
+}
+```
+
+**抓的方法**：
+```bash
+# 步骤 A：看后端 VO 字段名（source of truth）
+grep -E "private String (original|new)" /D/OB/bi-FOB/bi-cashier/bi-cashier-api/src/main/java/com/obo/bi/cashier/vo/AccountChangeDetailsVO.java
+
+# 步骤 B：grep 前端 type 字段名
+grep -E "(original|new)\w+\?" /D/OB/ob_web/packages/micro/cashier/src/api/account-change-audit.ts
+
+# 步骤 C：diff A vs B
+# 同名 → ✅ 一致
+# 后端有但前端没 / 前端有但后端没 → 报告「字段名拼错 / 漏 import / 漏声明」
+```
+
+**为什么前 7 个升级不报**：本形态是 **「跨仓类型漂移」**（前端 type.ts vs 后端 VO.java），前 7 个都查单仓类型层，**不查跨仓契约**。
+
+### 子形态 G-3：TS2322 — `row[keyof X]` 返回类型不精确
+
+```ts
+// 后端 VO 字段类型不一：string / number / boolean 都有
+interface AccountChangeDetailsVO {
+  id: number                          // number
+  operatorId?: string                 // string
+  isRpaAccount?: string               // string
+  placeholderFlag?: boolean           // boolean
+  // ... 几十个字段类型 union
+}
+
+// 前端函数形参是 keyof X（精确字面量 union）
+const vo = LEGACY_FIELD_TO_VO[key]  // vo.orig / vo.new: keyof X
+return vo ? row[vo[side]] : undefined  // row[keyof X] 推成 string | number | boolean | undefined
+                                          // ❌ TS2322: 不能赋给函数返回类型 string | null | undefined
+```
+
+**根因**：`row[keyof X]` TypeScript 索引访问返回**所有字段类型的 union**（包含 number / boolean / undefined），不是精确类型。
+
+**修法（ponytail rung 1 最小改）**：
+```ts
+// 方案 A：函数返回类型放宽到 unknown（让 formatValue(String) 内部转换）
+function readFieldValue(row, side, key): unknown {
+  // ...
+  return vo ? row[vo[side]] : undefined  // type: unknown
+}
+
+// 方案 B：as 类型断言（不推荐，掩盖类型）
+return vo ? row[vo[side]] as string : undefined  // ❌ 危险，row[vo.orig] 实际可能是 undefined
+```
+
+**为什么选 A**：formatValue 接受 `unknown` + 内部 `String(raw)` 转换——上层调用方（renderSide / readField）一直走 formatValue，不需要强类型。
+
+**抓的方法**：
+```bash
+# 找所有 row[keyof X] / obj[keyof X] / obj[vo[key]] 索引访问
+grep -nE '\b\w+\[(keyof\s+\w+|vo\[.*\])\]' src/ -r --include="*.ts" --include="*.vue"
+# 命中 + 函数返回类型是 string | null | undefined → 报告 "row[vo.x] 推成 string|number|boolean|undefined，函数签名需放宽到 unknown"
+```
+
+**为什么前 7 个升级不报**：本形态是 **「索引访问推断 union」**——前 7 个都查"声明 vs 实际调用"，**不查"索引访问的返回类型"**。
+
+### 3 子形态通用修法（按"对齐到 source of truth"原则）
+
+| 子形态 | source of truth | 对齐方向 |
+|---|---|---|
+| G-1（JSON key 不一致）| **后端 Java 序列化**（`Map<String, Object>` 的 put key）| 函数内映射（不改 JSON、不改形参）|
+| G-2（VO 字段名错）| **后端 Java VO 字段** | **前端 type 改对**（不能猜名字）|
+| G-3（索引返回类型不精确）| **后端 Java VO 字段类型 union** | **前端函数返回类型放宽**到 `unknown`，让 `formatValue` 内部 `String()` 转换 |
+
+**共同根因**：「**后端契约（Java PO/VO/JSON）**」与「**前端 type / 函数形参**」**两边没对齐**。前 7 个升级都查 TS 类型层内的 mismatch，**不查"前后端契约"层的 mismatch**。
+
+**Cashier 实际命中**（2026-10-13 一次修复同时遇到 3 个）：
+
+| 文件 | 行 | 错误 |
+|---|---|---|
+| `AccountChangeDetails/addOrEdit/detail.vue` | 87 | G-1 TS7053 `snap[side]?.[snapKey]` side 是 `"orig" \| "new"`，snap key 是 `"original" \| "new"` |
+| `AccountChangeDetails/index.vue` | 168 | G-2 TS2322 `"originalPasswordCipher"` 不在 `keyof AccountChangeDetailsVO`（前端 type 写错成 `*Masked`）|
+| `AccountChangeDetails/index.vue` | 187 | G-3 TS2322 `row[vo[side]]` 返回 `string \| number \| boolean \| undefined` 不能赋给 `string \| null \| undefined` |
+
+**SKILL 升级点**：见 `SKILL.md` 步骤 6 新增的"后端契约跟前端类型对齐 3 子形态"扫描项。本形态是 2026-10-13 实际改造 `cashier_store_account_change_details` 表「14 列 → 1 JSON 列」时一次性遇到——前 7 个升级都查"TS 类型层"，不查"前后端跨仓契约"。cashier 项目改造「表结构 + VO 字段 + 前端 type」是高频场景，**改之前必做"前后端字段名 diff"**。
