@@ -122,6 +122,117 @@ ESLint 必须解析完整文件才能正确理解 Vue/TS 语法，因此检查�
 
      **为什么这一项要单独列**：spread 形态的 step 3/4 只抓 `return { ...item, ... }` 或 `*Payload = items.map(...)`；对象字段直接透传（如 `platformList,` 引用外部变量）既无 spread 也不走 Payload 命名模式，会漏。**实际高频**：buildDTO / toDTO / saveDto(form) 类工具函数。
 
+   - **Set<T> 与 Array 方法误用（防 TS2339：props 声明为 Set<T> 但内部用 .length / .some / .find / .filter）**：Set 本身**没有** `.length` / `.some` / `.find` / `.filter` / `.map` / `.indexOf` / `.includes` / `.forEach` / `.every` / `.reduce` —— 这些都是 Array 方法（Set 有 `.has` / `.size` / `.add` / `.delete` / `.forEach(callback)`，但**无 .length / .some**）。如 props 误声明为 `Set<T>` 而调用方与内部都用 Array 方法，报 `TS2339: Property X does not exist on type Set<T>`。cashier 实际高频：
+     - props 声明 `Set<T>` 但调用方传 `new Set(...)`（fill.vue 风格）
+     - 内部用 `Array.from(props.xxx ?? [])` 或 `props.xxx ?? []` 后调 `.length` / `.some` / `.find`
+     - 调用方强转 `(arr as unknown as Set<T>)` 掩盖类型不兼容（**伪装豁免、不是修法**）
+     ```bash
+     # 步骤 1：找所有 Set<T> 类型的 props / 变量声明
+     perl -ne 'while (/\b(\w+)\s*\??\s*:\s*Set<\w+>/g) { print "$ARGV:$.:$1\n" }' $(find src -name "*.ts" -o -name "*.vue")
+
+     # 步骤 2：对步骤 1 的每个变量名，在同文件内查 Array 方法调用
+     for f in $(find src -name "*.ts" -o -name "*.vue"); do
+       for v in $(perl -ne 'while (/\b(\w+)\s*\??\s*:\s*Set<\w+>/g) { print "$1\n" }' "$f" | sort -u); do
+         # 查 Array 方法调用（排除 .forEach 因为 Set/Array 都有，但保留作提示）
+         hits=$(grep -nE "\b$v\.(length|some|find|filter|map|indexOf|includes|every|reduce|sort|slice|concat|forEach)\b" "$f" 2>&1)
+         # 查该变量在文件内是否有 Array.from(...) 包裹（兼容写法）
+         from_wrap=$(grep -cE "Array\.from\([^)]*$v|Array\.from\([^)]*props\.$v" "$f" 2>&1)
+         if [ -n "$hits" ] && [ "$from_wrap" = "0" ]; then
+           echo "$f: $v (Set<T>) 用了 Array 方法但没 Array.from 包裹"
+           echo "$hits" | head -3
+         fi
+       done
+     done
+     ```
+     命中后 Read 上下文判断。修复方向（ponytail rung 1 最小改）：
+
+     | 方向 | 适用场景 | 改动范围 |
+     |---|---|---|
+     | (A) props 类型 union + `Array.from()` 包裹 | 调用方有传 Set 和传 Array 两种 | 改 props 类型 + 加 `Array.from(props.xxx ?? [])` |
+     | (B) props 类型统一为 `readonly T[]` | 调用方都改成 Array | 改 props 类型 + 所有调用方去掉 `new Set(...)` 或 cast |
+     | (C) 内部改用 Set 方法 | 调用方都传 Set，内部用 `.has` / `.size` | 改 props 类型保留 Set + 内部用 Set 方法 |
+
+     **警惕 `as unknown as Set<T>` 强转**：调用方 `(arr as unknown as Set<T>)` 传 props 是"伪装豁免"，**不修底层类型契约**。grep 抓 `as unknown as Set<` 命中 → 报告"调用方强转掩盖类型不兼容，应从 props 类型侧根因修"。
+
+     参考 `references/error-signatures.md` 中的 "TS2339 形态：Set<T> 与 Array 方法误用"。
+
+   - **未 import 类型引用（防 TS2304：文件内类型注解缺 import）**：文件使用了某个 PascalCase 类型作 `:` 注解或 `<...>` 泛型，但未在 import 列表中引入该类型，报 `TS2304: Cannot find name Xxx`。ESLint 默认不抓（type-aware 错误），vue-tsc 不跑。cashier 高频场景：Element Plus / Vue / 业务 type.ts 类型调包。
+
+     ```bash
+     # 步骤 1：提取文件内 import 的所有标识符（import / import type / 命名 / 默认）
+     f=src/.../Foo.vue
+     imports=$(perl -ne 'while (/import\s+(?:type\s+)?\{([^}]+)\}|import\s+(?:type\s+)?(\w+)/g) { my $b = $1 || $2; for my $id (split /\s*,\s*/, $b) { $id =~ s/^\s+|\s+$//g; $id =~ s/^type\s+//; print "$id\n" if $id =~ /^\w+$/ } }' "$f" | sort -u)
+
+     # 步骤 2：提取文件内"作为类型注解"的大写标识符
+     # 模式：: PascalCase / <PascalCase / as PascalCase（type position）
+     types=$(perl -ne 'while (/\b:\s*([A-Z]\w*)\b|\b<([A-Z]\w*)\b|\bas\s+([A-Z]\w*)\b/g) { print "$1$2$3\n" }' "$f" | sort -u)
+
+     # 步骤 3：提取本地声明的类型（type X / interface X）并从 types 中减掉
+     locals=$(grep -hoE '^(export\s+)?(type|interface)\s+([A-Z]\w*)' "$f" | sed -E 's/.*\b([A-Z]\w*)$/\1/' | sort -u)
+     # 减去 locals + 减去 JS/TS 内置类型（手动维护白名单）
+     whitelist="Promise Error Record Partial Required Readonly Pick Omit Exclude Extract ReturnType Parameters InstanceType NonNullable Uppercase Lowercase Capitalize Uncapitalize Awaited ThisType ThisParameterType OmitThisParameter Array Map Set Date RegExp Symbol Object Function String Number Boolean IterableIterator ArrayLike ReadonlyArray ReadonlyMap ReadonlySet Partial"
+     suspects=$(comm -23 <(echo "$types") <(echo -e "$imports\n$locals\n$whitelist" | sort -u))
+
+     # 步骤 4：判断
+     if [ -n "$suspects" ]; then
+       echo "❌ $f: 下面类型可能被引用但未 import："
+       echo "$suspects"
+     fi
+     ```
+
+     **误报处理**（扫描率高，需 Read 上下文确认）：
+     - **业务 type alias**（`type Tables = ...` / `type Users = ...`）：本扫描的 `locals` 只识别 `interface` / 顶层 `type`，**不识别嵌套 / 函数内 type alias**。`grep -hoE 'type\s+([A-Z]\w*)\s*=' "$f"` 补充提取
+     - **泛型参数**（`<T>` / `<K, V>`）：`T` / `K` / `V` 等单字母会误报，**加入 whitelist**
+     - **注释 / 字符串字面量**里的 PascalCase（`// AccountChangeDetailsBatchDeleteDTO`）：perl `\b:\s*` 不会区分代码 vs 注释里的 `：`。**实际报 TS2304 一定在代码上下文**，注释里命中是误报需 Read 排除
+     - **常量全大写**（`BANK_CARD_ACCOUNT_NAME_MAX`）：perl `[A-Z]\w*` 仍匹配。**手动排除**：扫描后 grep `[A-Z][A-Z0-9_]+$` 过滤
+     - **全局类型**（`HTMLElement` / `MouseEvent` / `window.X`）：加入 whitelist
+     - **模板里的组件名**（`<el-form>` / `<MyComp>`）：本扫描不扫 `<template>` 块（grep -E 不在 `<template>` 内运行），不命中。如误报 Read 上下文确认
+
+     命中后 Read 上下文确认是真"未 import"（报 TS2304）还是上述误报场景。**修法（ponytail rung 1）**：在 import 块加 `import type { Xxx } from "..."`；如已在 import 块内，只加标识符名（同一来源）。参考 `references/error-signatures.md` 中的 "TS2304 形态：类型未 import"。
+
+     **为什么这一项要单独列**：skill 之前的 9 个扫描项 + 4 个形态（TS2345 spread / 透传 / TS2339 Set / 重复定义）都不抓"未 import 类型"——ESLint 默认 type-aware 规则缺失，cashier 项目 eslint.config.js 也没启用 `@typescript-eslint/no-unbound-method` / `@typescript-eslint/no-unsafe-*` 等会间接发现该问题的规则。
+
+     **Cashier 项目验证**：实际跑全仓扫描命中率受业务 type alias / 泛型参数 / 注释字面量影响，**false positive ~60%**（现金业务类型 50+ / 泛型参数 5+ / 注释 10+）。agent 需 Read 上下文筛掉，**不要把"误报"也当 TS2304 上报**。
+
+   - **`as Record<string, X>` 错 X 类型（防 TS2322：cast 后值类型与下游期望不兼容）**：cast `as Record<string, X>` 让任意 string 索引合法，但**值类型被设为 X**。如 X 是 `unknown` / `any`，下游期望具体类型（如 `FormItemRule | FormItemRule[]`）时必报 `TS2322: Type unknown is not assignable to type FormItemRule | FormItemRule[]`。常见于 props `:rules` / `:model` 动态 key 访问。
+
+     ```bash
+     # 步骤 1：grep 所有 `as Record<string, X>` / `as Record<string, X[]>` 形式
+     grep -nE "as\s+Record<string,\s*\w+(\[\])?>" src/ -r --include="*.ts" --include="*.vue"
+
+     # 步骤 2：提取 X 分类统计
+     grep -hoE "as\s+Record<string,\s*\w+(\[\])?>" src/ -r --include="*.ts" --include="*.vue" | \
+       sed -E 's/as\s+Record<string,\s*(\w+(\[\])?)>/\1/' | sort | uniq -c | sort -rn
+
+     # 步骤 3：标记 `X = unknown | any` 为可疑
+     # Read 同文件上下文，查看下游 props / 函数返回 / 形参 期望的"具体类型"
+     ```
+
+     **判断哪些是错修**：
+     - `as Record<string, unknown>` / `as Record<string, any>` / `as Record<string, unknown[]>` 几乎都是 **错修** —— `unknown` / `any` 下游接不住具体类型。**真正应 cast 的 X** = 下游 props / 函数期望的类型（如 `FormItemRule[]` / `string` / `number` / `T`）
+     - `as Record<string, string>` 在 `Object.fromEntries(...)` 后转 dict 是合法用法（cashier 9 处都这样）
+     - `as Record<string, FormItemRule[]>` / `as Record<string, UserType>` 保留具体类型 = 正确修法
+
+     **本次 case 错修 / 正修对照**：
+     ```ts
+     // 错修（line 338 / 360 原版）：unknown 下游期望 FormItemRule 报 TS2322
+     :rules="(rules as Record<string, unknown>)[field.fieldCode]"
+
+     // 正修：保留值类型 = FormItemRule[]，下游 form-item 接得上
+     :rules="(rules as Record<string, FormItemRule[]>)[field.fieldCode]"
+     ```
+
+     **Cashier 项目验证**：全仓 22 处 `as Record<string, X>` 命中，其中 10 处 `unknown` + 1 处 `any` = **11 处可疑**。agent 需 Read 每个上下文判断下游期望类型。
+
+     **修法（ponytail rung 1）**：
+     1. 看下游 props / 函数 / 形参期望的类型（看 element-plus / type.ts 定义）
+     2. 把 `X` 改成下游期望的具体类型
+     3. 如 X 是 union（`FormItemRule | FormItemRule[]`），写 `X | X[]`
+     4. 需 import 该类型时加 `import type { X } from "..."`
+
+     参考 `references/error-signatures.md` 中的 "TS2322 形态：`as Record<string, X>` 错 X 类型"。
+
+     **为什么这一项要单独列**：skill 之前的 5 个升级（TS2345 spread / 透传 / TS2339 Set / TS2339 fieldCode / TS2304 未 import）都查"类型对不对 / 在不在 import"，**不查"cast 后值类型下游接不接得住"**。cashier 项目 11 处 `unknown` / `any` cast 里有 7+ 处下游会报 TS2322，是高频率的隐错。
 
 
 7. **格式嫌疑主动扫描**（即使 ESLint 0 报错也要做）：

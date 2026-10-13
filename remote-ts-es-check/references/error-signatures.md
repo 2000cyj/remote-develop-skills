@@ -1006,3 +1006,221 @@ perl -0777 -ne 'while (/(?:return|const\s+\w+\s*=\s*)\s*\{([^{}]+)\}/g) { my $b 
 | 高频场景 | 表单 map 后立即校验 | build / toDto / saveDto 工具函数 |
 
 **SKILL 升级点**：见 `SKILL.md` 步骤 6 "类型嫌疑主动扫描"新增的"对象字段直接透传形参"扫描项（与“spread 跨对象”同根因但独立子项）。本形态是 2026-10-10 实际修复 `ob_web/packages/micro/cashier/src/pages/StoreAuditOnboarding/utils/index.ts` line 65 时发现——上一个升级（"spread 跨对象"）的 4 步 grep 仍漏了“ES6 简写透传”形态。
+
+## TS2339 形态：Set<T> 与 Array 方法误用
+
+**签名**：
+```
+SubAccountForm.vue(56, 9): error TS2339: Property 'length' does not exist on type 'Set<string> | never[]'
+  Property 'length' does not exist on type 'Set<string>'
+```
+
+**根因**：props 声明为 `enabledFields?: Set<string>`，调用方 fill.vue 传 `new Set<string>(...)`、SubAccountManager 强转 `(arr as unknown as Set<string>)`。内部代码：
+```ts
+const enabled = props.enabledFields ?? []   // enabled: Set<string> | never[]
+if (enabled.length === 0) { ... }            // TS2339
+return subAccountFieldPool.filter(meta => enabled.some(f => f.fieldCode === meta.key))
+                              // TS2339 .some / .find
+```
+Set **没有** `.length` / `.some` / `.find` / `.filter` / `.map` / `.indexOf` / `.includes` / `.every` / `.reduce` / `.sort` / `.slice` / `.concat`。Set 仅有 `.has(value)` / `.size` / `.add` / `.delete` / `.forEach(callback)` / `[Symbol.iterator]`。
+
+**为什么 TS2551 / TS18048 / TS2345 都不覆盖**：本形态报的是 TS2339（属性访问失败），不是类型不匹配也不是字段名拼错。skill 之前 9 个扫描项 + 2 个 TS2345 形态（spread / 透传）都不抓。
+
+**判断方法（perl + grep 主动扫）**：
+
+```bash
+# 步骤 1：找所有 Set<T> 类型的 props / 变量声明（perl 处理 lookbehind）
+perl -ne 'while (/\b(\w+)\s*\??\s*:\s*Set<\w+>/g) { print "$ARGV:$.:$1\n" }' $(find src -name "*.ts" -o -name "*.vue")
+
+# 步骤 2：对步骤 1 的每个变量名，在同文件内查 Array 方法调用
+# 命中后用 .from_wrap 查是否 Array.from 包裹
+for f in $(find src -name "*.ts" -o -name "*.vue"); do
+  for v in $(perl -ne 'while (/\b(\w+)\s*\??\s*:\s*Set<\w+>/g) { print "$1\n" }' "$f" | sort -u); do
+    hits=$(grep -nE "\b$v\.(length|some|find|filter|map|indexOf|includes|every|reduce|sort|slice|concat|forEach)\b" "$f" 2>&1)
+    from_wrap=$(grep -cE "Array\.from\([^)]*$v|Array\.from\([^)]*props\.$v" "$f" 2>&1)
+    if [ -n "$hits" ] && [ "$from_wrap" = "0" ]; then
+      echo "❌ $f: $v (Set<T>) 用了 Array 方法但没 Array.from 包裹"
+      echo "$hits" | head -3
+    fi
+  done
+done
+
+# 步骤 3：查 `as unknown as Set<` 强转（伪装豁免警报）
+grep -rnE "as\s+unknown\s+as\s+Set<" src/ --include="*.ts" --include="*.vue"
+```
+
+**修复方向**（ponytail rung 1 最小改，需业务判断，不擅自修）：
+
+| 方向 | 适用场景 | 改动范围 |
+|---|---|---|
+| (A) props union + `Array.from()` 包裹 | 调用方有传 Set 也有传 Array 两种 | 改 props 类型 `Set<T> \| readonly T[]` + 内部加 `Array.from(props.xxx ?? [])` |
+| (B) props 类型统一为 `readonly T[]` | 调用方都能改 Array | 改 props 类型 + 所有调用方去掉 `new Set(...)` 或 cast |
+| (C) 内部改用 Set 方法 | 调用方都传 Set，内部用 `.has` / `.size` | 改 props 类型保留 Set + 内部用 Set 方法 |
+
+**本次 case 修法**（A）：props 类型 `Set<string>` → `Set<string> | readonly string[]`（兼容 fill.vue 传 Set / SubAccountManager 传 Array），内部加 `Array.from(props.enabledFields ?? [])` 统一转数组。fill.vue / SubAccountManager 调用方**不动**（hunk 之外，union 后两者都兼容）。
+
+**警惕 `as unknown as Set<T>` 强转**：SubAccountManager.vue line 347 `:enabled-fields="(enabledFields as unknown as Set<string>)"` 是**伪装豁免**——`enabledFields` 实际类型是 `StoreEntryPlatformFieldItemVO[]`，强转成 Set 后面 props 接收就报 TS2339。**根因修法是改 props 类型侧**，调用方 cast 应当删除。
+
+**与其它形态的区别**：
+
+| 形态 | 错误码 | 报点 | 根因 |
+|---|---|---|---|
+| TS2551 字段不存在 | TS2551 | 调用方用了字段名 | 字段名拼错 / 接口过时 |
+| TS2345 spread 后类型不兼容（形态 A）| TS2345 | `return { ...item }` 传参 | 形参是 union literal，源是 string |
+| TS2345 透传形参（形态 B）| TS2345 | 对象字面量字段透传 | 同形态 A，无 spread |
+| **TS2339 Set<T> vs Array**（形态 C）| TS2339 | `set.length` / `set.some` | props 误声明 Set，内部用 Array 方法 |
+
+**SKILL 升级点**：见 `SKILL.md` 步骤 6 "类型嫌疑主动扫描"新增的"Set<T> 与 Array 方法误用"扫描项。本形态是 2026-10-10 实际修复 `ob_web/packages/micro/cashier/src/pages/StoreAuditOnboarding/addOrEdit/components/SubAccountForm.vue` line 56 时发现——前两次升级（TS2345 spread / TS2345 透传）都不报 TS2339，且 Set 类型 vs Array 方法对照需要 perl 提取 Set<T> 变量名 + grep Array 方法双重扫描。
+
+## TS2304 形态：未 import 类型引用
+
+**签名**：
+```
+SubAccountForm.vue(196, 14): error TS2304: Cannot find name 'FormRules'
+```
+
+**根因**：line 196 `const rules: FormRules<OnboardingSubAccount> = {` 用了 `FormRules` 类型，但 line 10 import 只有 `import type { FormInstance } from "element-plus"`，**漏了 `FormRules`**。Element Plus 实际导出 `FormRules`（`node_modules/element-plus/es/components/form/src/types.d.ts:13`），其它文件（bankCard / businessScope / company）都正确 import `FormInstance, FormRules` 两个。
+
+```ts
+// line 10（修前）
+import type { FormInstance } from "element-plus"  // ← 漏 FormRules
+// line 196（用法）
+const rules: FormRules<OnboardingSubAccount> = { ... }  // TS2304
+```
+
+**为什么之前 4 个升级项都不报**：前 4 个升级（TS2345 spread / 透传 / TS2339 Set / TS2339 fieldCode on string）都涉及"两个类型之间的不匹配"——本形态只涉及"**未引入类型**"，与类型不匹配无关。skill 的 9 个扫描项全在查类型对不对、字段有没有，没人查"声明了没"。
+
+**判断方法（perl + comm 主动扫）**：
+
+```bash
+# 步骤 1：提取文件内 import 的所有标识符（import / import type / 命名 / 默认）
+f=src/.../Foo.vue
+imports=$(perl -ne 'while (/import\s+(?:type\s+)?\{([^}]+)\}|import\s+(?:type\s+)?(\w+)/g) { my $b = $1 || $2; for my $id (split /\s*,\s*/, $b) { $id =~ s/^\s+|\s+$//g; $id =~ s/^type\s+//; print "$id\n" if $id =~ /^\w+$/ } }' "$f" | sort -u)
+
+# 步骤 2：提取文件内"作为类型注解"的大写标识符（type position）
+# 模式：: PascalCase / <PascalCase / as PascalCase
+types=$(perl -ne 'while (/\b:\s*([A-Z]\w*)\b|\b<([A-Z]\w*)\b|\bas\s+([A-Z]\w*)\b/g) { print "$1$2$3\n" }' "$f" | sort -u)
+
+# 步骤 3：提取本地声明的类型（type X / interface X）
+locals=$(grep -hoE '^(export\s+)?(type|interface)\s+([A-Z]\w*)' "$f" | sed -E 's/.*\b([A-Z]\w*)$/\1/' | sort -u)
+
+# 步骤 4：减去 JS/TS 内置类型白名单 + locals + imports
+whitelist="Promise Error Record Partial Required Readonly Pick Omit Exclude Extract ReturnType Parameters InstanceType NonNullable Uppercase Lowercase Capitalize Uncapitalize Awaited ThisType ThisParameterType OmitThisParameter Array Map Set Date RegExp Symbol Object Function String Number Boolean IterableIterator ArrayLike ReadonlyArray ReadonlyMap ReadonlySet"
+suspects=$(comm -23 <(echo "$types") <(echo -e "$imports\n$locals\n$whitelist" | sort -u))
+
+# 步骤 5：判断
+[ -n "$suspects" ] && echo "❌ 下面类型可能被引用但未 import：$suspects"
+```
+
+**验证 cashior 项目**：反向模拟——临删 `FormRules` import，扫描命中 `FormRules`；还原后 0 命中。
+
+**误报处理**：
+- 字符串 / 注释里的 PascalCase：perl `\b:\s*` / `\b<` 限定 type position，不命中
+- 模板里的组件名 `<el-form>` / `<MyComp>`：本扫描不扫模板（grep -E 不在 `<template>` 块内运行）
+- 全局类型扩展（`window.X` / `declare global`）：手动加白名单或确认不需要 import
+
+**修复方向**（ponytail rung 1 最小改，不擅自修）：
+
+| 方向 | 适用场景 | 改动范围 |
+|---|---|---|
+| (A) 在 import 块加 `import type { Xxx } from "..."` | 唯一来源 | 加 1 行 import 或加到已有 import 块 |
+| (B) 改为动态 import `import(...)` | 循环依赖 | 重构 import 结构 |
+| (C) 改用同源类型（如 `OnboardingSubAccount` 改用本地 `type X`） | 业务实际不一致 | 重构类型定义 |
+
+**本次 case 修法**（A）：line 10 `import type { FormInstance } from "element-plus"` → `import type { FormInstance, FormRules } from "element-plus"`。1 个标识符加到已有 import 块，0 业务改动。
+
+**与其它形态的区别**：
+
+| 形态 | 错误码 | 报点 | 根因 |
+|---|---|---|---|
+| TS2551 字段不存在 | TS2551 | 调用方用了字段名 | 字段名拼错 / 接口过时 |
+| TS2345 spread 后类型不兼容（形态 A）| TS2345 | `return { ...item }` 传参 | 形参是 union literal，源是 string |
+| TS2345 透传形参（形态 B）| TS2345 | 对象字面量字段透传 | 同形态 A，无 spread |
+| TS2339 Set<T> vs Array（形态 C）| TS2339 | `set.length` / `set.some` | props 误声明 Set，内部用 Array 方法 |
+| **TS2304 未 import 类型**（形态 D）| TS2304 | `const x: X = ...` | 用了类型但没 import |
+
+**SKILL 升级点**：见 `SKILL.md` 步骤 6 "类型嫌疑主动扫描"新增的"未 import 类型引用"扫描项。本形态是 2026-10-10 实际修复 `ob_web/packages/micro/cashier/src/pages/StoreAuditOnboarding/addOrEdit/components/SubAccountForm.vue` line 196 时发现——前 4 个升级（TS2345 spread / 透传 / TS2339 Set / TS2339 fieldCode）都查“类型对不对”，没人查“类型在不在 import 列表”。
+
+## TS2322 形态：`as Record<string, X>` 错 X 类型
+
+**签名**：
+```
+SubAccountForm.vue(338, 19): error TS2322: Type 'unknown' is not assignable to type
+  EpPropMergeType<(new (...args: any[]) => FormItemRule | FormItemRule[]) | (() => Arrayable<FormItemRule>) | ((new (...args: any[]) => FormItemRule | FormItemRule[]) | (() => Arrayable<...>))[], unknown, unknown>
+  | undefined'
+form-item.vue.d.ts(98, 14): The expected type comes from property 'rules' which is declared here on type 'Partial<{...}> & Omit<...> & Record<...>'
+```
+
+**根因**：`as Record<string, X>` 让任意 string 索引合法，但**值类型被设为 X**。如 X 是 `unknown` / `any`，下游期望具体类型（如 `FormItemRule | FormItemRule[]`）时必报 `TS2322: Type unknown is not assignable`。
+
+```ts
+// 错修（line 338 / 360 原版）：unknown 下游期望 FormItemRule 报 TS2322
+:rules="(rules as Record<string, unknown>)[field.fieldCode]"
+
+// 正修：保留值类型 = FormItemRule[]，下游 form-item 接得上
+:rules="(rules as Record<string, FormItemRule[]>)[field.fieldCode]"
+```
+
+**为什么前 5 个升级项都不报**：本形态涉及"**cast 后值类型与下游期望不兼容**"——skill 之前 5 个升级（TS2345 spread / 透传 / TS2339 Set / TS2339 fieldCode / TS2304 未 import）都查"类型对不对 / 在不在 import"，**不查"cast 后值类型下游接不接得住"**。
+
+**判断方法（grep 主动扫）**：
+
+```bash
+# 步骤 1：grep 所有 `as Record<string, X>` / `as Record<string, X[]>` 形式
+grep -nE "as\s+Record<string,\s*\w+(\[\])?>" src/ -r --include="*.ts" --include="*.vue"
+
+# 步骤 2：提取 X 分类统计（出现次数）
+grep -hoE "as\s+Record<string,\s*\w+(\[\])?>" src/ -r --include="*.ts" --include="*.vue" | \
+  sed -E 's/as\s+Record<string,\s*(\w+(\[\])?)>/\1/' | sort | uniq -c | sort -rn
+
+# 步骤 3：标记 `X = unknown | any` 为可疑，agent Read 上下文
+# 步骤 4：查看下游 props / 函数 / 形参 期望的"具体类型"（element-plus / type.ts 定义）
+```
+
+**Cashier 项目验证**：全仓 22 处 `as Record<string, X>` 命中：
+
+| X 出现次数 | 类型 | 是否可疑 |
+|---|---|---|
+| 10 | `unknown` | **可疑**：几乎都是错修 |
+| 9 | `string` | 合法：`Object.fromEntries(...)` 后转 dict |
+| 2 | `FormItemRule[]` | 正确：本次修法 |
+| 1 | `any` | **可疑**：下游期望具体类型时必报 |
+
+**判断哪些是错修**：
+
+| X | 何时错修 | 何时合法 |
+|---|---|---|
+| `unknown` | 几乎都是错修（下游接不住）| 几乎没合法场景 |
+| `any` | 下游期望具体类型时错修 | 仅"明确不关心下游类型"（罕见）|
+| `string` | 错修（下游期望 string 时可选，但用 `unknown` 更错）| `Object.fromEntries(...) as Record<string, string>` 后转 dict 是合法用法 |
+| `FormItemRule[]` / `UserType` | 几乎都是正确 | 保留具体类型 = 正确修法 |
+
+**修法（ponytail rung 1 最小改）**：
+
+```bash
+# 1. 查下游 props / 函数 / 形参 期望的类型
+grep -n "rules\s*\??\s*:" node_modules/element-plus/es/components/form/src/form-item.mjs  # 或 form-item.vue.d.ts
+# 期望：FormItemRule | FormItemRule[] | (() => Arrayable<FormItemRule>) | ...
+
+# 2. 改 cast X
+:rules="(rules as Record<string, FormItemRule[]>)[field.fieldCode]"
+# 如 X 是 union：写 X | X[]
+
+# 3. import 该类型（如未 import）
+import type { FormItemRule } from "element-plus"
+```
+
+**本次 case 修法**：line 10 加 `FormItemRule` import；line 338 / 360 `as Record<string, unknown>` → `as Record<string, FormItemRule[]>`。0 业务改动。
+
+**与其它形态的区别**：
+
+| 形态 | 错误码 | 报点 | 根因 |
+|---|---|---|---|
+| TS2551 字段不存在 | TS2551 | 调用方用了字段名 | 字段名拼错 / 接口过时 |
+| TS2345 spread 后类型不兼容（形态 A）| TS2345 | `return { ...item }` 传参 | 形参是 union literal，源是 string |
+| TS2345 透传形参（形态 B）| TS2345 | 对象字面量字段透传 | 同形态 A，无 spread |
+| TS2339 Set<T> vs Array（形态 C）| TS2339 | `set.length` / `set.some` | props 误声明 Set，内部用 Array 方法 |
+| TS2304 未 import 类型（形态 D）| TS2304 | `const x: X = ...` | 用了类型但没 import |
+| **TS2322 `as Record<string, X>` 错 X**（形态 E）| TS2322 | cast 后值类型 | X 是 `unknown` / `any` 下游接不住 |
+
+**SKILL 升级点**：见 `SKILL.md` 步骤 6 "类型嫌疑主动扫描"新增的"`as Record<string, X>` 错 X 类型"扫描项。本形态是 2026-10-10 实际修复 `ob_web/packages/micro/cashier/src/pages/StoreAuditOnboarding/addOrEdit/components/SubAccountForm.vue` line 338 / 360 时发现——前 5 个升级都查"类型对不对 / 在不在 import"，不查"cast 后值类型下游接不接得住"。cashier 项目 11 处 `unknown` / `any` cast 里有 7+ 处下游会报 TS2322，是高频率的隐错。
