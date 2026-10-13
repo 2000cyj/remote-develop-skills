@@ -917,3 +917,92 @@ grep -nE 'const \w+Payload\s*=\s*.+\.map\(' src/ -r --include="*.ts" --include="
 **反思**：union literal 字段是"业务希望数据严控到某几个值"的契约表达，但前端表单里用户在 select 里可能选到字典外的值（如 `test_pdd`）—— 字典值不在 union literal 内就报错。**业务实际**：union literal 应只用于"后端 API 枚举返回值"等真枚举场景；前端表单 / spread 源用 string 才对。
 
 **SKILL 升级点**：见 `SKILL.md` 步骤 6 "类型嫌疑主动扫描"新增的"spread 后跨对象类型不兼容"扫描项。本形态是 2026-10-10 实际修复 `ob_web/packages/micro/cashier/src/pages/StoreAuditOnboarding/addOrEdit/fill.vue` line 163 时发现——skill 之前的扫描项（TS2551 / TS18048 / TS2345 函数返回 unknown）都覆盖不到。
+
+## TS2345 形态 B：对象字段直接透传形参（无 spread）
+
+**签名**：
+```
+utils/index.ts(65,5): error TS2322: Type 'string[] | undefined' is not assignable to type 'AuditPlatform[] | undefined'
+Type 'string[]' is not assignable to type 'AuditPlatform[]'
+Type 'string' is not assignable to type 'AuditPlatform'
+type.ts(162, 3): The expected type comes from property platformList which is declared here on type AuditApplicationSaveDTO
+```
+
+**根因**：与“形态 A：spread 后跨对象类型不兼容”**同根因**——DTO 字段 `platformList?: AuditPlatform[]`（`AuditPlatform = "tmall" | "jd" | "pdd" | "douyin" | "kuaishou" | "amazon" | "other"`，7 枚举字面量）；调用方表单 `form.platformList?: string[]`（实际数据是任意 string 代码，如 `test_pdd` / `test2`）。`buildOnboardingSavePayload(form, meta)` 内部：
+
+```ts
+const platformList = form.platformList?.length ? form.platformList : undefined
+return {
+  applyDate: form.applyDate,
+  applyDepartment: ...,
+  platformList,       // ← 这里是 ES6 简写，透传 form.platformList
+  priority: form.priority?.toLowerCase() as ...,
+  ...
+}
+```
+
+`platformList,` 是 ES6 对象简写，等价于 `platformList: platformList`。`platformList` 的类型 = `form.platformList?.length ? form.platformList : undefined` = `string[] | undefined`。目标形参 `AuditApplicationSaveDTO.platformList: AuditPlatform[] | undefined`，报 TS2345。
+
+**为什么 spread 形态的扫描项（SKILL.md 步骤 6 中"spread 后跨对象类型不兼容"）没扫到**：
+- step 3（`return \{\s*\.\.\.`）：只抓**展开运算符** `...item` 形式。`platformList,` 是 ES6 简写，不是 spread。
+- step 4（`const \w+Payload`）：只抓 `*Payload` 命名的中间变量。`platformList` 是局部变量名不是 Payload。
+- 本次 case 在 utils/index.ts 里 spread 仅出现在 line 57（`return { ...cloned, rowNo: index + 1 }`，**其他字段**），与 `platformList` 无关。
+
+**为什么 TS2551 / TS18048 / TS2345 函数返回 unknown 也不覆盖**：与形态 A 同——扫描项都是"函数/字段访问型"，不覆盖"对象字段透传"。
+
+**判断方法（grep 主动扫，不依赖 vue-tsc）**：
+
+```bash
+# 步骤 A：找 union literal 字段定义（同形态 A，补充数组形态）
+grep -nE '\?\s*:\s*"[a-z_]+"(\s*\|\s*"[a-z_]+"){1,9}' src/ -r --include="*.ts" --include="*.vue"
+grep -nE '\?\s*:\s*\w+\[\]' src/ -r --include="*.ts" --include="*.vue"
+grep -nE '^export type \w+ = "[a-z_]+"(\s*\|\s*"[a-z_]+"){1,9}\s*$' src/ -r --include="*.ts"
+# 从上面提取字段名（如 platformList / entryPlatform / priority / priorityList / accountStatus / storeCountBucket 等）
+
+# 步骤 B：找对象字面量里的 ES6 简写字段（key, 形式）
+# 命中上下文：return { ... } / const obj = { ... } / 函数参数默认值
+# 模式：2+ 空白 + 单词 + 可选逗号 + 行尾
+grep -nE '^\s{2,}\w+,?\s*$' src/ -r --include="*.ts" --include="*.vue"
+# 命中例：
+#   src/pages/StoreAuditOnboarding/utils/index.ts:65:    platformList,
+#   src/pages/StoreAuditOnboarding/utils/index.ts:67:    expectedShopCount: form.shopCount,
+# （注意 platformList 是简写；expectedShopCount 是显式 key: expr，两种都是"透传"但含义不同）
+# 简写需要额外判断（key 名 == 外部变量名）
+
+# 步骤 C（更精准）：限定在 return { / const \w+ = { 后几行内的简写
+# 用 perl 多行模式提取
+perl -0777 -ne 'while (/(?:return|const\s+\w+\s*=\s*)\s*\{([^{}]+)\}/g) { my $b = $1; while ($b =~ /^\s*(\w+)\s*,?\s*$/mg) { print "$ARGV:$.:$1\n" } }' src/ -r --include="*.ts" --include="*.vue"
+```
+
+**交叉判断**：步骤 A 的 union literal 字段名 vs 步骤 B/C 的 ES6 简写字段名：
+- 名字相同 + 上下文是"函数返回 DTO 对象字面量" → **本形态**，报 TS2345
+- 名字相同 + 上下文是"spread" → 形态 A
+- 名字相同 + 实参是显式 `key: expr` 但 expr 是 string → 隐式透传，需另查
+
+**修复方向**（同形态 A，需业务判断，不擅自修）：
+
+| 方向 | 适用场景 | 改动范围 |
+|---|---|---|
+| (A) DTO 字段放宽到 `string` / `string[]` | 实际数据本来就是任意 string（平台字典 code / 业务流水号等），用 union literal 限死反而表达不了 | 仅修改 `type.ts` 该字段类型，0 业务改动 |
+| (B) 加 type guard | 数据应严控到 union literal 值，但表单/上游临时存了 string | 在透传前加 `.filter(...)` 过滤 / `.map(...)` 转枚举 / `.includes(...)` 校验 |
+| (C) 改上游字段类型为 union literal | 不推荐，上游本身是 string 不可控 | 改 `form.platformList?: AuditPlatform[]` 会在表单里连锁报错 |
+
+**本次 case 修法**（A）：4 处 `platformList?: AuditPlatform[]` 全部放宽到 `string[]`：
+- `AuditApplicationPageQuery.platformList`（list 查询）
+- `AuditApplicationListVO.platformList`（列表 VO）
+- `AuditApplicationSaveDTO.platformList`（保存 DTO）
+- `AuditApplicationDetailVO.platformList`（详情 VO）
+
+**业务逻辑 0 改动**：实际数据一直是 string[]，运行时无任何变化。
+
+**与形态 A 的区别**：
+
+| 维度 | 形态 A（spread） | 形态 B（透传） |
+|---|---|---|
+| 语法 | `return { ...item, ... }` | `return { key, ... }`（ES6 简写） |
+| 形参名 | `storesPayload`（*Payload 命名） | 通常 `form` / `source` / `input` |
+| 漏检原因 | step 4 命名 *Payload 才抓 | step 3/4 都不抓无 spread 无 *Payload 的简写 |
+| 调用方代码特征 | `validateXxx(storesPayload)` | `buildDto(form, meta)` |
+| 高频场景 | 表单 map 后立即校验 | build / toDto / saveDto 工具函数 |
+
+**SKILL 升级点**：见 `SKILL.md` 步骤 6 "类型嫌疑主动扫描"新增的"对象字段直接透传形参"扫描项（与“spread 跨对象”同根因但独立子项）。本形态是 2026-10-10 实际修复 `ob_web/packages/micro/cashier/src/pages/StoreAuditOnboarding/utils/index.ts` line 65 时发现——上一个升级（"spread 跨对象"）的 4 步 grep 仍漏了“ES6 简写透传”形态。

@@ -88,8 +88,9 @@ ESLint 必须解析完整文件才能正确理解 Vue/TS 语法，因此检查�
    - 用户要求全面验证 → 跑 `npx vue-tsc --noEmit | grep <pattern>` 全项目扫描（必须标注范围）
    - **spread 后跨对象类型不兼容（防 TS2345：形参是 union literal，spread 传入 string）**：调用方使用 `return { ...item, ... }` 或 `...shops.value.map(...)` 后传给函数，函数形参的 interface 字段是 `field: "a" | "b" | ...`（< 10 元素的 string union literal），而 spread 源对应字段是 `string`。ESLint 抓不到（type-aware 错误），vue-tsc 默认不跑。
      ```bash
-     # 步骤 1：找 union literal 字段定义（内联 string union）
+     # 步骤 1：找 union literal 字段定义（内联 string union + 数组形态）
      grep -nE '\?\s*:\s*"[a-z_]+"(\s*\|\s*"[a-z_]+"){1,9}' src/ -r --include="*.ts" --include="*.vue"
+     grep -nE '\?\s*:\s*\w+\[\]' src/ -r --include="*.ts" --include="*.vue"
      # 步骤 2：找 union literal 类型别名（import 形式）
      grep -nE '^export type \w+ = "[a-z_]+"(\s*\|\s*"[a-z_]+"){1,9}\s*$' src/ -r --include="*.ts"
      # 步骤 3：找 spread 源（调用方）
@@ -102,6 +103,24 @@ ESLint 必须解析完整文件才能正确理解 Vue/TS 语法，因此检查�
      - (B) 加 type guard（`as Union`）转换
      - (C) 改 spread 源字段类型为 union literal（不推荐，业务实际是 string）
      参考 `references/error-signatures.md` 中的 "TS2345 形态：spread 后字段类型不兼容"。
+
+   - **对象字段直接透传形参（防 TS2345：形参 union literal，字段值是变量引用，不是 spread）**：与上一项同根因但形态不同——对象字面量里字段值是**外部变量**（无 spread、无 spread 源），例如 `buildOnboardingSavePayload(form, meta)` 内部 `return { platformList, priority, ... }` 里的 `platformList,` 是从 `form.platformList` 透传。如果 `form.platformList: string[]` 但目标形参 DTO 字段是 `AuditPlatform[]`，**不报 spread 形态的 step 3 也漏掉**。
+     ```bash
+     # 步骤 A：找 union literal 字段名（从 type.ts / *.d.ts）
+     # 已在 step 1/2 命中，提取字段名（如 platformList / entryPlatform / priority 等）
+
+     # 步骤 B：找对象字面量里的简写字段（key, 形式：key 后跟逗号或换行，key 前是空白）
+     # 命中上下文通常是 return { ... } 或 const obj = { ... } 里
+     # 简写 = ES6 语法 { key } 等价于 { key: key }，type 取自外部变量
+     grep -nE '^\s{2,}\w+,?\s*$' src/ -r --include="*.ts" --include="*.vue"
+
+     # 步骤 C：更精准：限定在 return { / const \w+ = { 后 8 行内的简写
+     # 用 perl 多行模式
+     perl -0777 -ne 'while (/(?:return|const\s+\w+\s*=\s*)\s*\{([^{}]+)\}/g) { my $b = $1; while ($b =~ /^\s*(\w+)\s*,?\s*$/mg) { print "$ARGV:$. field=$1\n" } }' src/ -r --include="*.ts" --include="*.vue"
+     ```
+     步骤 B/C 命中后，**字段名**与步骤 A 的 union literal 字段名交叉，**同名** → 报告"对象字面量字段透传，形参 DTO 期望 union literal，实参是 string"。修复方向同 spread 形态：(A) DTO 字段放宽 / (B) 加 type guard / (C) 不推荐改源。参考 `references/error-signatures.md` 中的 "TS2345 形态 B：对象字段透传形参"。
+
+     **为什么这一项要单独列**：spread 形态的 step 3/4 只抓 `return { ...item, ... }` 或 `*Payload = items.map(...)`；对象字段直接透传（如 `platformList,` 引用外部变量）既无 spread 也不走 Payload 命名模式，会漏。**实际高频**：buildDTO / toDTO / saveDto(form) 类工具函数。
 
 
 
