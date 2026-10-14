@@ -91,6 +91,13 @@ addOrEdit/add.vue#FormState  used by 1: addOrEdit/add.vue (仅自身)
 
 ### 步骤 4：删除原文件 type/interface 块 + 改 import 路径
 
+> ⚠️ **【强制】4a. 删 type/interface 必删 doc 三件套**（同 08-appendix 4a）：
+>
+> 删 type/interface 块时**必须**同时删：(1) 定义块本身 (2) 上面的 doc comment（如 `/** 门店信息，type=1 自身 / 2 工商 / 3 平台 */`） (3) 关联空行。漏 doc = 无主注释，漏空行 = ESLint `no-multiple-empty-lines` 错。
+>
+> 脚本必读原文件（`fs.readFileSync` 全文）确认 doc 边界，**不要 regex 一刀切**——type alias 多行（如 `type CompanyStatus\n  = | "opening" | ...`）可能跨多行且无 `;`，regex 抓不准。详见 `08-appendix-remediation.md` 步骤 4a。
+
+
 **4 个子步骤**（推荐一次脚本完成，避免 11 文件多次 edit 漏改）：
 
 ```js

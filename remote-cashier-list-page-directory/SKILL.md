@@ -57,6 +57,7 @@ description: Use when 在 src/pages/ 下新建或改造页面/业务模块目录
   其他文件（format/相关用户视图/事件总线非 composable 部分/计算工具等）一律合进 `utils/index.ts`。判定细节与反模式见 `references/file-responsibilities.md`。
 - **`addOrEdit/` 顶部 header 的纯 UI 资源**（容器 class 常量、标题文案）放 `addOrEdit/config/index.ts`（与描述项 / 表单 items / 头部 actions 工厂同质）。**不建 `addOrEdit/menu/` 目录**。**触发条件**：`addOrEdit/*.vue` 出现 ≥3 行 inline 顶栏 container class 重复 + ≥2 个 .vue 复用同一标题文本。
 - **`addOrEdit/components/*.vue` 的 `rules: FormRules` 抽出** → `addOrEdit/config/index.ts` 的 `getXxxFormRules(ctx)` 工厂。**触发条件**：rules ≥7 行 + 包含自定义 validator（去重 / 异步校验 / 格式正则）或依赖组件 props。验证见 `references/02-audit-page-compliance.md` 检查 11。
+- **删定义必删 doc 三件套**（详见 `08-appendix-remediation.md` 步骤 4a，**贯穿所有提取/重构场景**）：删 const / type / interface 块时，**必须同时**删 (1) 定义块本身 (2) 定义上面的 doc comment（描述该定义的） (3) 关联空行。漏 doc = 无主注释，漏空行 = ESLint `no-multiple-empty-lines` 错。**通用规则**：适用于目标 8/9/10 的所有提取场景，不只是 enum。
 - **改完必跑 `remote-ts-es-check` 验证**（详见 `references/11-must-use-remote-ts-es-check.md`）：**只能扫本 skill 改过的文件**（不传目录 / `.` / glob），禁止 `npx eslint src` / `pnpm lint` / `--fix` / 裸跑 `vue-tsc --noEmit`。这是**所有目标**的通用验收环节，违反 = 任务验收失败。
 
 ## Response Shape（所有目标的输出格式）

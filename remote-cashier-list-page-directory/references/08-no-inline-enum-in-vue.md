@@ -144,6 +144,7 @@ const path = require('path');
 - ❌ 保留旧 .vue 文件 re-export 兼容——直接删，pages 内 TS 单步构建
 - ❌ 删 import 时漏看是否还有别处用——先 grep 再删
 - ❌ 跑 `npx eslint src/pages/<业务块>/` 整目录——只跑本次改的文件
+- ❌ 删 const 块时**只删定义不删 doc**——`/** xxx value -> el-tag type */` 描述的是 const，const 没了 doc 成了无主注释。详情见 `08-appendix-remediation.md` 步骤 4a。
 
 ---
 

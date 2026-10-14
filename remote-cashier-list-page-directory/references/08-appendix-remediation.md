@@ -19,6 +19,32 @@
 步骤 2：分类——按就近 enum 目录归属（外层 / addOrEdit 内层 / pages/dashboard 之类无 enum 子目录）
 步骤 3：写入就近 enum/index.ts
 步骤 4：删 .vue 里的本地定义 + 改 import（alias 保持原名，最小 diff）
+
+> ⚠️ **【强制】4a. 删定义必删 doc 三件套**（2025-01 事故点）：
+>
+> 删 const / type / interface 块时，**必须**同时删：
+> 1. **定义块本身**（`const NAME = { ... }` / `interface Name { ... }`）
+> 2. **定义上面的 doc comment**（如 `/** 工商状态 value -> el-tag type */` —— 描述的是 const 的"映射"，const 没了 doc 成了无主注释）
+> 3. **空行**（定义与上方/下方代码之间的空行 —— 不删会报 `no-multiple-empty-lines`）
+>
+> 漏任何一项 = 残留。常见漏点：
+> - const 块之前的 `/** <name> value -> xxx */`（描述映射规则）
+> - function 块之前的 `/** xxx 辅助方法 */`（描述 const 行为，const 没后无意义）
+> - 同位置出现 2 个 doc（`/** Type → 颜色（用于 Tag background） */` + `/** Type value -> 颜色字符串 */` —— 删 const 后 2 个 doc 重复，删 1 个）
+>
+> **验证清单**（删除后必跑）：
+> - [ ] `grep "value ->" <file>` —— 描述 const 行为的 doc 应为 0
+> - [ ] `grep "颜色字符串\|颜色（用于" <file>` —— 描述 const 行为的 doc 应为 0
+> - [ ] eslint `style/no-multiple-empty-lines` 应 0 错
+> - [ ] vue-tsc 0 错
+>
+> **2025-01 事故案例**：`addOrEdit/utils/index.ts` 提取 5 个 map 到 `addOrEdit/enum/index.ts` 后，方法上面的 `/** xxx value -> el-tag type */` 5 个 doc 全部残留 + 印章 2 个重复 doc 残留。
+
+> ⚠️ **【强制】4b. 跨文件抽取后的 doc 归属**：
+>
+> 把定义从 .vue 抽到 enum/index.ts 后，doc comment 也**跟定义走**——留在原 .vue 会变成无主注释。如 `company/addOrEdit/utils/index.ts` 的 `/** 印章状态 value -> 颜色字符串 */` 应跟着 `SEAL_STATUS_COLOR_MAP` 一起搬到 `addOrEdit/enum/index.ts`，不是留在 .vue。
+>
+> 抽取时**必读原文件**（Read 上下文确认 doc 语义），不要 regex 一刀切。
 步骤 5：用 remote-ts-es-check 验证 TS / ESLint / Vite build
 
 > ⚠️ **硬约束（目标 11）**：步骤 5 必须遵循 `references/11-must-use-remote-ts-es-check.md`——**只能扫本附录改过的文件**（不传目录 / `.` / glob），禁止 `npx eslint src` / `pnpm lint` / `--fix` / 裸跑 `vue-tsc --noEmit`。
