@@ -29,6 +29,9 @@
 | `[{ title, description }, ...] as const` stepper | `const STEPS = [{...}, ...] as const` | 就近 `enum/` |
 | `readonly string[] as const` 字符串元组 | `const COMMON_CODES = ["a", "b"] as const` | 就近 `enum/` |
 | `readonly Type[] as const` 元数据数组 | `const FIELD_POOL = [{...}] as const` | 就近 `enum/` |
+| `const columns: VxeGridPropTypes.Columns = [...]` 表格列定义 | `const columns: VxeGridPropTypes.Columns = [{ field, title, ... }]` | 就近 `enum/` |
+| `const formRules: FormRules = { ... }` 静态表单校验规则 | `const formRules: FormRules = { field: [{ required: true, message, trigger }] }` | 就近 `enum/` |
+| 任意 `Record<KEY, value>` 字典对象（无类型注解） | `const SECTION_COLORS = { basic: [...], ... }` | 就近 `enum/` |
 
 ### 1.3 哪些不违规（保留）
 
@@ -41,6 +44,9 @@
 | 派生 computed | `const visible = computed(() => [...])` | 依赖 reactive 状态 |
 | 函数声明 | `function sectionTitleStyle(key) {...}` | 函数不是 enum |
 | enum import 自就近 enum | `import { X } from "./enum"` | 这是合规用法 |
+| `function getTableColumns(options) { return [...动态拼接] }` 内部 const | 函数内动态构造（options 条件 push） | **保留**——是函数内的局部推导，不算"数据集合" |
+| `function getSearchFormItems() { return [static array] }` 内部 const | 纯静态 + 显式 getter 函数包装 | 视情况：如果是单纯的 getter shell（调用方只调函数），保留 config/；如果调用方可以直接 import 数组，**提取到 enum/** |
+| `const formRules = { field: [{ ..., validator: (rule, value, cb) => {...} }] }` 含 validator 闭包 | validator 是函数逻辑 | **保留**在 .vue——含闭包逻辑不算"数据集合"；提取会让闭包丢失 reactive 依赖 |
 
 **判定口诀**：「这个 const 是 `Record<...>` 字典、`[]` 选项数组、还是跨调用方共用的字面量？」——任一为是就违规；都不是就保留。
 
@@ -88,9 +94,24 @@ export const SECTION_TITLE_COLORS: Record<string, [string, string]> = {
 每次新建或修改 .vue 顶层 `<script setup>` 块后，问自己：
 
 - [ ] 我是否在 .vue 里写了 `const X = [...] as const` 或 `const X = { ... } as const`？**是** → 提取到就近 enum/
+- [ ] 我是否在 .vue 里写了 `const columns = [...]` / `const formRules = { ... }` / `const steps = [...]` / `const tabs = [...]`？**是** → 提取到就近 enum/
 - [ ] 如果必须保留（如函数内部局部 const），理由是？**留白**——业务代码无正当理由
 - [ ] import 段是否合并到已有的 `./enum` import？**是** → 不要新建重复 import 段
 - [ ] 删除原 .vue 里的定义时，是否连带删了关联注释 + 空行？**是** → 否则 ESLint 报 no-multiple-empty-lines
+- [ ] template 里引用是否同步改名（`columns` → `COMPANY_STORE_MODAL_COLUMNS` 或 alias `as columns`）？**是** → template 直接读 const 名
+
+## 2.5 静态数据集合 vs 业务逻辑（必看）
+
+提取前用这张表判断：
+
+| 形态 | 例子 | 决策 |
+|---|---|---|
+| 纯 `Record<KEY, value>` 字典 | `COMPANY_STATUS_TAG_MAP` | ✅ 必拆 enum/ |
+| 纯 `[{ field, title, width }]` 静态列 | `COMPANY_STORE_MODAL_COLUMNS` | ✅ 必拆 enum/ |
+| 纯 `Record<field, [{ required, message, trigger }]>` 无 validator | `COMPANY_ADD_FORM_RULES` | ✅ 必拆 enum/ |
+| `function getTableColumns(options) { return columns.push(...) }` | 动态 push | ❌ 保留 config/ |
+| `function getTableColumns() { return [...static] }` 无动态 | 单纯 getter shell | ⚠️ 优先提取到 enum/，让调用方直接 import 数组 |
+| `Record<field, [{ validator: (_, val, cb) => {...} }]>` 含 validator | SetExpirationModal 的 rules | ❌ 保留 .vue——validator 闭包依赖组件状态 |
 
 ---
 
@@ -134,3 +155,106 @@ const path = require('path');
 - **04-shared-vs-private.md 模式 1**：描述了 inline 枚举选项数组违规
 
 **一次性历史清理**（把现状已存在的违规提取掉）见附录 `references/08-appendix-remediation.md`——只有在收到"扫一遍 src/pages 把 inline enum 全提取了"这类指令时才执行，**不作为新代码规范的一部分**。
+
+---
+
+## 6. 实战案例（columns + formRules 数据集合提取）
+
+**触发**：2025-01 user 在 company 模块扫描时，明确要求「columns / 数组 / 对象数据集合都要放到 enum 里」，触发了 columns + formRules 两个新违规模式的规范化。
+
+### 6.1 案例 1：表格列定义提取
+
+**前**（`components/CompanyStoreModal.vue`）：
+
+```vue
+<script setup lang="ts">
+import type { VxeGridPropTypes } from "vxe-table"
+import { BaseVxeTable, getPushRoute } from "@ob-web/share"
+// ...
+
+const columns: VxeGridPropTypes.Columns = [
+  { field: "storeCode", title: "店铺编码", width: 120 },
+  { field: "storeName", title: "店铺名称", minWidth: 160, showOverflow: true },
+  // ...7 列
+]
+</script>
+<template><BaseVxeTable :columns="columns" /></template>
+```
+
+**后**：
+
+```ts
+// enum/index.ts 末尾
+import type { CompanyStoreItem } from "../types"
+import type { VxeGridPropTypes } from "vxe-table"
+/**
+ * CompanyStoreModal 弹窗表格列定义
+ *  ponytail: 从 components/CompanyStoreModal.vue 顶层 const columns 提取
+ */
+export const COMPANY_STORE_MODAL_COLUMNS: VxeGridPropTypes.Columns<CompanyStoreItem> = [
+  { field: "storeCode", title: "店铺编码", width: 120 },
+  // ...
+]
+```
+
+```vue
+<script setup lang="ts">
+import { COMPANY_STORE_MODAL_COLUMNS } from "@/pages/company/enum"
+// 删 const columns 整段 + 删 type VxeGridPropTypes import
+</script>
+<template><BaseVxeTable :columns="COMPANY_STORE_MODAL_COLUMNS" /></template>
+```
+
+### 6.2 案例 2：静态 FormRules 提取
+
+**前**（`addOrEdit/add.vue`）：
+
+```vue
+<script setup lang="ts">
+import type { FormInstance, FormRules } from "element-plus"
+const formRules: FormRules = {
+  companyName: [{ required: true, message: "请输入公司名称", trigger: "blur" }],
+  // ...10 字段
+}
+</script>
+<template><el-form :rules="formRules" /></template>
+```
+
+**后**：
+
+```ts
+// addOrEdit/enum/index.ts 末尾
+import type { FormRules } from "element-plus"
+/**
+ * 公司新增页表单校验规则（仅 required / min / max，无 validator 函数）
+ *  ponytail: 从 addOrEdit/add.vue 顶层 const formRules 提取
+ */
+export const COMPANY_ADD_FORM_RULES: FormRules = {
+  companyName: [{ required: true, message: "请输入公司名称", trigger: "blur" }],
+  // ...
+}
+```
+
+```vue
+<script setup lang="ts">
+import type { FormInstance } from "element-plus"
+import { ..., COMPANY_ADD_FORM_RULES as formRules } from "./enum"
+// 删 const formRules 整段
+</script>
+<template><el-form :rules="formRules" /></template>
+```
+
+**关键点**：
+- **alias 保留调用名**：`as formRules` 让 template `:rules="formRules"` 无需改名（最小 diff）
+- **保留 FormRules type 不必导入**：template 类型推断自动处理
+- **vs SetExpirationModal 的 rules（含 validator）**：保留 .vue，因为 validator 闭包依赖组件状态
+
+### 6.3 案例 3：表头走 alias 还是全大写？
+
+| 场景 | 选 alias 保留小写 | 选全大写 export |
+|---|---|---|
+| template 里 `:columns="columns"` / `:rules="rules"` 大量引用 | ✅（最小 diff，1 处改名） | ❌（N 处改名） |
+| 跨业务模块复用 + 体现「这是数据集合」语义 | ❌（掩盖意图） | ✅（一眼看出是配置） |
+| 已有 1+ 处 import 同名 const 冲突 | ❌（alias 嵌套） | ✅（用全大写避让） |
+
+**ponytail 原则**：最小 diff 优先——改 1 处 import 比改 N 处 template 引用更省。

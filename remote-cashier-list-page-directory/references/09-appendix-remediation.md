@@ -124,10 +124,14 @@ function findBlock(content, name) {
 
 ### 步骤 5：验证（vue-tsc + eslint + vite build）
 
+> ⚠️ **硬约束（目标 11）**：本步骤必须遵循 `references/11-must-use-remote-ts-es-check.md`——**只能扫本附录改过的文件**（不传目录 / `.` / glob），禁止 `npx eslint src` / `pnpm lint` / `--fix` / 裸跑 `vue-tsc --noEmit`。
+>
+> ⚠️ **禁止 `--fix`**：eslint 命令必须去掉 `--fix`，改成手工最小修复（只改本附录产生的代码行）。
+
 ```bash
 cd micro/cashier
-# 1. 公司全文件 lint
-npx eslint --fix src/pages/<业务块>/types/index.ts src/pages/<业务块>/apis/type.ts src/pages/<业务块>/apis/index.ts src/pages/<业务块>/addOrEdit/apis/type.ts src/pages/<业务块>/addOrEdit/apis/index.ts src/pages/<业务块>/addOrEdit/add.vue src/pages/<业务块>/addOrEdit/editOrCheck.vue src/pages/<业务块>/index.vue src/pages/<业务块>/config/index.ts src/pages/<业务块>/utils/index.ts src/pages/<业务块>/utils/companyEventBus.ts src/pages/<业务块>/addOrEdit/config/bankCardOptions.ts
+# 1. 本附录改过的文件 lint（不传 --fix）
+npx eslint src/pages/<业务块>/types/index.ts src/pages/<业务块>/apis/type.ts src/pages/<业务块>/apis/index.ts src/pages/<业务块>/addOrEdit/apis/type.ts src/pages/<业务块>/addOrEdit/apis/index.ts src/pages/<业务块>/addOrEdit/add.vue src/pages/<业务块>/addOrEdit/editOrCheck.vue src/pages/<业务块>/index.vue src/pages/<业务块>/config/index.ts src/pages/<业务块>/utils/index.ts src/pages/<业务块>/utils/companyEventBus.ts src/pages/<业务块>/addOrEdit/config/bankCardOptions.ts
 
 # 2. vue-tsc（看是否 0 错）
 npx vue-tsc --noEmit -p tsconfig.json 2>&1 | grep -E "<业务块>/" | head -20

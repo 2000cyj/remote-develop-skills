@@ -9,6 +9,8 @@
 > 📘 **兄弟规范**：type/interface 集中（目标 9）见 `references/09-no-inline-type-in-vue.md` + `09-appendix-remediation.md`。目标 8 管 enum 字面量，目标 9 管 type/interface，**两者并行**——用户可一次任务同时要求扫 enum + type。
 >
 > 📘 **代码风格**：JSDoc 注释与代码之间不允许空行（目标 10）见 `references/10-no-blank-line-between-doc-and-code.md`。批量提取 enum/type 后，**步骤 4 末尾**用 `perl -i -0pe 's| \*/\n\nexport | */\nexport |g'` 一次清空。
+>
+> 📘 **验收硬规则**：本附录步骤 5 必须走 `references/11-must-use-remote-ts-es-check.md`——只能扫本附录改过的文件，禁止全项目扫。
 
 ## 5 步流程
 
@@ -18,7 +20,25 @@
 步骤 3：写入就近 enum/index.ts
 步骤 4：删 .vue 里的本地定义 + 改 import（alias 保持原名，最小 diff）
 步骤 5：用 remote-ts-es-check 验证 TS / ESLint / Vite build
+
+> ⚠️ **硬约束（目标 11）**：步骤 5 必须遵循 `references/11-must-use-remote-ts-es-check.md`——**只能扫本附录改过的文件**（不传目录 / `.` / glob），禁止 `npx eslint src` / `pnpm lint` / `--fix` / 裸跑 `vue-tsc --noEmit`。
 ```
+
+## 扫描时必看的 9 种违规模式（来自 `08-no-inline-enum-in-vue.md` §1.2）
+
+1. `Record<KEY, value> as const` 字典对象
+2. `[{ value, label }, ...] as const` 选项数组
+3. `[{ key, label, ... }, ...] as const` 列表项
+4. `Record<string, [c1, c2]>` 配色对象
+5. `[{ title, description }, ...] as const` stepper
+6. `readonly string[] as const` 字符串元组
+7. `readonly Type[] as const` 元数据数组
+8. **`const columns: VxeGridPropTypes.Columns = [...]` 表格列定义**
+9. **`const formRules: FormRules = { ... }` 静态表单校验规则**
+
+**保留（不算违规）**：
+- `function getTableColumns(options) { return [...动态 push] }`——函数内动态构造
+- `const formRules = { field: [{ validator: (_, val, cb) => {...} }] }`——含 validator 闭包
 
 ## 步骤 1：扫描脚本
 
