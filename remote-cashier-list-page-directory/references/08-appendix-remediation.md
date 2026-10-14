@@ -7,6 +7,8 @@
 用户偶尔会对现状做一次性扫荡（"我看很多地方那样写才让你扫的"），仅在收到这种指令时执行本附录。
 
 > 📘 **兄弟规范**：type/interface 集中（目标 9）见 `references/09-no-inline-type-in-vue.md` + `09-appendix-remediation.md`。目标 8 管 enum 字面量，目标 9 管 type/interface，**两者并行**——用户可一次任务同时要求扫 enum + type。
+>
+> 📘 **代码风格**：JSDoc 注释与代码之间不允许空行（目标 10）见 `references/10-no-blank-line-between-doc-and-code.md`。批量提取 enum/type 后，**步骤 4 末尾**用 `perl -i -0pe 's| \*/\n\nexport | */\nexport |g'` 一次清空。
 
 ## 5 步流程
 
