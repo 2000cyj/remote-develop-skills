@@ -32,6 +32,7 @@ description: Use when 在 src/pages/ 下新建或改造页面/业务模块目录
 | **目标 5：递归嵌套 addOrEdit** | 表单页内还有嵌套表单页 | `references/05-nested-addoredit.md` |
 | **目标 6：判断规范 vs 产品 vs 业务事实** | 是否该改动？该改动是否在 skill 范围内？ | `references/06-product-boundary.md` |
 | **目标 8：禁止在 .vue 顶层定义 enum 风格变量**（**预防规范**） | 枚举违规的 7 种模式 + 归属判定 + 验收检查清单 + 反模式 | `references/08-no-inline-enum-in-vue.md` |
+| **目标 9：禁止在 .vue/.ts 顶层声明 type/interface，集中到就近 `types/index.ts`**（**预防规范**） | type/interface 违规的 8 种模式 + A/B 选项归属判定 + 验收检查清单 + 反模式 + company 实战案例 | `references/09-no-inline-type-in-vue.md` |
 | **速查** | 一页查表 | `references/07-quick-reference.md` |
 
 通用底层知识（无论做哪个目标都要读）：

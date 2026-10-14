@@ -6,6 +6,8 @@
 
 用户偶尔会对现状做一次性扫荡（"我看很多地方那样写才让你扫的"），仅在收到这种指令时执行本附录。
 
+> 📘 **兄弟规范**：type/interface 集中（目标 9）见 `references/09-no-inline-type-in-vue.md` + `09-appendix-remediation.md`。目标 8 管 enum 字面量，目标 9 管 type/interface，**两者并行**——用户可一次任务同时要求扫 enum + type。
+
 ## 5 步流程
 
 ```

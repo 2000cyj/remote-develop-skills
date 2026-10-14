@@ -40,6 +40,8 @@
 | **内层筛选选项**（如 `STORE_COUNT_OPTIONS` + `StoreCountBucket` type——detail.vue 内的下拉筛选条件） | 仅 1 个 addOrEdit .vue 用 + 行数 ≥5 行 + 无 reactive 依赖 | **内层** `addOrEdit/enum/` |
 
 > ⚠️ **批量执行**（全仓扫 .vue 顶层 enum 风格 const + 提取到就近 enum/）见 `references/08-appendix-remediation.md`（仅历史一次性清理）。本文档只判定**单变量归属**；批量扫是附录的职责。
+>
+> ⚠️ **type/interface 集中**（全仓扫 .vue/.ts 顶层 type/interface + 集中到就近 `types/index.ts`）见 `references/09-no-inline-type-in-vue.md`（预防规范）+ `references/09-appendix-remediation.md`（一次性清理）。本表「业务主类型 / 辅助下拉类型」两行的归属原则在 A 选项（用户授权）下退化为全部集中到 `types/index.ts`。
 | **业务归一化函数**（如 `normalizeOnboardingDetail`） | 列表页 + addOrEdit 通用 | **外层** `utils/` |
 | **状态 → el-tag 映射**（如 `getStatusTagType`） | 列表页 + addOrEdit 通用 | **外层** `utils/` |
 | **页面级 flow utility**（如 `createOperationIdStore`） | 仅 detail.vue 用 | **内层** `addOrEdit/utils/` |
@@ -186,3 +188,8 @@ grep -rn "const rules.*FormRules\|: FormRules =" src/pages/<业务块>/addOrEdit
 ## 批量扫描与提取
 
 本文档只讲**单变量归属判定**。批量扫是**附录**的事——见 `references/08-appendix-remediation.md`（一次性现状清理脚本 + 流程）。**新代码必须遵守** `08-no-inline-enum-in-vue.md` 规范，**不要**先写 .vue 再批量清理。
+
+**type/interface 集中**（目标 9）见：
+- 预防规范：`references/09-no-inline-type-in-vue.md`
+- 一次性清理附录：`references/09-appendix-remediation.md`
+- A 选项下（user explicit 授权），`apis/type.ts` + `addOrEdit/apis/type.ts` 退化为 `import type { ... } from "../types"` re-export 壳。
