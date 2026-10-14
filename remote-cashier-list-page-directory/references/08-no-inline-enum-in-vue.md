@@ -30,7 +30,7 @@
 | `readonly string[] as const` 字符串元组 | `const COMMON_CODES = ["a", "b"] as const` | 就近 `enum/` |
 | `readonly Type[] as const` 元数据数组 | `const FIELD_POOL = [{...}] as const` | 就近 `enum/` |
 | `const columns: VxeGridPropTypes.Columns = [...]` 表格列定义 | `const columns: VxeGridPropTypes.Columns = [{ field, title, ... }]` | 就近 `enum/` |
-| `const formRules: FormRules = { ... }` 静态表单校验规则 | `const formRules: FormRules = { field: [{ required: true, message, trigger }] }` | 就近 `enum/` |
+| `const formRules: FormRules = { ... }` 静态表单校验规则 | `const formRules: FormRules = { field: [{ required: true, message, trigger }] }` | **就近 `config/`**（默认）/ 就近 `enum/`（仅当 formRules 引用 createDictionaryEnum 等 enum 工厂时） |
 | 任意 `Record<KEY, value>` 字典对象（无类型注解） | `const SECTION_COLORS = { basic: [...], ... }` | 就近 `enum/` |
 
 ### 1.3 哪些不违规（保留）
@@ -108,7 +108,7 @@ export const SECTION_TITLE_COLORS: Record<string, [string, string]> = {
 |---|---|---|
 | 纯 `Record<KEY, value>` 字典 | `COMPANY_STATUS_TAG_MAP` | ✅ 必拆 enum/ |
 | 纯 `[{ field, title, width }]` 静态列 | `COMPANY_STORE_MODAL_COLUMNS` | ✅ 必拆 enum/ |
-| 纯 `Record<field, [{ required, message, trigger }]>` 无 validator | `COMPANY_ADD_FORM_RULES` | ✅ 必拆 enum/ |
+| 纯 `Record<field, [{ required, message, trigger }]>` 无 validator | `COMPANY_ADD_FORM_RULES` | ✅ 必拆 `config/`（默认）/ `enum/`（仅当 formRules 引用 createDictionaryEnum 等 enum 工厂时）|
 | `function getTableColumns(options) { return columns.push(...) }` | 动态 push | ❌ 保留 config/ |
 | `function getTableColumns() { return [...static] }` 无动态 | 单纯 getter shell | ⚠️ 优先提取到 enum/，让调用方直接 import 数组 |
 | `Record<field, [{ validator: (_, val, cb) => {...} }]>` 含 validator | SetExpirationModal 的 rules | ❌ 保留 .vue——validator 闭包依赖组件状态 |
@@ -145,6 +145,7 @@ const path = require('path');
 - ❌ 删 import 时漏看是否还有别处用——先 grep 再删
 - ❌ 跑 `npx eslint src/pages/<业务块>/` 整目录——只跑本次改的文件
 - ❌ 删 const 块时**只删定义不删 doc**——`/** xxx value -> el-tag type */` 描述的是 const，const 没了 doc 成了无主注释。详情见 `08-appendix-remediation.md` 步骤 4a。
+- ❌ **formRules 抽错位置**（违反就近原则）：把纯静态 formRules（不引用 enum 工厂）也抽到 enum——默认应放就近 `addOrEdit/config/`，放 enum 会让 enum 变成"字典+校验规则+状态码"大杂烩。仅在 formRules 引用 `createDictionaryEnum` 等 enum 工厂时（与字典字段名强耦合），才放 enum。判定决策见 `04-shared-vs-private.md`「FormRules 抽离位置决策」段。
 
 ---
 

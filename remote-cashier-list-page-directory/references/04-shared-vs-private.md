@@ -32,7 +32,8 @@
 | **列表配置**（`getSearchFormItems` + `getTableColumns`） | 列表页用 | **外层** `config/` |
 | **详情描述项配置**（如 `baseDescItems` / `storeCardItems` 工厂——Descriptions items 数组 + 数据格式化工厂） | 仅 detail.vue 用，且总行数 >10 行 | **内层** `addOrEdit/config/` |
 | **表单 items 配置**（如 `getFormItems` 工厂——DynamicForm formItems 数组） | 仅 index.vue 用，且总行数 >15 行 | **内层** `addOrEdit/config/` |
-| **表单校验规则**（如 `FORM_RULES` 常量） | 仅 1 个 .vue 用，且总行数 ≥7 行 | **内层** `addOrEdit/config/` |
+| **表单校验规则**（如 `EDIT_OR_CHECK_FORM_RULES` 常量）| 仅 1 个 .vue 用 + 总行数 ≥7 行 + 纯静态 (无 validator / 不依赖 enum 工厂) | **内层** `addOrEdit/config/`（**就近原则**：离 .vue 最近的目录）|
+| **表单校验规则（与字典共享字段名）**（如 `COMPANY_ADD_FORM_RULES`）| formRules 引用 `createDictionaryEnum` 等 enum 工厂 / 跨页共享字段名 / 需要跟字典（taxpayerType/accountingCompany 等）严格对齐 | **内层** `addOrEdit/enum/`（**作为允许特例**，**默认仍应放 config**）|
 | **组件级 form rules 工厂**（如 `getSubAccountFormRules(ctx)`——抽 `addOrEdit/components/*.vue` 的 `rules: FormRules`，依赖 props 传 ctx） | `addOrEdit/components/*.vue` 的 rules ≥7 行 + 包含自定义 validator（去重 / 异步校验 / 格式正则）或依赖组件 props | **内层** `addOrEdit/config/`（**与 FORM_RULES 同质**，仅作用域不同：页面级 vs 组件级） |
 | **顶栏 UI 资源 + actions 工厂**（如 `PAGE_HEADER_CLASSES` 常量 + `DETAIL_HEADER_TITLE` 文案 + `getDetailHeaderActions(ctx)` 工厂） | ≥3 行 inline 顶栏 container class 重复 + ≥2 个 .vue 复用同一标题文本 / ≥2 个按钮 v-if + ≥3 个页面共用 actions | **内层** `addOrEdit/config/`（与表单 items / 描述项 同质，**只用一个目录**，**不建 `addOrEdit/menu/`**） |
 | **业务块共用字典/枚举**（如 `AUDIT_STATUS` / `ONBOARDING_PLATFORMS`） | 业务块共用 | **外层** `enum/` |
@@ -90,6 +91,27 @@ grep -rln "\b<函数名>\b" src/pages/<业务模块>/ --include="*.vue" --includ
 ## 判定口诀
 
 > **主接口外层放，辅助下拉内层放。跨页面必外层，单页面必内层。**
+
+## FormRules 抽离位置决策（就近原则）
+
+> **默认**：`.vue` 顶层 `const formRules: FormRules = { ... }`（纯静态 / 无 validator）→ `addOrEdit/config/index.ts` 作 `EDIT_OR_CHECK_FORM_RULES`。
+>
+> **特例**：formRules 依赖 `createDictionaryEnum` 等 enum 工厂 / 跨页共享字段名 → `addOrEdit/enum/index.ts` 作 `COMPANY_ADD_FORM_RULES`。
+>
+> **判定公式**：grep `formRules` 体内是否 import 自 `../enum` / 引用 enum 工厂 → 是 = enum；否 = config。
+
+**公司模块实战**：
+
+| 页面 | formRules 抽离位置 | 名称 | 原因 |
+|---|---|---|---|
+| `addOrEdit/add.vue` | `addOrEdit/enum/index.ts` | `COMPANY_ADD_FORM_RULES` | 字段名（`companyName` / `creditCode` 等）跟 enum 字典同源（与 `createDictionaryEnum` 联动），作为允许特例 |
+| `addOrEdit/editOrCheck.vue` | `addOrEdit/config/index.ts` | `EDIT_OR_CHECK_FORM_RULES` | 纯静态（仅 `required` / `min` / `max`），就近放 config（默认位置） |
+
+**反模式**：
+
+- ❌ **就近原则违反**：把纯静态 formRules（不引用 enum 工厂）也抽到 enum——会让 enum 变成"大杂烩"（混了字典/校验规则/状态码），违反就近原则。
+- ❌ **就近原则违反**：把依赖 enum 工厂的 formRules 抽到 config——会导致 config 反向依赖 enum 的工厂函数，破坏单层依赖。
+- ❌ **重复定义**：同一 formRules 在 `add.vue` 和 `editOrCheck.vue` 各定义一份（应该考虑用 `getXxxFormRules()` 工厂还是各自就近——若两页字段集合差异大，建议各自就近）
 
 ## 反模式（不要做）
 
