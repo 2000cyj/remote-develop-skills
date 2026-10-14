@@ -38,6 +38,8 @@
 | **业务块共用字典/枚举**（如 `AUDIT_STATUS` / `ONBOARDING_PLATFORMS`） | 业务块共用 | **外层** `enum/` |
 | **跨模块共用字典**（如 `ONBOARDING_PLATFORMS` 被 AccountChangeDetails 引用） | 跨模块共用证据 → 提升优先级 | **外层** `enum/` |
 | **内层筛选选项**（如 `STORE_COUNT_OPTIONS` + `StoreCountBucket` type——detail.vue 内的下拉筛选条件） | 仅 1 个 addOrEdit .vue 用 + 行数 ≥5 行 + 无 reactive 依赖 | **内层** `addOrEdit/enum/` |
+
+> ⚠️ **批量执行**（全仓扫 .vue 顶层 enum 风格 const + 提取到就近 enum/）见 `references/08-appendix-remediation.md`（仅历史一次性清理）。本文档只判定**单变量归属**；批量扫是附录的职责。
 | **业务归一化函数**（如 `normalizeOnboardingDetail`） | 列表页 + addOrEdit 通用 | **外层** `utils/` |
 | **状态 → el-tag 映射**（如 `getStatusTagType`） | 列表页 + addOrEdit 通用 | **外层** `utils/` |
 | **页面级 flow utility**（如 `createOperationIdStore`） | 仅 detail.vue 用 | **内层** `addOrEdit/utils/` |
@@ -180,3 +182,7 @@ grep -rn "const rules.*FormRules\|: FormRules =" src/pages/<业务块>/addOrEdit
 ```
 
 如果命中 .vue 文件中存在 `as const` / `Descriptions items` / `sticky top-0` 模式但未对应 `addOrEdit/{enum,config}/index.ts` 中的 export，**标记违规**。
+
+## 批量扫描与提取
+
+本文档只讲**单变量归属判定**。批量扫是**附录**的事——见 `references/08-appendix-remediation.md`（一次性现状清理脚本 + 流程）。**新代码必须遵守** `08-no-inline-enum-in-vue.md` 规范，**不要**先写 .vue 再批量清理。
