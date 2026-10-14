@@ -1487,3 +1487,103 @@ grep -nE '\b\w+\[(keyof\s+\w+|vo\[.*\])\]' src/ -r --include="*.ts" --include="*
 | `AccountChangeDetails/index.vue` | 187 | G-3 TS2322 `row[vo[side]]` 返回 `string \| number \| boolean \| undefined` 不能赋给 `string \| null \| undefined` |
 
 **SKILL 升级点**：见 `SKILL.md` 步骤 6 新增的"后端契约跟前端类型对齐 3 子形态"扫描项。本形态是 2026-10-13 实际改造 `cashier_store_account_change_details` 表「14 列 → 1 JSON 列」时一次性遇到——前 7 个升级都查"TS 类型层"，不查"前后端跨仓契约"。cashier 项目改造「表结构 + VO 字段 + 前端 type」是高频场景，**改之前必做"前后端字段名 diff"**。
+
+## TS2304 / TS2551：小写 identifier 引用但未声明（典型 `res.data` 但 `res` 未声明）
+
+**签名**：
+```
+TS2304: Cannot find name 'res'
+TS2551: Property 'data' does not exist on type 'never'
+（vue-tsc 报错在引用点行）
+```
+
+**根因**：
+- 编辑时改**上面** await/Promise 变量名（`res` → `ok`）漏改**下面** `.xxx` 成员访问
+- 复制粘贴 A 函数 `if (res.data === "string")` 到 B 函数，B 函数实际变量名是 `ok` / `data` / `result` —— **`res` 在 B 文件内从未声明**
+- 异步函数返回值取属性时，**ApiEnvelope 与裸值混淆**：`requestData<T>` 已自动解 envelope，返裸 T（string / boolean / number / Record），**没有 `.data` 包装**。`const ok = await saveApi(...)` 后用 `ok.data` = TS2551 Property 'data' does not exist on type 'boolean'
+
+**典型错形态**（cashier 高频）：
+```ts
+// 错（addOrEdit.vue line 579-591 实际命中）
+const ok = isEdit.value ? await updateStoreAllApi(payload) : await addStoreAllApi(payload)
+//                                     ^^^^^^^ 返 boolean                ^^^^^^^ 返 string（裸 uniqueValue）
+if (ok) {
+  // ...
+  if (!isEdit.value && typeof res.data === "string") {  // ← res 未声明 + .data 不应存在
+    formData.uniqueValue = res.data
+  }
+}
+
+// 正
+if (!isEdit.value && typeof ok === "string") {  // ok 实际是 uniqueValue string
+  formData.uniqueValue = ok
+}
+```
+
+**ESLint 为什么没报**：`TS2304` / `TS2551` 是 type-aware 错误，cashier 的 `package.json` 没有 `type-check` 脚本、`pnpm dev / build` 走 esbuild 不做类型检查；ESLint 也不带 `parserOptions.project`，无法跑 type-aware 规则（如 `@typescript-eslint/no-unsafe-member-access`）。
+
+**主动扫描方法**（per-file 声明 vs 访问差集）：
+```bash
+f=src/.../Foo.vue
+# 步骤 1: 提取文件内“被声明”的小写 identifier
+declared=$(perl -ne '
+  # let/const/var 声明
+  while (/\b(?:let|const|var)\s+([a-z]\w*)\b/g) { print "$1\n" }
+  # function 声明
+  while (/function\s+([a-z]\w*)/g) { print "$1\n" }
+  # 形参：function name(a, b) / (a, b) =>
+  while (/\(([^)]*)\)\s*(?:=>|\{)/g) { my $p = $1; for my $id (split /\s*,\s*/, $p) { $id =~ s/[:?\s].*//; print "$id\n" if $id =~ /^[a-z]\w*$/ } }
+  # import 命名导入（限定小写：函数 / composable）
+  while (/import\s+(?:type\s+)?\{([^}]+)\}/g) { my $b = $1; for my $id (split /\s*,\s*/, $b) { $id =~ s/^\s+|\s+$//g; $id =~ s/^type\s+//; $id =~ s/\s+as\s+\w+//; print "$id\n" if $id =~ /^[a-z]\w*$/ } }
+' "$f" | sort -u)
+
+# 步骤 2: 提取“被 .访问 或 if/while 条件”的小写 identifier
+accessed=$(perl -ne '
+  # xxx.yyy / xxx?.yyy / xxx!.yyy
+  while (/([a-z]\w*)\s*[\.\?\!]\s*[a-zA-Z_]/g) { print "$1\n" }
+  # if (xxx) / if (!xxx) / while (xxx)
+  while (/\b(?:if|while)\s*\(\s*!?\s*([a-z]\w*)/g) { print "$1\n" }
+' "$f" | sort -u)
+
+# 步骤 3: 差集 = accessed - declared = 引用了但文件内没声明
+suspects=$(comm -23 <(echo "$accessed") <(echo "$declared"))
+if [ -n "$suspects" ]; then
+  echo "❌ $f 引用了以下 identifier 但文件内未声明："
+  echo "$suspects"
+fi
+```
+
+**误报处理**（扫描率高，需 Read 上下文确认，**false positive ~40%**）：
+- **JS 全局**：`window` / `document` / `console` / `Math` / `JSON` / `Date` —— 首字母**大写**不命中
+- **Vue / 组合式 API**：`computed` / `ref` / `reactive` / `watch` / `onMounted` —— 必 import，declared 包含
+- **destructured 解构**（`const { data, status } = await loadApi()` 后用 `data`）—— perl 提取不到。**手工补查**（grep `: \w+;\|: \w+ =\|= \w+;`）
+- **形参解构**（`function foo({ a, b }: { a, b })`）—— perl 提取的是 `foo`，不是 `a` / `b`。**手工补查**
+- **async callback 闭包变量**（`fetchData().then(res => { result = res })`）—— 需外层声明。**手工补查**
+- **事件对象形参**（`function handleAdd(e: MouseEvent)`）—— 形参 `e` 会被 perl 误报。**手工排除**
+- **library 全局挂载**（`axios` / `$` / `jQuery` / `dayjs`）—— 罕见，手动维护白名单
+
+**Cashier 项目验证**（2026-10-14 实际命中）：
+- `ob_web/packages/micro/cashier/src/pages/store/addOrEdit/addOrEdit.vue:590` `if (typeof res.data === "string")` —— 上 579 行声明 `const ok = ...`，`res` 引用但**未声明**。改用 `ok` + 去 `.data`（addStoreAllApi 返 string 裸值，无 envelope）。
+
+**修法（ponytail rung 1）**：
+1. 找上下文（行 5-10 内）有没有同名同语义的变量声明，**很可能是上面 await 改了名**
+2. 把错引用 `xxx.yyy` → 正确变量名（user 报的 case 是 `res` → `ok`）
+3. 修法只动引用点，**不动声明点**（声明点是源头）
+4. 不擅自删除（虽然是 typo 但可能是函数返回值 / 参数 / 全局挂载）
+
+**与已有形态区别**：
+
+| 形态 | 触发场景 |
+|---|---|
+| TS2305（路径错位）| import 路径贪心合并导致 type-only 跑 value-only |
+| TS2345（函数返回 unknown）| `const x = () => arr.map(...)` 无签名 → 返回 `unknown[]` |
+| TS2322（mock 缺字段）| mock / test 数据 vs 接口契约字段缺失 |
+| jsdoc/multiline-blocks | JSDoc 起始行 `/**` 同行接文字 |
+| 未使用代码（默认 ESLint 不抓）| 项目 eslint.config.js 默认禁用 no-unused-vars 导致死代码 + 孤儿 API 残留 |
+| TS2322（同名类型重复定义）| 同名 interface / type 在两处独立 `export`，可选性不一致 |
+| 后端契约 3 子形态 G | 改后端 Java VO / JSON key 跟前端 type / 函数形参没对齐 |
+| **TS2304 / TS2551（identifier 未声明）** | **小写 identifier 被 .访问但文件内未声明 —— await/Promise 改完上面忘改下面的纯 typo 错** |
+
+**SKILL 升级点**：见 `SKILL.md` 步骤 6 新增的"未定义 identifier 主动扫描"扫描项。本形态是 2026-10-14 实际修复
+- `ob_web/packages/micro/cashier/src/pages/store/addOrEdit/addOrEdit.vue:590` `if (typeof res.data === "string")` —— `res` 引用但上 579 行声明的是 `ok` 不是 `res`
+时发现。skill 之前的 8 个升级（TS2345 spread / 透传 / TS2339 Set / fieldCode / TS2304 PascalCase 未 import / TS2322 错 X / element union / mock 字段 / 重复定义 / 后端契约）都查"类型 / 字段 / 路径"是否对齐，**不查"identifier 本身在文件内是否声明过"**——这种"用错变量名"的纯 typo 错误**所有升级都不抓**。

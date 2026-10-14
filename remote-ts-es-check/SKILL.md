@@ -299,7 +299,63 @@ ESLint 必须解析完整文件才能正确理解 Vue/TS 语法，因此检查�
 
      参考 `references/error-signatures.md` 中的 "TS7053 / TS2322 形态 G：后端契约跟前端类型对齐"。
 
-     **为什么这一项要单独列**：skill 之前的 7 个升级都查"TS 类型层"的 mismatch（spread / Set / cast / import / element union / mock 字段 / 重复定义），**不查"跨仓契约"**（后端 Java VO 字段名 vs 前端 type 字段名 vs 后端 JSON key vs 前端函数形参）。cashier 项目改造「表结构 + VO + 前端 type」是高频场景，**改后端必做"前后端字段名 diff"**。
+     **为什么这一项要单独列**：skill 之前的 7 个升级都查“TS 类型层”的 mismatch（spread / Set / cast / import / element union / mock 字段 / 重复定义），**不查“跨仓契约”**（后端 Java VO 字段名 vs 前端 type 字段名 vs 后端 JSON key vs 前端函数形参）。cashier 项目改造「表结构 + VO + 前端 type」是高频场景，**改后端必做“前后端字段名 diff”**。
+
+   - **未定义 identifier 主动扫描（防 TS2304：小写 identifier 被 .访问但文件内未声明）**：ESLint 默认不抓 type-aware 错误（`TS2304: Cannot find name 'xxx'`），vue-tsc 不跑。业务代码常用 await/Promise 后取属性，**改完上面没改下面**是高频 typo 错。典型形态：
+     - `const ok = await saveApi(payload)` 之后用 `ok.data`（**saveApi 已经 `requestData` 解 envelope，返裸 boolean / string，不是 ApiEnvelope**）
+     - 复制粘贴时改**上面**变量名（`res` → `ok`）漏改**下面**成员访问（`if (res.data === "string")` 仍留 `res.data`）
+     - 异步函数返回值取属性用错变量名（`result.foo` 但实际声明是 `data`）
+     ```bash
+     # per-file 扫：声明 vs 访问的差集
+     f=src/.../Foo.vue
+     # 步骤 1: 提取文件内“被声明”的小写 identifier（let/const/var/function/形参/import 命名导入）
+     declared=$(perl -ne '
+       # let/const/var 声明
+       while (/\b(?:let|const|var)\s+([a-z]\w*)\b/g) { print "$1\n" }
+       # function 声明
+       while (/function\s+([a-z]\w*)/g) { print "$1\n" }
+       # 形参：function name(a, b) / (a, b) =>
+       while (/\(([^)]*)\)\s*(?:=>|\{)/g) { my $p = $1; for my $id (split /\s*,\s*/, $p) { $id =~ s/[:?\s].*//; print "$id\n" if $id =~ /^[a-z]\w*$/ } }
+       # import 命名导入（限定小写：函数 / composable）
+       while (/import\s+(?:type\s+)?\{([^}]+)\}/g) { my $b = $1; for my $id (split /\s*,\s*/, $b) { $id =~ s/^\s+|\s+$//g; $id =~ s/^type\s+//; $id =~ s/\s+as\s+\w+//; print "$id\n" if $id =~ /^[a-z]\w*$/ } }
+     ' "$f" | sort -u)
+
+     # 步骤 2: 提取“被 .访问 或 if/while 条件”的小写 identifier
+     accessed=$(perl -ne '
+       # xxx.yyy / xxx?.yyy / xxx!.yyy
+       while (/([a-z]\w*)\s*[\.\?\!]\s*[a-zA-Z_]/g) { print "$1\n" }
+       # if (xxx) / if (!xxx) / while (xxx)
+       while (/\b(?:if|while)\s*\(\s*!?\s*([a-z]\w*)/g) { print "$1\n" }
+     ' "$f" | sort -u)
+
+     # 步骤 3: 差集 = accessed - declared = 引用了但文件内没声明
+     suspects=$(comm -23 <(echo "$accessed") <(echo "$declared"))
+     if [ -n "$suspects" ]; then
+       echo "❌ $f 引用了以下 identifier 但文件内未声明："
+       echo "$suspects"
+     fi
+     ```
+
+     **误报处理**（扫描率高，需 Read 上下文确认，**false positive ~40%**）：
+     - **JS 全局**：`window` / `document` / `console` / `Math` / `JSON` / `Date` —— 实际首字母**大写**不命中（小写 pattern 不抓大写）
+     - **Vue / 组合式 API**：`computed` / `ref` / `reactive` / `watch` / `onMounted` —— 必 import，declared 包含
+     - **destructured 解构**（`const { data, status } = await loadApi()` 后用 `data`）—— `data` 是解构非 let/const 声明，perl 提取不到。**手工补查**
+     - **形参解构**（`function foo({ a, b }: { a: string, b: string })`）—— perl 提取的是 `foo`，不是 `a` / `b`。**手工补查**
+     - **async 函数 callback 闭包变量**（`fetchData().then(res => { result = res })` 中 `result`）—— 需外层声明，perl 提取依赖 let/const 所在 scope。**手工补查**
+     - **事件对象**（`function handleAdd(e: MouseEvent)`）—— 形参 `e` 会被 perl 误报为未声明。**手工排除**
+     - **Vue 模板 ref**（`const formRef = ref<FormInstance>()` 后 `<DynamicForm ref="formRef">`）—— 模板是 string attribute，perl 不扫模板，**不命中**
+     - **library 全局挂载**（`axios` / `$` / `jQuery` / `dayjs`）—— 罕见，需手动维护白名单
+
+     **Cashier 项目验证**（2026-10-14 实际命中）：
+     - `ob_web/packages/micro/cashier/src/pages/store/addOrEdit/addOrEdit.vue:590` `if (typeof res.data === "string")` —— 上 579 行声明 `const ok = ...`，`res` 引用但**未声明**。改用 `ok` 即可。
+
+     **命中后修法**（ponytail rung 1）：
+     1. 找上下文（行 5-10 内）有没有同名同语义的变量声明，**很可能是上面 await/Promise 改了名**
+     2. 把错引用 `xxx.yyy` → 正确变量名（user 报的 case 是 `res` → `ok`）
+     3. 修法只动引用点，**不动声明点**（声明点是源头）
+     4. 不擅自删除（虽然是 typo 但可能是函数返回值 / 参数 / 全局挂载）
+
+     **为什么这一项要单独列**：skill 之前的 8 个升级（TS2345 spread / 透传 / TS2339 Set / fieldCode / TS2304 PascalCase 未 import / TS2322 错 X / element union / mock 字段 / 重复定义 / 后端契约）都查“类型 / 字段 / 路径”是否对齐，**不查“identifier 本身在文件内是否声明过”**。cashier 项目高频场景：编辑时改上面 await/Promise 变量名（`res` → `ok`），忘改下面 `.data` 引用 —— 这种**“用错变量名”**的纯 typo 错误所有升级都不抓。参考 `references/error-signatures.md` 中的 "TS2304 形态：小写 identifier 引用但未声明（典型 `res.data` 但 `res` 未声明）"。
 
 
 7. **格式嫌疑主动扫描**（即使 ESLint 0 报错也要做）：
