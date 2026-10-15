@@ -88,7 +88,9 @@ grep -rln "\b<函数名>\b" src/pages/<业务模块>/ --include="*.vue" --includ
 | `SubAccountEditor` | 仅 addOrEdit/detail.vue + fill.vue | **内层** `addOrEdit/components/` |
 | `createOperationIdStore`（前 detail-flow.ts） | 仅 addOrEdit/detail.vue | **内层** `addOrEdit/utils/` |
 
-## 实战案例（AccountChangeDetails - 2026-10-15：baseDescItems + statusDescItems 抽 config）
+## 实战案例
+
+### AccountChangeDetails - 2026-10-15：baseDescItems + statusDescItems 抽 config
 
 | 源文件 | 变量 | 原形式 | 抽后位置 | 原因 |
 |---|---|---|---|---|
@@ -111,9 +113,67 @@ grep -rln "\b<函数名>\b" src/pages/<业务模块>/ --include="*.vue" --includ
 - 现在补在 04-shared-vs-private.md 模式 2 表格（新增 1 行）+ 判定顺序口诀（**先看 computed，再看行数**）
 - 以后类似情况：看到 `const X = computed(() => [...])` 先看内部是否有 props/reactive/函数依赖 → **无依赖 = 反模式，必拆**
 
+### store - 2026-10-15：closeStoreFormItems 抽 config（formItems 留 .vue 区分判定）
+
+| 源文件 | 变量 | 原形式 | 抽后位置 | 原因 |
+|---|---|---|---|---|
+| `addOrEdit/addOrEdit.vue` | `closeStoreFormItems`（9 行 + computed 包装） | `computed(() => [...6 静态 item + ElSwitch + CASHIER_GUARANTEE_RETURN_STATUS_OPTIONS.options...])` | `addOrEdit/config/index.ts` `export const CLOSE_STORE_FORM_ITEMS` | computed 包纯静态——无 `.value.` / `props.` / `reactive` / `ref` 任何响应式依赖 |
+| `addOrEdit/addOrEdit.vue` | `formItems`（**不抽**） | `computed(() => [...35 item 含 companyOptions.value.map(...)...])` | 留 addOrEdit.vue | **真 computed**——依赖 `companyOptions.value.map(...)` 响应式，拆出后丧失响应式 |
+
+**双 const 同 .vue 区分判定**（Items + Items 配对）：
+- **A `closeStoreFormItems`**（关店与保证金分组）= 纯静态（无响应式）→ 抽 config
+- **B `formItems`**（动态表单配置）= 依赖 `usePlatformOptions().options.value` 等响应式 → 留 .vue
+- 判定公式：grep 体内 `\.value\.|props\.|reactive|ref\(` → 有 = 留 .vue；无 = 抽 config
+
+**diff 动**：
+- `addOrEdit/config/index.ts` 从 35 行增到 54 行（+19 行 = `import { ElSwitch } + import { CASHIER_GUARANTEE_RETURN_STATUS_OPTIONS } + CLOSE_STORE_FORM_ITEMS 14 行 + 注释`）
+- `addOrEdit.vue` 833 → 824 行（-9：删 computed 包装 + 改 import 顺序去 unused `ElSwitch`/`CASHIER_GUARANTEE_RETURN_STATUS_OPTIONS`）
+- 同 .vue 内 `formRules` + `closeStoreFormItems` 都从 `./config` 引入（perfectionist/sort-named-imports 排序：`CLOSE_STORE_FORM_ITEMS` 在 `STORE_ADD_OR_EDIT_FORM_RULES` 之前）
+
+**反思**：
+- 2 个 formItems 共存易混淆，**先看每个 computed 体内是否有响应式依赖**—— 1 处 `companyOptions.value.map(...)` 就够定性为"真 computed"（其余 30 行字面量/字典/组件引用不能掩盖这 1 处响应式）
+- 抽 config 后 `ElSwitch`/`CASHIER_GUARANTEE_RETURN_STATUS_OPTIONS` 在 .vue 变 unused → 必须删 import，**否则 ESLint unused-imports 报错**
+
 ## 判定口诀
 
 > **主接口外层放，辅助下拉内层放。跨页面必外层，单页面必内层。**
+
+## components 真跨页复用判定（强证据法，2026-10-15 补）
+
+> 业务背景：之前 store/ 案例中 SubAccountManager 凭印象被误判为"fill.vue 用了"（实际只 doc 注释提了）—— 错放外层 components/。本节定义**唯一证据**判定法。
+
+**判定命令**（**不接受**其他判定方式）：
+
+```bash
+# 对 components/ 下每个 .vue 文件，grep 真 import 路径
+for comp in $(ls src/pages/<业务块>/components/*.vue 2>/dev/null | xargs -n1 basename | sed 's/\.vue$//'); do
+  echo "=== $comp 真调用方 ==="
+  grep -rnE "^import[[:space:]]+${comp}[[:space:]]+from" src/pages/ --include="*.vue" --include="*.ts" 2>&1
+done
+```
+
+**判定标准**（满足以下**全部**才认作"真跨页复用"）：
+
+| 条件 | 要求 |
+|---|---|
+| 1️⃣ import 数量 | ≥ 2 个真 import（**不**接受 doc 注释 / 字符串提及） |
+| 2️⃣ 跨调用方 | 来自 ≥2 个**不同**业务模块的 .vue/.ts |
+| 3️⃣ 跨目录 | 调用方**不限于** addOrEdit 目录（必须含 index.vue 或其他 addOrEdit 之外） |
+
+**判定红线**（**不认作**"跨页复用"的 4 种情况）：
+- ❌ grep 只命中 doc 注释 / JSDoc / 中文说明里提到组件名（**不是 import**）
+- ❌ grep 只命中 1 个 import（即使来自另一个 .vue）—— 单调用方也该放 addOrEdit/components/
+- ❌ grep 命中的多个 import 都来自同一 addOrEdit 目录（fill.vue 跟 detail.vue 同目录）—— 仍是 addOrEdit 内复用
+- ❌ grep 命中的 import 路径不对应（"SubAccountManager" 字符串在别处使用但不是该组件）
+
+**违规案例**（store/ 2026-10-15）：
+- ❌ `ChangeInfoModal` 凭"业务块共用组件"判定放外层，实际 grep 仅 1 个真 import（addOrEdit.vue）—— 应放 addOrEdit/components/
+- ❌ `SubAccountManager` 凭"fill.vue 用了"判定放外层，实际 fill.vue 只 doc 注释提到（**不**是 import）—— 应放 addOrEdit/components/
+
+**反模式**：
+- ❌ "这个组件以后会跨页用，先放外层"—— 首次就该放内层（"以后" = 不可证伪的预言）
+- ❌ "doc 注释提到 = 算用到"—— doc 注释是给人看的，import 是机器验证的
+- ❌ "外层有 components/ 目录就该填东西"—— 业务块没跨页组件就**不创建**该目录
 
 ## FormRules 抽离位置决策（就近原则）
 

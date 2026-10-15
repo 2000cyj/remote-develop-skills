@@ -60,6 +60,84 @@ grep -rn "validator:.*=>" src/pages/<业务块>/addOrEdit/components/*.vue
 
 如命中但 `addOrEdit/{enum,config}/index.ts` 无对应 export → **必须整改**。
 
+### components 真跨页复用判定（检查 5a，**强证据**）
+
+```bash
+# 强制执行:对 components/ 下每个 .vue，grep 真 import 路径（不接受 doc 提及）
+for comp in $(ls src/pages/<业务块>/components/*.vue 2>/dev/null | xargs -n1 basename | sed 's/\.vue$//'); do
+  echo "=== $comp 真调用方 ==="
+  grep -rnE "^import[[:space:]]+${comp}[[:space:]]+from" src/pages/ --include="*.vue" --include="*.ts" 2>&1
+done
+```
+
+**判定**：
+- ≥2 个真 import + 跨业务模块 + 跨目录 → 业务块共用，**外层** `components/`
+- 0-1 个真 import / 仅 addOrEdit 内 / 仅 doc 注释提到 → **内层** `addOrEdit/components/`
+
+事故案例（store/ 2026-10-15）：SubAccountManager 凭"fill.vue 用了"判定放外层，实际 fill.vue **只 doc 注释提到**（非 import）—— 按本命令应挪内层。
+
+### 页面级 FormRules 抽离位置判定（检查 12，**就近原则**）
+
+```bash
+# 扫 .vue 顶层 const formRules
+grep -rnE "^const[[:space:]]+formRules" src/pages/<业务块>/addOrEdit/*.vue 2>&1
+
+# 判定 formRules 体内是否引用 enum 工厂（决定放 config/ 还是 enum/）
+grep -A 50 "^const formRules.*FormRules" src/pages/<业务块>/addOrEdit/<file>.vue | grep -E "from \"\.\./enum\"|createDictionaryEnum|new \w+Enum\("
+```
+
+**判定**：
+- 引用 enum 工厂 / import 自 `../enum` → 抽到 `addOrEdit/enum/index.ts`（**允许特例**）
+- 否则（纯静态）→ 抽到 `addOrEdit/config/index.ts`（**默认位置，就近原则**）
+
+事故案例（store/ 2026-10-15）：`STORE_ADD_OR_EDIT_FORM_RULES` 纯静态 formRules 错放外层 `enum/` —— 应放 `addOrEdit/config/`。
+
+### computed 包纯静态扫描（检查 5c，**反模式**）
+
+```bash
+# 扫 .vue 顶层 const X = computed(() => [...]) 模式
+grep -rnE "^const[[:space:]]+\w+[[:space:]]*=[[:space:]]*computed\(" src/pages/<业务块>/ 2>&1
+
+# 验证 computed 体内是否有响应式依赖
+grep -A 10 "^const.*=.*computed(" src/pages/<业务块>/addOrEdit/<file>.vue | grep -E "\.value\.|props\.|reactive\(|ref\("
+```
+
+**判定**（**先看 computed，再看行数**）：
+- `computed(() => [...])` + 体内**无**响应式依赖 → **反模式**：去 computed + 抽 `addOrEdit/config/`（行数任意）
+- `computed(() => ({...})` + 体内**有**响应式依赖 → **真 computed**：留 .vue
+
+事故案例（store/ 2026-10-15）：`closeStoreFormItems` 9 行 + computed 包装 + 纯静态 → 抽 `addOrEdit/config/CLOSE_STORE_FORM_ITEMS`。
+
+### inline type/interface 集中化扫描（检查 13，**目标 9**）
+
+```bash
+# 1. 扫 .ts 顶层 interface/type 声明（排除 types/index.ts）
+for f in $(find src/pages/<业务块> -type f -name "*.ts" 2>/dev/null); do
+  case "$f" in */types/index.ts) continue ;; esac
+  grep -nE "^(export[[:space:]]+)?(interface|type)[[:space:]]+[A-Z]\w*" "$f" 2>/dev/null
+done
+
+# 2. 扫 .vue <script setup> 顶层 interface/type
+for f in $(find src/pages/<业务块> -type f -name "*.vue" 2>/dev/null); do
+  awk '/<script[^>]*>/,/<\/script>/' "$f" 2>/dev/null | grep -nE "^(interface|type)[[:space:]]+[A-Z]\w*"
+done
+
+# 3. 看某 type X 的所有调用方（word boundary 避免匹配到 Xxx）
+grep -rln "\bX\b" src/pages/<业务块>/ --include="*.vue" --include="*.ts" | grep -v "types/index.ts"
+```
+
+**判定**（**A vs B 选项**）：
+- **A 选项**（推荐，store/ 2026-10-15 选用）：**所有 type/interface 全部集中到业务块根 `types/index.ts`**，包括 `apis/type.ts` 里的 DTO/VO；调用方统一从 `./types` / `../types` import；`apis/type.ts` 退化/删除
+- **B 选项**（保守）：仅 .vue 顶层 + config/utils 散落的 type 集中；`apis/type.ts` 保留 DTO 定义
+
+**判定口诀**：
+1. 这是 TS `interface` / `type` 声明（不是 import / 函数 / const / enum）？**是** → 违规
+2. 是 share/第三方 import？**是** → 不违规
+3. 是 1 行 string/number union 且仅 1 个文件用？**是** → 不违规（YAGNI）
+4. 其他 → **就近 `types/index.ts`**
+
+事故案例（store/ 2026-10-15）：`store/apis/type.ts` 22 个 type/interface 散落 + `addOrEdit.vue` 1 个 inline `BiUserOption`（与 company/types 重复）→ 抽 `store/types/index.ts`（462 行） + 删 `apis/type.ts`（455 行） + 改 6 个调用方 import 路径 + BiUserOption 跨业务块复用 `@/pages/company/types`。
+
 ## addOrEdit 内文件形态
 
 | 形态 | 文件结构 | 适用 |
@@ -108,43 +186,3 @@ touch src/pages/<业务模块>/components/Foo.vue
 
 # 调用方直接 import（不推荐 utils/confirm.ts 中间层）
 # ```ts
-# import { confirmDelete } from "@/common/utils"
-# ```
-
-## 验证
-
-```bash
-# 7 项固定目录检查
-ls src/pages/<业务模块>/
-
-# ESLint
-npx eslint src/pages/<业务模块> --ext .vue,.ts
-
-# 重复审查
-cat references/02-audit-page-compliance.md
-```
-
-## 输出格式（所有目标）
-
-- 列出新建/改动的目录树
-- 标注每个 apis/components/config/enum/utils 是外层还是内层
-- 说明 addOrEdit 文件形态
-- 区分三类结论（必须整改/建议优化/无需修改）
-
-## 反模式（速记）
-
-- ❌ 缺 7 项任意一项
-- ❌ 列表页和 addOrEdit 共用 index.vue
-- ❌ 把仅 addOrEdit 用的放外层
-- ❌ 弹窗组件含 el-dialog
-- ❌ 弹窗组件未暴露 submit()
-- ❌ 工具用 try/catch + ElMessageBox.confirm（应改 confirmDelete）
-- ❌ 创建 utils/confirm.ts 一行转发中间层（2026-09-21 重构后取消，调用方直连 @/common/utils）
-- ❌ `utils/` 下放 `format.ts` / `relatedUser.ts` 等非例外文件（应合进 `index.ts`）
-- ❌ `utils/validation.ts` 总行数 <100 行（不属"大块"，应合进）
-- ❌ `*.composable.ts` 实际不含 lifecycle 钩子（违规独立成文件）
-- ❌ **`addOrEdit/*.vue` 出现 ≥5 行 OPTIONS 数组 / ≥10 行 Descriptions items 数组 / ≥10 行 items 工厂却未拆到 `addOrEdit/{enum,config}/`**（**检查 9** 必检）
-- ❌ **`addOrEdit/*.vue` ≥2 个文件使用相同 `sticky top-0 z-10 flex items-center justify-between px-6 py-4 bg-white border-b` 顶栏 class 却未拆 `addOrEdit/config/index.ts`**（**检查 10** 必检；**不建 `addOrEdit/menu/`**）
-- ❌ **`addOrEdit/components/*.vue` 含 `rules: FormRules` ≥7 行 / 自定义 validator / 依赖 props 却未抽 `getXxxFormRules(ctx)` factory**（**检查 11** 必检）
-- ❌ 建议优化项下发为必须整改
-- ❌ import 同一路径多次（应合并）
