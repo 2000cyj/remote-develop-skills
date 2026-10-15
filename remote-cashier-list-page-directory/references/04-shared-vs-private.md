@@ -88,6 +88,29 @@ grep -rln "\b<函数名>\b" src/pages/<业务模块>/ --include="*.vue" --includ
 | `SubAccountEditor` | 仅 addOrEdit/detail.vue + fill.vue | **内层** `addOrEdit/components/` |
 | `createOperationIdStore`（前 detail-flow.ts） | 仅 addOrEdit/detail.vue | **内层** `addOrEdit/utils/` |
 
+## 实战案例（AccountChangeDetails - 2026-10-15：baseDescItems + statusDescItems 抽 config）
+
+| 源文件 | 变量 | 原形式 | 抽后位置 | 原因 |
+|---|---|---|---|---|
+| `addOrEdit/detail.vue` | `baseDescItems`（12 行 + computed 包装） | `computed(() => [...12 静态 item...])` | `addOrEdit/config/index.ts` `export const baseDescItems` | computed 包纯静态 + 行数 ≥10 双触发 |
+| `addOrEdit/detail.vue` | `baseDescData`（**不抽**） | `computed(() => ({ ...依赖 props.detail.xxx + 调 getSourceLabel/getOperationLabel 等... }))` | 留 detail.vue | **真 computed**——依赖响应式 props，拆出后丧失响应式 |
+| `addOrEdit/detail.vue` | `statusDescItems`（5 行 + computed 包装） | `computed(() => [...2 静态 item...])` | `addOrEdit/config/index.ts` `export const statusDescItems` | computed 包纯静态（**行数 <10 但仍抽**）|
+| `addOrEdit/detail.vue` | `statusDescData`（**不抽**） | `computed(() => ({ ...依赖 props.detail.xxx + 调 getShopStatusText... }))` | 留 detail.vue | **真 computed** |
+
+**双变量名模式**（Items + Data 配对）决策：
+- **Items**（字段定义）= 纯静态 → 抽 config
+- **Data**（数据填充）= 调函数读 props → 留 .vue
+
+**diff 动**：
+- `addOrEdit/config/index.ts` 从 0 字节增到 42 行（2 个 const + 注释）
+- `addOrEdit/detail.vue` 减 18 行（2 个 computed 包装 + 空行）
+- import 块加 1 行：`import { baseDescItems, statusDescItems } from "./config"`（与 StoreAuditOnboarding/addOrEdit/config/index.ts 命名保持小驼峰一致）
+
+**反思**：
+- 之前 `statusDescItems` 5 行 < 模式 2 阈值 ≥10，**严格按阈值不抽**——但 `computed 包装本身是反模式`（行数任意都要去 computed）—— **现有阈值表漏了"computed 反模式"这个判定维度**
+- 现在补在 04-shared-vs-private.md 模式 2 表格（新增 1 行）+ 判定顺序口诀（**先看 computed，再看行数**）
+- 以后类似情况：看到 `const X = computed(() => [...])` 先看内部是否有 props/reactive/函数依赖 → **无依赖 = 反模式，必拆**
+
 ## 判定口诀
 
 > **主接口外层放，辅助下拉内层放。跨页面必外层，单页面必内层。**
@@ -120,6 +143,7 @@ grep -rln "\b<函数名>\b" src/pages/<业务模块>/ --include="*.vue" --includ
 - ❌ "目录名冲突所以放外层"—— 不要为了回避冲突打乱归属
 - ❌ 把"建议共用"误判为"已共用"—— 必须有 grep 证据
 - ❌ detail.vue / fill.vue / index.vue 出现 >10 行的 inline enum 数组或 Descriptions items 数组却未拆到 `addOrEdit/enum/` 或 `addOrEdit/config/`—— 必须拆
+- ❌ `const descItems = computed(() => [...纯静态字面量...])` —— computed 包静态 = 无意义 computed 包装 = 反模式，必须**去 computed + 抽 config**（行数任意；参考模式 2 表格）
 
 ## 何时回退判定
 
@@ -140,9 +164,21 @@ grep -rln "\b<函数名>\b" src/pages/<业务模块>/ --include="*.vue" --includ
 
 | 特征 | 阈值 | 示例 |
 |---|---|---|
-| `const descItems = [{ prop, label, span }, ...]` | 行数 ≥10 行 + 仅 1 个 .vue 用 | `baseDescItems`（10 行） |
+| `const descItems = [{ prop, label, span }, ...]` | 行数 ≥10 行 + 仅 1 个 .vue 用 | `baseDescItems`（12 行） |
+| `const descItems = computed(() => [...纯静态字面量...])` | **行数任意**（computed 包纯静态 = 无意义 computed 包装 = 反模式，必须**去 computed + 抽 config**）| `statusDescItems`（5 行但 computed 包装） |
 | `function descItemsFactory(item)` 工厂 | 行数 ≥10 行 | `storeCardItems` factory |
 | `function descDataFormatter(item)` 工厂 | 行数 ≥10 行 | `storeCardData` factory |
+
+**为什么 computed 包纯静态是反模式**：
+- computed 依赖响应式源才能发挥缓存/依赖追踪作用；纯静态字面量无任何依赖图 → 包装无意义
+- 占 response 状态位，每次 setup 执行都多算一次（虽然有缓存但概念是误用）
+- 抽到 config 后该文件是一份**只读 const**，模板 import 直接用，更清晰
+
+**判定顺序**（口诀：**先看 computed，再看行数**）：
+1. 命中 `computed(() => [...])` + 内部无 props/reactive/函数 → **必抽 config + 去 computed**（不管行数）
+2. 未用 computed + 行数 ≥10 → **抽 config**（行数阈值）
+3. 未用 computed + 行数 <10 → 留 .vue（不拆）
+4. 命中 `computed(() => ({ ... 依赖 props.xxx ... }))` → **不拆**（真 computed，参考模式 4）
 
 ### 模式 3：DynamicForm items 数组（→ config/）
 
