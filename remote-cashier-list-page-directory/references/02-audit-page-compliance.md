@@ -4,6 +4,45 @@
 
 > 本目标是**只读审查**，不要擅自修改代码。所有整改动作见 `references/03-refactor-page.md`。
 
+## 审查总则（先读这一段，优先于所有检查项）
+
+> **不要用关键字扫。** 本文件所有 `grep` / 扫描命令**只是规范的可选执行器**，不是审查方法。审查方法是：**按 7 项目录的职责，逐文件判定文件里每一条声明的归属目录**。命令没命中 **≠** 合规。
+
+### 审查方法：按职责定位，不按关键字定位
+
+**不要**先 grep 关键字找违规。要**先定归属，再看现状**：
+
+```
+Step 1  列出业务块的 7 项目录（index.vue / addOrEdit/ / apis/ / components/ / config/ / enum/ / utils/ / types/）
+Step 2  逐个文件读完，把里面**每一条顶层声明**（const / function / interface / type / computed / ref / reactive）列出来
+Step 3  对每一条声明查下表 → 得到它**应该**在哪个目录
+Step 4  与它**实际**所在位置对比 → 不同 = 违规（凭据 = 归属表行号）
+```
+
+**声明种类 → 归属目录**（这张表就是规范，不要拿 grep 当规范）：
+
+| 声明种类 | 应该在哪 | 实例 |
+|---|---|---|
+| `interface` / `type`（任何名字、任何形式，包括泛型 / 联合 / 交叉） | 业务块根 `types/index.ts`；只被内层用且名字带 `Row`/`Item` 等组件私有语义 → 仍进 `types/index.ts` | `StoreEntryPlatformFormState`、`PageResult<T>` |
+| `FormRules` 对象（任何名字：formRules / rules / phoneRules / fieldRules） | 纯静态 → `addOrEdit/config/index.ts`；引 enum 工厂 → `addOrEdit/enum/index.ts`；依赖 props / 含 validator → `addOrEdit/config/` 的 factory | `STORE_ENTRY_PLATFORM_FORM_RULES` |
+| `computed`（任何名字） | **一律**提 `config/`：体内无响应式依赖 → 常量化 `export const X = [...]`；体内引用 `.value` / `props.` / `reactive` → 抽成方法 `export function getXxx(args)`，把这些值**当参数传进去**，`computed` 留 .vue 侧调方法 | `getXxxFormItems(companyOptions.value, formData.operatorId)` |
+| 静态数组 / 字典 / `Record<KEY, value>` | `config/`（内层用）或 `enum/`（字典语义） | `CLOSE_STORE_FORM_ITEMS` |
+| 映射函数 / 格式化 / 校验工具 | `utils/index.ts` | `formatDateTime`、`getFieldLabel` |
+| 接口请求函数 | `apis/index.ts` | `pageStoreEntryPlatformApi` |
+| 枚举 / 状态码 / label 映射表 / **魔法值** | **先查公共**：① `@/common/enum` 有同语义 → 直接复用 ② 本业务块 `enum/` 有 → 复用 ③ 都没有 → 建到就近 `enum/index.ts`，并把该魔法值在业务块内**全部**改为引用它 | `pageModeEnum`、`subAccountFieldPool` |
+| 页面状态（ref / reactive）、事件处理、副作用编排 | `.vue` 内部（唯一例外） | `formData`、`handleSave` |
+| 组件 | 内层 `addOrEdit/components/` 或外层 `components/`，按真 import 数判定 | `FieldsSelector.vue` |
+| 刷新信号 / 缓存 composable | `utils/`（`*.composable.ts` 或 index.ts barrel） | `requestListRefresh` |
+
+**Step 4 判定后的 4 条要求**：
+
+1. **扫描命令只是加速器**：本文件后文各检查项里的 `grep` 只用于“快速列出待判定的声明”，不用于“判定有无违规”。
+2. **不许拿“命令没命中”当结论**：命令没命中只说明命令模式没覆盖写法，必须回到 Step 2 逐文件读完。
+3. **命名不影响归属**：变量叫 `rules` 还是 `formRules`、`XxxVO` 还是 `XxxRow`，都不改变它应该去的目录。命令按关键字写会漏；归属表按种类写不会漏。
+4. **发现归属表没覆盖的声明种类**：先修代码，再回本表加一行（按**种类**描述，不按变量名）。
+
+> 事故记录（storeEntryPlatform/ 2026-10-15）：旧审查方式用 `grep "^const formRules"` 找违规，命令只匹配 `formRules` 这个名字，漏掉了 `const rules: FormRules<T>`（14 行纯静态），user 直接点名才抽出。**根因不是 grep 写错，是拿 grep 当规范**——改成“按声明种类查归属目录”后，变量叫什么名都跑不掉。
+
 ## 检查清单（按 7 项固定目录逐项）
 
 ### 检查 1：7 项目录职责是否齐全
@@ -132,10 +171,17 @@ grep -rnE "^const[[:space:]]+\w+[[:space:]]*=[[:space:]]*computed\(" src/pages/<
 grep -A 10 "^const.*=.*computed(" src/pages/<业务块>/addOrEdit/<file>.vue | grep -E "\.value\.|props\.|reactive\(|ref\("
 ```
 
-**判定公式**（**v2 最终态，2026-10-15 补 factory 模式**）：
-- 命中 `computed(() => [...])` + 体内**无** `.value.` / `props.` / `reactive` / `ref` → **反模式**：去 computed + 抽 addOrEdit/config/ 常量化（`export const X = [...]`）
-- 命中 `computed(() => [...])` + 体内**有**响应式依赖（如 `companyOptions.value.map(...)`）→ **factory 模式抽 config**（`export function getXxxFormItems(ctx: { companyOptions: Ref<...>, ... }) { return computed(() => [...]) }`），ctx 传 `Ref` / `Reactive` 保留响应式追踪
-- 命中 `computed(() => ({ ... }))` + 体内**有**响应式依赖（如依赖 props.xxx）→ **factory 模式抽 config**（ctx 传 props / 调用方 ref）
+**判定公式**（**v3 最终态，2026-10-15 补"纯数据写成方法、值传进去"**）：
+
+> 前提认知：`computed` 体内**全是纯数据**（数组 / 对象字面量），没有副作用、没有异步。所以它**总能**搬进 `config/`，唯一区别是**依赖的值从哪来**。
+
+- 命中 `computed(() => [...])` + 体内**无** `.value` / `props.` / `reactive` → **去 computed + 抽 addOrEdit/config/ 常量化**（`export const X = [...]`）
+- 命中 `computed(() => [...])` + 体内**引用**了 `.value` / `props.` / `reactive`（如 `companyOptions.value.map(...)`）→ **抽成方法放 config，把这些值当参数传进去**：
+  - config：`export function getXxxFormItems(companyOptions: Opt[], operatorId?: string): FormItemConfig[] { return [...] }`
+  - .vue：`const formItems = computed(() => getXxxFormItems(companyOptions.value, formData.operatorId))`
+  - 响应式依赖留在 `.vue` 侧的 `computed` 回调里求值（`.value` / `props.x` 就在回调中），追踪自然生效，**不需要**传 `Ref` / `Reactive` 包装
+- 命中 `computed(() => ({ ... }))` 同理 → 方法返回对象，依赖值当参数传入
+- 命中 `computed(() => 布尔表达式)`（如 `isView = computed(() => mode.value === VIEW)`，1 行）→ **可留 .vue**，它不是数据
 
 **违规处置**：
 - ❌ `addOrEdit.vue:203 closeStoreFormItems = computed(() => [...6 静态 item...])`（9 行 + 无响应式依赖）→ 抽 `addOrEdit/config/CLOSE_STORE_FORM_ITEMS` 常量
@@ -144,7 +190,8 @@ grep -A 10 "^const.*=.*computed(" src/pages/<业务块>/addOrEdit/<file>.vue | g
 
 **反模式**：
 - ❌ "computed 包装一下未来可扩展"—— 未来可扩展是借口；当前纯静态就是反模式
-- ❌ "体内有响应式依赖 = 留 .vue，拆出去丧失响应式"—— **错**！应该 factory 模式抽 config + ctx 传 `Ref`/`Reactive` 保留响应式（store/ formItems 2026-10-15 案例）
+- ❌ "体内有响应式依赖 = 留 .vue，拆出去丧失响应式"—— **错**！computed 体内是纯数据，把依赖的值当参数传进 config 方法即可；`.value` / `props.x` 仍在 .vue 侧 computed 回调里求值，追踪不丢（store/ formItems 2026-10-15，user 纠正）
+- ❌ "怕丧失响应式，所以把 `Ref<T>` / `Reactive<T>` 容器传给 config 方法"—— **多余**：config 方法只用到值，不需要 ref 容器；传 `.value` 解包后的值就够
 - ❌ "computed 是 Vue 写法，const 写法不对"—— Vue 写法 ≠ 任何地方都该用；纯静态数据用 const 更直白
 - ❌ "我先 computed 包装，下次加 reactive 依赖"—— 等真要加再换 computed；**当前**就该是 const
 
@@ -294,21 +341,24 @@ grep -rn "validator:.*=>" src/pages/<业务块>/addOrEdit/components/*.vue 2>&1
 
 ### 检查 12：页面级 FormRules 抽离位置审查（→ config/ 或 enum/）
 
-> 业务背景：`addOrEdit/*.vue` 顶层 `const formRules: FormRules = {...}` 抽离到哪——`config/` 还是 `enum/`——**就近原则**有明确的判定公式。之前 store/ 案例中 `STORE_ADD_OR_EDIT_FORM_RULES` 错放外层 `enum/` 就是没遵守就近原则。
+> 业务背景：`addOrEdit/*.vue` 顶层的 `FormRules` 对象（不管变量名叫 `formRules` / `rules` / `xxxRules`）抽离到哪——`config/` 还是 `enum/`——**就近原则**有明确的判定公式。之前 store/ 案例中 `STORE_ADD_OR_EDIT_FORM_RULES` 错放外层 `enum/` 就是没遵守就近原则。
 
-**扫描命令**：
+**扫描命令**（**v2：按类型注解扫，不按变量名扫**）：
 
 ```bash
-# 扫 addOrEdit/*.vue 顶层 const formRules 声明
-grep -rnE "^const[[:space:]]+formRules" src/pages/<业务块>/addOrEdit/*.vue 2>&1
-grep -rnE "^const[[:space:]]+\w+_FORM_RULES.*FormRules" src/pages/<业务块>/addOrEdit/*.vue 2>&1
+# 主命令：扫 addOrEdit/*.vue 顶层所有 FormRules 注解的 const（任意变量名）
+grep -rnE "^const[[:space:]]+\w+[[:space:]]*:[[:space:]]*FormRules" src/pages/<业务块>/addOrEdit/*.vue 2>&1
+# 补充：扫 .ts config 里的具名导出（判位置对错）
+grep -rnE "^export const[[:space:]]+\w+_FORM_RULES.*FormRules" src/pages/<业务块>/enum/*.ts src/pages/<业务块>/addOrEdit/config/*.ts 2>&1
 ```
+
+> ⚠️ **v2 变更（storeEntryPlatform 2026-10-15 事故）**：v1 只扫 `^const[[:space:]]+formRules`，漏掉了 `const rules: FormRules<X>` / `const phoneRules: FormRules<X>` / `const fieldRules: ...` 等任意命名。**判定依据是类型注解 `FormRules`，不是变量名**。事故：`storeEntryPlatform/addOrEdit/index.vue:148 const rules: FormRules<StoreEntryPlatformFormState> = {...14 行纯静态...}` 被 v1 扫描漏掉，user 直接点名才抽出。
 
 **判定**（**就近原则 2 选 1**）：
 
 ```bash
-# 步骤 1: 检查 formRules 体内是否 import 自 ../enum 或引用 enum 工厂
-grep -A 50 "^const formRules.*FormRules" src/pages/<业务块>/addOrEdit/<file>.vue | grep -E "from \"\.\./enum\"|createDictionaryEnum|new \w+Enum\("
+# 步骤 1: 检查 rules 体内是否 import 自 ../enum 或引用 enum 工厂
+grep -A 50 "^const[[:space:]]+\w+[[:space:]]*:[[:space:]]*FormRules" src/pages/<业务块>/addOrEdit/<file>.vue | grep -E "from \"\.\./enum\"|createDictionaryEnum|new \w+Enum\("
 
 # 步骤 2: 检查是否跨页共享字段名（多个 addOrEdit/*.vue 引用同一 formRules 名字）
 grep -rn "<FORM_RULES_NAME>" src/pages/<业务块>/addOrEdit/ 2>&1
@@ -321,17 +371,25 @@ grep -rn "<FORM_RULES_NAME>" src/pages/<业务块>/addOrEdit/ 2>&1
 
 **违规处置**：
 - ❌ `addOrEdit/addOrEdit.vue:135 const formRules: FormRules = {...27 行...}`（纯静态，无 enum 工厂引用）→ 抽到 `addOrEdit/config/index.ts` 作 `STORE_ADD_OR_EDIT_FORM_RULES`
+- ❌ `addOrEdit/index.vue:148 const rules: FormRules<StoreEntryPlatformFormState> = {...14 行纯静态...}`（**变量名不叫 formRules，v1 扫描漏掉**）→ 抽到 `addOrEdit/config/index.ts` 作 `STORE_ENTRY_PLATFORM_FORM_RULES`，调用方 `import { STORE_ENTRY_PLATFORM_FORM_RULES as rules } from "./config"`（**alias import 保住模板 `:rules="rules"` 不改**）
 - ❌ `store/enum/index.ts:88 export const STORE_ADD_OR_EDIT_FORM_RULES: FormRules = {...}`（纯静态 formRules 错放外层 enum/）→ 挪到 `addOrEdit/config/index.ts`
 - ❌ `addOrEdit/add.vue` 与 `addOrEdit/editOrCheck.vue` 各自重复定义同一 formRules → 抽 `addOrEdit/config/getFormRules()` factory（如果差异大）或就近（如果差异小）
 
 **判断例外**：
-- ✅ formRules <7 行 + 仅 required / min / max / type（无 validator）—— 可保留 inline（就近可读，**不**强行抽）
-- ✅ formRules 引用 enum 工厂（如 `createDictionaryEnum`）→ 抽到 `addOrEdit/enum/index.ts`（**允许特例**）
+- ✅ rules <7 行 + 仅 required / min / max / type（无 validator）—— 可保留 inline（就近可读，**不**强行抽）
+- ✅ rules 引用 enum 工厂（如 `createDictionaryEnum`）→ 抽到 `addOrEdit/enum/index.ts`（**允许特例**）
+- ✅ rules 体内只是把 config 里的字段规则重新组装（如 `phone: phoneRules`）→ 保留薄壳 inline，字段规则本体在 config
 
 **反模式**：
+- ❌ **扫描只 grep 变量名 `formRules`**（漏 `rules` / `xxxRules` / `FormRules<T>` 泛型形式）——**必须按类型注解 `FormRules` 扫**，这是 storeEntryPlatform 2026-10-15 事故根因
+- ❌ "抽到 config/ 但模板 `:rules="rules"` 要改"—— 用 `import { XXX_FORM_RULES as rules }` alias import，模板零改动
 - ❌ "formRules 抽到 enum/ 让所有字典集中管理"—— enum/ 应该装字典 / 状态码，不该装 formRules；纯静态 formRules 放 enum/ = 大杂烩
 - ❌ "formRules 抽到 config/ 但 config/ 反向依赖 enum 工厂"—— 破坏单层依赖，违反就近原则
 - ❌ "formRules 跨 addOrEdit/*.vue 重复定义，懒得抽"—— 重复定义会随字段增减漂移，必须抽 factory 或就近统一
+
+**抽到 config 后的 2 个必做动作**：
+1. **相对路径**：`addOrEdit/config/index.ts` 里 import 业务块根 types 要写 `"../../types"`（不是 `"../types"`）
+2. **import 排序**：`perfectionist/sort-named-imports` 要求 `import { getFormItems, XXX_FORM_RULES as rules, validateSaveForm }`——alias import 排在最后，非 alias 按字母序
 
 ## 结论分类（必填）
 

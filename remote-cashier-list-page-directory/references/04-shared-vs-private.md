@@ -118,23 +118,27 @@ grep -rln "\b<函数名>\b" src/pages/<业务模块>/ --include="*.vue" --includ
 | 源文件 | 变量 | 原形式 | 抽后位置 | 原因 |
 |---|---|---|---|---|
 | `addOrEdit/addOrEdit.vue` | `closeStoreFormItems`（9 行 + computed 包装） | `computed(() => [...6 静态 item + ElSwitch + CASHIER_GUARANTEE_RETURN_STATUS_OPTIONS.options...])` | `addOrEdit/config/index.ts` `export const CLOSE_STORE_FORM_ITEMS` | computed 包纯静态——无 `.value.` / `props.` / `reactive` / `ref` 任何响应式依赖 |
-| `addOrEdit/addOrEdit.vue` | `formItems`（35 行 + computed 包装） | `computed(() => [...35 item 含 companyOptions.value.map(...) + !!formData.operatorId...])` | `addOrEdit/config/index.ts` `export function getStoreAddOrEditFormItems(ctx)` **factory 模式** | **真 computed 有响应式依赖**——但通过 factory ctx 传 `Ref<companyOptions>` / `Ref<departmentOptions>` / `Reactive<formData>`，computed 包到 factory 内部，响应式追踪仍能生效 |
+| `addOrEdit/addOrEdit.vue` | `formItems`（35 行 + computed 包装） | `computed(() => [...35 item 含 companyOptions.value.map(...) + !!formData.operatorId...])` | `addOrEdit/config/index.ts` `export function getStoreAddOrEditFormItems(companyOptions, departmentOptions, operatorId)` **方法化** | 体内是纯数据，只是引用了响应式值 → 抽成 config 方法，`.value` 值当参数传进去，`computed` 留 .vue 侧调方法，追踪天然成立 |
 
-**双 const 同 .vue 区分判定**（Items + Items 配对，**v2 最终态**）：
-- **A `closeStoreFormItems`**（关店与保证金分组）= 纯静态（无响应式）→ 抽 config **常量化**（`export const CLOSE_STORE_FORM_ITEMS = [...]`）
-- **B `formItems`**（动态表单配置）= 依赖 `companyOptions.value.map(...)` / `!!formData.operatorId` 等响应式 → 抽 config **factory 化**（`export function getStoreAddOrEditFormItems(ctx) { return computed(() => [...]) }`）
-- 判定公式：grep 体内 `\.value\.|props\.|reactive|ref\(` → 有 = factory 模式抽 config；无 = 常量化抽 config
+**双 const 同 .vue 区分判定**（**v3 最终态，2026-10-15**）：
+- **A `closeStoreFormItems`**（关店与保证金分组）= 纯静态（体内无 `.value` / `props.` / `reactive`）→ 抽 config **常量化**（`export const CLOSE_STORE_FORM_ITEMS = [...]`），.vue 直接 import，不包 computed
+- **B `formItems`**（动态表单配置）= 体内引用 `companyOptions.value.map(...)` / `!!formData.operatorId` → 抽成 **config 方法，值当参数传进去**：
+  - `addOrEdit/config/index.ts`：`export function getStoreAddOrEditFormItems(companyOptions: Opt[], departmentOptions: Opt[], operatorId?: string): FormItemConfig[] { return [...] }`
+  - `addOrEdit.vue`：`const formItems = computed(() => getStoreAddOrEditFormItems(companyOptions.value, departmentOptions.value, formData.operatorId))`
+  - `computed` **留在 .vue 侧**，模板 `:form-items="formItems"` **不用改**
+- 判定公式：看体内**引用的值从哪来**（不是看名字）：无 `.value` / `props.` / `reactive` = 常量化；有 = 抽方法 + 值传参
 
-**factory 模式要点**（防止响应式丢失）：
-- ctx 接口需精确声明依赖类型：`Ref<{ value, label }[]>` / `Reactive<{ operatorId? }>` —— 避免 `any`
-- factory 内部访问 `ctx.companyOptions.value.map(...)` / `!!ctx.formData.operatorId` 保留响应式追踪
-- factory 返回 `ComputedRef`，调用方 `const formItems = getStoreAddOrEditFormItems({ companyOptions, departmentOptions, formData })` 拿到 computed 实例，模板 `:form-items="formItems"` **不用改**
-- ctx 传 .vue 顶层 ref/reactive，**不是**传原始值——传原始值（如 `[...arr]`) = 响应式丢失
+**方法化要点**（防止响应式丢失）：
+- 参数类型**精确声明**，禁 `any`：`companyOptions: { value: unknown, label: string }[]`、`operatorId?: string`
+- 方法内部只当普通值用（`companyOptions.map(...)` / `!!operatorId`），**不碰** `.value`
+- 依赖的求值留在 .vue 的 computed 回调里（`companyOptions.value` 就在回调中），Vue 自动建立依赖，**不需要**往 config 传 `Ref` / `Reactive` 容器
+- 模板不用改：`:form-items="formItems"` 收的仍是 computed 解包值
 
-**v1 → v2 反思（关键迭代）**：
-- v1 判定 formItems 留 .vue（依赖响应式 → 拆出丧失响应式），user 纠正「写个方法，值传进去就行」—— v2 改 factory 模式 + ctx 传 Ref/Reactive 保留响应式
-- 教训：判定公式"有响应式依赖 = 留 .vue"**错**；正确判定 = "有响应式依赖 = factory 模式抽 config（ctx 传 Ref/Reactive）"
-- factory 模式跟 `getXxxFormRules(ctx)` 组件级 form rules 模式同源（参见 04 案例行 37）
+**v1 → v2 → v3 反思（关键迭代）**：
+- v1：判定「有响应式依赖 = 留 .vue」——**错**，user 纠正「写个方法，值传进去就行」
+- v2：改成 factory 模式，`ctx` 传 `Ref` / `Reactive` 容器 —— **过度设计**（config 方法只需要值，不需要容器）
+- v3：**纯数据写成方法放 config，值当参数传进去**，`computed` 留 .vue 侧调方法。响应式追踪天然成立，零包装
+- 教训：先把**依赖的值求出来传进去**，再考虑要不要容器 —— 大多数情况不需要
 
 **diff 动**：
 - v1 抽 `CLOSE_STORE_FORM_ITEMS` 常量：`addOrEdit/config/index.ts` 35 → 54 行（+19）；`addOrEdit.vue` 833 → 824 行（-9）

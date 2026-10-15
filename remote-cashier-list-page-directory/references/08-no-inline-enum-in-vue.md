@@ -50,6 +50,34 @@
 
 **判定口诀**：「这个 const 是 `Record<...>` 字典、`[]` 选项数组、还是跨调用方共用的字面量？」——任一为是就违规；都不是就保留。
 
+### 1.3.5 魔法值归属优先级（先查公共，再建局部）
+
+> 遇到散落的魔法值（`"normal"` / `"pdd"` / `1` / `"warning"` 这类**业务含义的字面量**），**先翻公共 enum，有就直接用；没有才建局部 enum**。顺序反了会造出 10 个同名局部枚举。
+
+**判定流程**（按序，不可跳步）：
+
+| 步 | 动作 | 命中则 |
+|---|---|---|
+| 1 | 翻 `@/common/enum`（`src/common/enum/index.ts`）—— 看有没有语义**完全一致**的现成枚举 / 映射 / 字段池 | **直接 import 复用**，不建新的 |
+| 2 | 翻本业务块已有 `enum/index.ts` + `types/index.ts` 里的 type（字符串字面量 union 也算） | **复用**，不重复定义 |
+| 3 | 都没有 | **建局部 enum** 到就近 `enum/index.ts`，并把该魔法值在业务块内**全部**改为引用它 |
+| 4 | 建完发现别的业务块也命中同样语义 | 上提到 `@/common/enum`（第 3 步的复用判据） |
+
+**"公共" 指**（按复用面从小到大）：
+1. `@/common/enum` —— 全站共享（`pageModeEnum` / `subAccountFieldPool` / `SUB_ACCOUNT_WIDGET` / `yesNoStringEnum` 等）
+2. `src/pages/<业务块>/enum/index.ts` —— 业务块内共享
+3. `src/pages/<业务块>/addOrEdit/enum/index.ts` —— 仅表单用
+
+**建局部 enum 的 3 个必做动作**：
+1. **扫全量引用**：把该字面量在本业务块内**所有**出现位置（`.vue` / `.ts` / 模板里的 `v-if="x === 'normal'"`）都改成引用，漏一处 = 后续又漂移
+2. **写 ponytail 注释**：`ponytail: 从 XXX 提取；@/common/enum 无对应语义（对比过 X/Y/Z）`
+3. **确认不是后端契约裸值**：如果字面量必须与后端枚举**逐字一致**（如 `platformCode = "pdd"`），在 enum 里保留原值 + 注释后端含义，**不得**"顺手规范化"（见目标 10 改值必问 user）
+
+**反模式**：
+- ❌ 跳过第 1 步直接在 `addOrEdit/enum/` 建同义枚举（`NORMAL_STATUS` 已有 `shopStatusEnum` 还建一遍）
+- ❌ 建了 enum 但只改了一处字面量，其余仍散落 `.vue` 里
+- ❌ 把业务专属枚举硬塞 `@/common/enum`（只有 1 个业务块用）
+
 ### 1.4 归属判定（提取到哪个 enum/）
 
 按目标 4「共用放外层、独立放当前」：
