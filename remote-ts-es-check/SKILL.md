@@ -82,7 +82,7 @@ ESLint 必须解析完整文件才能正确理解 Vue/TS 语法，因此检查�
      # 找出 mock 文件内的对象字面量返回位置
      grep -nE 'stores:\s*stores\.map|=>\s*\(\s*\{' src/ -r --include="*.mock.ts" --include="*.test.ts" --include="*.spec.ts" --include="*Mock*.ts"
      ```
-     参考 `references/error-signatures.md` 中的 "TS2322 形态：mock 对象字面量字段缺失"。
+     参考 `references/ts-typing.md` 中的 "TS2322 形态：mock 对象字面量字段缺失"。
    - 命中 → Read 相关 `type.ts` / `*.d.ts` 对比字段名/类型
    - 不一致 → 报告"预存问题"，**不擅自修**
    - 用户要求全面验证 → 跑 `npx vue-tsc --noEmit | grep <pattern>` 全项目扫描（必须标注范围）
@@ -102,7 +102,7 @@ ESLint 必须解析完整文件才能正确理解 Vue/TS 语法，因此检查�
      - (A) 接口字段放宽到 `string`（当实际数据本来就是任意 string，如平台字典 code）
      - (B) 加 type guard（`as Union`）转换
      - (C) 改 spread 源字段类型为 union literal（不推荐，业务实际是 string）
-     参考 `references/error-signatures.md` 中的 "TS2345 形态：spread 后字段类型不兼容"。
+     参考 `references/ts-typing.md` 中的 "TS2345 形态：spread 后字段类型不兼容"。
 
    - **对象字段直接透传形参（防 TS2345：形参 union literal，字段值是变量引用，不是 spread）**：与上一项同根因但形态不同——对象字面量里字段值是**外部变量**（无 spread、无 spread 源），例如 `buildOnboardingSavePayload(form, meta)` 内部 `return { platformList, priority, ... }` 里的 `platformList,` 是从 `form.platformList` 透传。如果 `form.platformList: string[]` 但目标形参 DTO 字段是 `AuditPlatform[]`，**不报 spread 形态的 step 3 也漏掉**。
      ```bash
@@ -118,7 +118,7 @@ ESLint 必须解析完整文件才能正确理解 Vue/TS 语法，因此检查�
      # 用 perl 多行模式
      perl -0777 -ne 'while (/(?:return|const\s+\w+\s*=\s*)\s*\{([^{}]+)\}/g) { my $b = $1; while ($b =~ /^\s*(\w+)\s*,?\s*$/mg) { print "$ARGV:$. field=$1\n" } }' src/ -r --include="*.ts" --include="*.vue"
      ```
-     步骤 B/C 命中后，**字段名**与步骤 A 的 union literal 字段名交叉，**同名** → 报告"对象字面量字段透传，形参 DTO 期望 union literal，实参是 string"。修复方向同 spread 形态：(A) DTO 字段放宽 / (B) 加 type guard / (C) 不推荐改源。参考 `references/error-signatures.md` 中的 "TS2345 形态 B：对象字段透传形参"。
+     步骤 B/C 命中后，**字段名**与步骤 A 的 union literal 字段名交叉，**同名** → 报告"对象字面量字段透传，形参 DTO 期望 union literal，实参是 string"。修复方向同 spread 形态：(A) DTO 字段放宽 / (B) 加 type guard / (C) 不推荐改源。参考 `references/ts-typing.md` 中的 "TS2345 形态 B：对象字段透传形参"。
 
      **为什么这一项要单独列**：spread 形态的 step 3/4 只抓 `return { ...item, ... }` 或 `*Payload = items.map(...)`；对象字段直接透传（如 `platformList,` 引用外部变量）既无 spread 也不走 Payload 命名模式，会漏。**实际高频**：buildDTO / toDTO / saveDto(form) 类工具函数。
 
@@ -154,7 +154,7 @@ ESLint 必须解析完整文件才能正确理解 Vue/TS 语法，因此检查�
 
      **警惕 `as unknown as Set<T>` 强转**：调用方 `(arr as unknown as Set<T>)` 传 props 是"伪装豁免"，**不修底层类型契约**。grep 抓 `as unknown as Set<` 命中 → 报告"调用方强转掩盖类型不兼容，应从 props 类型侧根因修"。
 
-     参考 `references/error-signatures.md` 中的 "TS2339 形态：Set<T> 与 Array 方法误用"。
+     参考 `references/ts-typing.md` 中的 "TS2339 形态：Set<T> 与 Array 方法误用"。
 
    - **未 import 类型引用（防 TS2304：文件内类型注解缺 import）**：文件使用了某个 PascalCase 类型作 `:` 注解或 `<...>` 泛型，但未在 import 列表中引入该类型，报 `TS2304: Cannot find name Xxx`。ESLint 默认不抓（type-aware 错误），vue-tsc 不跑。cashier 高频场景：Element Plus / Vue / 业务 type.ts 类型调包。
 
@@ -188,7 +188,7 @@ ESLint 必须解析完整文件才能正确理解 Vue/TS 语法，因此检查�
      - **全局类型**（`HTMLElement` / `MouseEvent` / `window.X`）：加入 whitelist
      - **模板里的组件名**（`<el-form>` / `<MyComp>`）：本扫描不扫 `<template>` 块（grep -E 不在 `<template>` 内运行），不命中。如误报 Read 上下文确认
 
-     命中后 Read 上下文确认是真"未 import"（报 TS2304）还是上述误报场景。**修法（ponytail rung 1）**：在 import 块加 `import type { Xxx } from "..."`；如已在 import 块内，只加标识符名（同一来源）。参考 `references/error-signatures.md` 中的 "TS2304 形态：类型未 import"。
+     命中后 Read 上下文确认是真"未 import"（报 TS2304）还是上述误报场景。**修法（ponytail rung 1）**：在 import 块加 `import type { Xxx } from "..."`；如已在 import 块内，只加标识符名（同一来源）。参考 `references/ts-typing.md` 中的 "TS2304 形态：类型未 import"。
 
      **为什么这一项要单独列**：skill 之前的 9 个扫描项 + 4 个形态（TS2345 spread / 透传 / TS2339 Set / 重复定义）都不抓"未 import 类型"——ESLint 默认 type-aware 规则缺失，cashier 项目 eslint.config.js 也没启用 `@typescript-eslint/no-unbound-method` / `@typescript-eslint/no-unsafe-*` 等会间接发现该问题的规则。
 
@@ -230,7 +230,7 @@ ESLint 必须解析完整文件才能正确理解 Vue/TS 语法，因此检查�
      3. 如 X 是 union（`FormItemRule | FormItemRule[]`），写 `X | X[]`
      4. 需 import 该类型时加 `import type { X } from "..."`
 
-     参考 `references/error-signatures.md` 中的 "TS2322 形态：`as Record<string, X>` 错 X 类型"。
+     参考 `references/ts-typing.md` 中的 "TS2322 形态：`as Record<string, X>` 错 X 类型"。
 
      **为什么这一项要单独列**：skill 之前的 5 个升级（TS2345 spread / 透传 / TS2339 Set / TS2339 fieldCode / TS2304 未 import）都查“类型对不对 / 在不在 import”，**不查“cast 后值类型下游接不接得住”**。cashier 项目 11 处 `unknown` / `any` cast 里有 7+ 处下游会报 TS2322，是高频率的隐错。
 
@@ -265,7 +265,7 @@ ESLint 必须解析完整文件才能正确理解 Vue/TS 语法，因此检查�
      3. 形参 = `{ 必传字段: supertype, ..., 可选字段?: supertype }` —— 避免“字面量多反少漏”的双向错
      4. 避免 `f: typeof X[number]`（精确 literal union）除非函数只读不写某个字段
 
-     参考 `references/error-signatures.md` 中的 "TS2345 / TS2339 形态：`as const` 元素 union 传给函数形参字段不对齐"。
+     参考 `references/ts-typing.md` 中的 "TS2345 / TS2339 形态：`as const` 元素 union 传给函数形参字段不对齐"。
 
      **为什么这一项要单独列**：skill 之前的 6 个升级（TS2345 spread / 透传 / TS2339 Set / fieldCode / TS2304 未 import / TS2322 错 X）都查“spread / 简写 / Set / cast / import”，**不查"`as const` 元素 union 与函数形参字段对齐"**。cashier 项目 7 处 `as const` 数组中常传给 `getLabel` / `format` / `toXxx` 助手函数，错修高频。
 
@@ -297,7 +297,7 @@ ESLint 必须解析完整文件才能正确理解 Vue/TS 语法，因此检查�
      - G-3 错修：`as string` 强转（row[vo.orig] 实际可能是 undefined，掩盖问题）
      - G-3 正修：返回类型放宽到 `unknown`（让 formatValue 内部 `String()` 转换）
 
-     参考 `references/error-signatures.md` 中的 "TS7053 / TS2322 形态 G：后端契约跟前端类型对齐"。
+     参考 `references/ts-typing.md` 中的 "TS7053 / TS2322 形态 G：后端契约跟前端类型对齐"。
 
      **为什么这一项要单独列**：skill 之前的 7 个升级都查“TS 类型层”的 mismatch（spread / Set / cast / import / element union / mock 字段 / 重复定义），**不查“跨仓契约”**（后端 Java VO 字段名 vs 前端 type 字段名 vs 后端 JSON key vs 前端函数形参）。cashier 项目改造「表结构 + VO + 前端 type」是高频场景，**改后端必做“前后端字段名 diff”**。
 
@@ -355,11 +355,119 @@ ESLint 必须解析完整文件才能正确理解 Vue/TS 语法，因此检查�
      3. 修法只动引用点，**不动声明点**（声明点是源头）
      4. 不擅自删除（虽然是 typo 但可能是函数返回值 / 参数 / 全局挂载）
 
-     **为什么这一项要单独列**：skill 之前的 8 个升级（TS2345 spread / 透传 / TS2339 Set / fieldCode / TS2304 PascalCase 未 import / TS2322 错 X / element union / mock 字段 / 重复定义 / 后端契约）都查“类型 / 字段 / 路径”是否对齐，**不查“identifier 本身在文件内是否声明过”**。cashier 项目高频场景：编辑时改上面 await/Promise 变量名（`res` → `ok`），忘改下面 `.data` 引用 —— 这种**“用错变量名”**的纯 typo 错误所有升级都不抓。参考 `references/error-signatures.md` 中的 "TS2304 形态：小写 identifier 引用但未声明（典型 `res.data` 但 `res` 未声明）"。
+     **为什么这一项要单独列**：skill 之前的 8 个升级（TS2345 spread / 透传 / TS2339 Set / fieldCode / TS2304 PascalCase 未 import / TS2322 错 X / element union / mock 字段 / 重复定义 / 后端契约）都查“类型 / 字段 / 路径”是否对齐，**不查“identifier 本身在文件内是否声明过”**。cashier 项目高频场景：编辑时改上面 await/Promise 变量名（`res` → `ok`），忘改下面 `.data` 引用 —— 这种**“用错变量名”**的纯 typo 错误所有升级都不抓。参考 `references/reactive-errors.md` 中的 "TS2304 形态：小写 identifier 引用但未声明（典型 `res.data` 但 `res` 未声明）"。
+
+   - **reactive<T>() 形参缺字段主动扫描（防 TS2345：interface 加字段后 formData reactive 漏同步）**：ESLint 默认不抓 type-aware 错误（`TS2345: Argument of type { ... } is not assignable to parameter of type FormState`），vue-tsc 不跑。cashier 项目高频场景：FormState interface 加新字段（spec 迭代）→ formItems 用 + 详情回显赋值 + 表单提交 payload 都同步了 → **formData reactive 字面量漏了** → TS2345。错误信号 100% 出现在 `reactive<T>(\{...})` 这种构造点，报错说“is missing the following properties from type T: xxx, yyy”。
+     ```bash
+     # 步骤 1: 找所有 reactive<Name>( 形式
+     grep -rnE "\breactive<\w+>\s*\(" src/ --include="*.vue" --include="*.ts"
+
+     # 步骤 2: 对每个 reactive<Name>( 调用点 (LineN)，提取从 LineN 到首个 ^}) 字面量范围的字段
+     # 用 awk 扫 reactive 起点到 ^}) 终点：
+     for f in $(grep -rlE "\breactive<\w+>\s*\(" src/ --include="*.vue" --include="*.ts"); do
+       awk -v file="$f" '
+         /\breactive<[A-Z]\w*>\s*\(/ { in_reactive=1; type_start=NR; next }
+         in_reactive && /^\}\)/ { in_reactive=0; type_end=NR; print type_start"-"type_end; next }
+       ' "$f" | while read range; do
+         start=$(echo $range | cut -d- -f1)
+         end=$(echo $range | cut -d- -f2)
+         # reactive 字面量字段
+         reactive_fields=$(sed -n "${start},${end}p" "$f" | grep -oE "^\s+[a-zA-Z]\w*\s*:" | sed -E 's/^\s+([a-zA-Z]\w*)\s*:.*/\1/' | sort -u)
+         # 提取 Name
+         name=$(sed -n "${start}p" "$f" | grep -oE "reactive<([A-Z]\w*)>" | sed -E 's/reactive<(\w+)>/\1/')
+         # 同一文件找 interface Name { } 或 type Name = { } 字段
+         interface_fields=$(awk -v name="$name" '
+           $0 ~ "^interface "name" |^type "name" " { in_iface=1; next }
+           in_iface && /^}/ { in_iface=0 }
+           in_iface && /^\s+[a-zA-Z]\w*\s*\??:/ { print }
+         ' "$f" | grep -oE "^\s+[a-zA-Z]\w*\s*\??:" | sed -E 's/^\s+([a-zA-Z]\w*)\s*\??:.*/\1/' | sort -u)
+         # diff: interface 有但 reactive 字面量没的
+         if [ -n "$interface_fields" ]; then
+           missing=$(comm -23 <(echo "$interface_fields") <(echo "$reactive_fields"))
+           if [ -n "$missing" ]; then
+             echo "❌ $f 行 $start-$end: reactive<$name>() 缺字段: $missing"
+           fi
+         fi
+       done
+     done
+     ```
+
+     **重要前提**：reactive<Name> 形参的 Name 必须**本文件内能找到 interface/type 定义**。如果 Name 来自跨文件 import（如 `reactive<StoreSavePayload>` 来自 apis/type.ts），本扫描看不到 — 需 grep `import.*\bName\b` 跨文件追踪（**手动**）。
+
+     **误报处理**（false positive ~20%，需 Read 上下文确认）：
+     - **interface 全部字段是 optional**（带 `?`）—— 不报缺字段（TypeScript 不报 TS2345）
+     - **interface 字段带默认值 / 是 getter** —— interface 必填但 reactive 实际运行时不会缺 —— 极少见
+     - **interface 是 union type / extends 其他 interface** —— awk 提取会漏 extend 的字段 —— **手工补查**
+     - **interface 字段是函数 / 复杂类型** —— awk 提取 `^\s+name:` 只能抓简单 identifier，函数类型会漏 —— **手工补查**
+     - **dynamic key**（`[key: string]: T`）—— interface 是 index signature 时所有字段 optional —— 不报
+     - **类型来自跨文件 import**（如 `StoreSavePayload` 来自 apis/type.ts）—— 本扫描看不到 —— 需 `grep -rn "interface StoreSavePayload\|type StoreSavePayload" src/` 手动补查
+     - **`Partial<T>` 包裹**（`reactive<Partial<FormState>>`）—— 全部字段 optional，**永远不报缺字段** —— awk 不会解析 `Partial<>`，本扫描逻辑失效，需手工识别
+     - **`Pick<T, K>` / `Omit<T, K>`** —— 同上，awk 失效
+
+     **Cashier 项目验证**（2026-10-14 实际命中）：
+     - `ob_web/packages/micro/cashier/src/pages/store/addOrEdit/addOrEdit.vue:115` `reactive<FormState>({...})` 缺 `shopEmail` / `emailRegisterDate` —— FormState interface 行 110-111 加了 spec §3.5 字段，formData reactive 字面量漏了。修法：在 `closeDate: ""` 后 + `guaranteeReturnStatus: ""` 前加 `shopEmail: ""` / `emailRegisterDate: ""`。
+     - cashier 项目 `reactive<Name>({...})` 出现 20 处（formData + searchForm）—— 高频。
+
+     **命中后修法**（ponytail rung 1）：
+     1. 找 `interface Name { }` 完整字段列表（不漏 optional）
+     2. 按 interface 顺序在 reactive 字面量内**补全缺字段**（同 formItems 顺序方便调试）
+     3. 默认值用 `""` / `0` / `false` / `[]` / `undefined` —— 看其他同类型字段的初始值约定
+     4. 详情回显 (`formData.xxx = s.xxx || ""`) / 提交 payload 也要同步加，**但本次扫描只看 reactive 形参**，其他两处靠 `grep` 跨字段一致性补查
+     5. **不要**为消除错误用 `as FormState` 强转（掩盖问题）
+
+     **为什么这一项要单独列**：skill 之前的 8 个升级（TS2345 spread / 透传 / TS2339 Set / fieldCode / TS2304 PascalCase 未 import / TS2322 错 X / element union / mock 字段 / 重复定义 / 后端契约 / identifier 未声明）都查“**已有数据**是否对齐形参 / 类型”，**不查“**interface 加字段后** reactive 字面量是否同步”**。cashier 项目高频场景：spec 迭代时 FormState interface 加新字段 → formItems 用了 + 详情回显用了 + 提交 payload 用了 → 唯独 reactive 字面量漏 → TS2345。参考 `references/reactive-errors.md` 中的 "TS2345 形态：reactive<T>() 形参缺字段（典型 `formData = reactive<FormState>` 加字段后漏同步）"。
+
+   - **reactive<T>() 实例字段引用错主动扫描（防 TS2339：模板/脚本里 `formData.xxx` 中 xxx 不在 FormState 内 —— typo 或漏加字段）**：与上一项"reactive<T>() 形参缺字段（TS2345）"是对偶形态 —— 都是"interface/formData 实际声明 vs 代码使用 diff"，**只是报错位置不同**：TS2345 报在 reactive 构造点（字面量缺必填字段），TS2339 报在**引用点**（`formData.xxx` 中 xxx 不在 reactive 推断类型上）。本扫描查**引用点错**这一支。
+     ```bash
+     # per-file 扫：reactive 字面量字段 vs formData/obj.xxx 引用 diff
+     for f in $(grep -rlE "\breactive<\w+>\s*\(" src/ --include="*.vue" --include="*.ts"); do
+       # 步骤 1: 找每个 reactive<Name>(varname={...}) 的字面量范围 + 提取字段 + 记录 varname
+       awk -v file="$f" '
+         /\bconst\s+(\w+)\s*=\s*reactive<[A-Z]\w*>\s*\(/ {
+           match($0, /const[[:space:]]+([a-zA-Z_]\w*)[[:space:]]*=/, arr); varname=arr[1]; in_reactive=1; print NR":"varname; next
+         }
+         in_reactive && /^\}\)/ { in_reactive=0; next }
+       ' "$f" | while read line_var; do
+         start=$(echo "$line_var" | cut -d: -f1)
+         varname=$(echo "$line_var" | cut -d: -f2)
+         # reactive 字面量字段
+         literal_fields=$(sed -n "${start},/^})/p" "$f" | grep -oE "^\s+[a-zA-Z]\w*\s*:" | sed -E 's/^\s+([a-zA-Z]\w*)\s*:.*/\1/' | sort -u)
+         # 同 file 内 varname.xxx 引用
+         ref_fields=$(grep -oE "\b$varname\.[a-zA-Z]\w+" "$f" | sed -E "s/$varname\.([a-zA-Z]\w+)/\1/" | sort -u)
+         # 差集 = 引用了但字面量没的
+         missing=$(comm -23 <(echo "$ref_fields") <(echo "$literal_fields"))
+         if [ -n "$missing" ]; then
+           echo "❌ $f: $varname.xxx 引用了但字面量没定义: $missing"
+         fi
+       done
+     done
+     ```
+
+     **重要前提**：reactive 的 Name 必须**本文件内能找到 interface/type 定义**，否则推断类型不完整，扫描误报多。Name 来自跨文件 import（如 `reactive<StoreSavePayload>` 来自 apis/type.ts）需手动跨文件 grep `interface Name` / `type Name` 提取字段。
+
+     **误报处理**（false positive ~30%，需 Read 上下文确认）：
+     - **reactive<T> 中 T 是 `Partial<T>` / `Pick<T, K>` / `Omit<T, K>`** —— 推断类型字段是 T 的子集，引用了 T 上有但 reactive 推断没的字段 TS 不报 —— 误报
+     - **reactive<T> 中 T 是 `Record<string, X>`** —— 任意 string key 都合法，**永远不报** —— awk 扫不到，无误报
+     - **`xxx.yyy` 中 yyy 是 `obj["dynamicKey"]` 动态访问** —— grep 抓不到动态 key —— **手工补查**
+     - **`xxx.yyy` 中 xxx 是解构出来的局部变量**（`const { data } = await api(); data.xxx`）—— awk 抓的只是 reactive 实例，data 解构不算 —— **手工补查**
+     - **同名 type alias 在不同上下文**（如 type Status 既是表单也是接口响应）—— reactive 字面量字段 vs 引用字段对不上 —— **手工判断**
+     - **computed / ref 推断字段**（`const field = computed(() => formData.xxx)`）—— computed 不算 reactive 实例，但 field.xxx 引用算 —— awk 不会误报
+     - **template 里的 `reactiveVar.method()`**（如 `formData.someMethod()`）—— grep `\b$varname\.` 会命中 method 名，但 method 不在 reactive 字面量字段里 —— **手工判断是 method 还是 field**
+
+     **Cashier 项目验证**（2026-10-14 实际命中）：
+     - `ob_web/packages/micro/cashier/src/pages/store/addOrEdit/addOrEdit.vue:749` 模板 `:apply-department="formData.belongsDepartment"` —— FormState + formData reactive 字面量都没 `belongsDepartment` 字段（commit 0ce7fff 加 SubAccountManager 集成时漏改字段名，**typo**）→ TS2339。修法：改成 `formData.departmentId`（已存在的部门字段，值就是字典 one_id 同源）。
+
+     **命中后修法**（ponytail rung 1）：
+     1. 看报错信息"Property 'xxx' does not exist on type FormState" —— 99% 是**字段名拼错**或**漏加字段**
+     2. **(A) typo** —— grep `interface FormState` 找相似名（如 user 这次 belongsDepartment → departmentId），改 typo 即可
+     3. **(B) 漏加字段** —— FormState + formData reactive 字面量 + 详情回显 + payload 4 处都要加（参考"reactive<T>() 形参缺字段"扫描章节的 4 同步点）
+     4. **不要**为消除错误用 `as any` 强转（掩盖问题，运行时实际 undefined）
+
+     **为什么这一项要单独列**：skill 之前的 9 个升级（TS2345 spread / 透传 / TS2339 Set / fieldCode / TS2304 PascalCase 未 import / TS2322 错 X / element union / mock 字段 / 重复定义 / 后端契约 / identifier 未声明 / reactive<T>() 形参缺字段）都查"**已有数据 vs 形参**"或"**identifier 引用**"是否对齐，**不查"**reactive 实例字段引用 vs 推断类型声明**"的对齐**。TS2345 vs TS2339 报错位置不同（构造点 vs 引用点），但 root cause 同源（interface 字段缺失）—— 两支扫描要分开列才能各自覆盖。参考 `references/reactive-errors.md` 中的 "TS2339 形态：reactive<T>() 实例字段引用错（典型 `formData.belongsDepartment` 但 FormState 没这字段 —— typo 或漏加）"。
 
 
 7. **格式嫌疑主动扫描**（即使 ESLint 0 报错也要做）：
-   - **JSDoc 起始行同行接文字**（防 jsdoc/multiline-blocks）：grep 文件内所有 `/**` 行，若 `/**` 后紧跟非空字符（非换行、非空格引导的 ` *`），则该注释违规。修复：把首行 `/**` 单独成行，文字挪到下一行 ` * <text>`，未行用 ` */`。参考 `references/error-signatures.md` 中的 "jsdoc/multiline-blocks 形态"。
+   - **JSDoc 起始行同行接文字**（防 jsdoc/multiline-blocks）：grep 文件内所有 `/**` 行，若 `/**` 后紧跟非空字符（非换行、非空格引导的 ` *`），则该注释违规。修复：把首行 `/**` 单独成行，文字挪到下一行 ` * <text>`，未行用 ` */`。参考 `references/baseline-eslint.md` 中的 "jsdoc/multiline-blocks 形态"。
      ```bash
      grep -nE "^\s*/\*\* [^/\*\s]" src/ -r --include="*.ts" --include="*.vue" --include="*.js"
      ```
@@ -412,8 +520,8 @@ ESLint 必须解析完整文件才能正确理解 Vue/TS 语法，因此检查�
      ```
    - **Ponytail rung 选择**：
      1. rung 1：仅换短写不改逻辑，业务 0 改动
-     2. rung 6：写一次性 Python 脚本批量替换（见 `references/error-signatures.md`）
-   - **修复**：批量 Python 脚本见 `references/error-signatures.md` 中 "Tailwind 任意值需等价短写" 形态
+     2. rung 6：写一次性 Python 脚本批量替换（见 `references/baseline-eslint.md`）
+   - **修复**：批量 Python 脚本见 `references/baseline-eslint.md` 中 "Tailwind 任意值需等价短写" 形态
 
 ## TypeScript / Vue Type Checking
 
@@ -475,7 +583,7 @@ ESLint 单跑 `eslint --format stylish` **不会暴露**：
 5. 若用户要求全面验证，临时跑 `npx vue-tsc --noEmit` 全项目类型检查，按 grep 过滤本次任务文件，把过滤后的报错清单交给用户决策
 6. **ApiEnvelope 适配的最小修法**：在 `apis/index.ts` 抽适配函数（如 `exportSubAccountChangeAuditFileApi = (data) => underlying(data ?? {}).then(res => res.data as string)`），保留原 envelope 版本给其它消费 envelope 完整字段的调用方继续使用。**不要改原 API 函数本身**，那会影响多个调用方。
 
-参考签名见 `references/error-signatures.md` 中 `TS2551`（字段不存在）、`TS2339`（成员访问）、`TS2322`（类型不匹配）、`TS2345`（类型不匹配）、`TS2554`（参数个数）。
+参考签名见 `references/ts-typing.md`（TS2551 字段不存在 / TS2339 成员访问 / TS2322 类型不匹配 / TS2345 类型不匹配）+ `references/baseline-eslint.md`（TS2554 参数个数）。
 
 ## Quick Reference
 
@@ -496,14 +604,14 @@ ESLint 单跑 `eslint --format stylish` **不会暴露**：
 | grep 函数参数 `Record<string, unknown\|any>` / 索引返回 unknown 类型 | 允许（类型嫌疑主动扫描步骤） | 防函数返回类型推断为 `unknown \| string`，与纯 `string` 调用方报 TS2345 |
 | grep mock / test 文件的 interface 必填字段 vs 对象字面量返回字段 | 允许（类型嫌疑主动扫描步骤） | 防 TS2322：mock 对象字面量缺必填字段 |
 | 修 import path 之前 grep export 位置 | **强制**（见第 4a 步） | 防 TS2305 形态 2 / 形态 4 / 形态 5 路径错位 |
-| `.vue` 文件用 `@/pages/...` 绝对路径 import 业务模块 utils | **强制**（见 references/error-signatures.md "TS2307 形态"） | 避免 vue-tsc 在 `.vue` 文件处理相对路径 import 偶发失败 |
+| `.vue` 文件用 `@/pages/...` 绝对路径 import 业务模块 utils | **强制**（见 references/ts-typing.md "TS2307 形态"） | 避免 vue-tsc 在 `.vue` 文件处理相对路径 import 偶发失败 |
 | `npx eslint <files> --rule '{"no-unused-vars":"error",...}'` | 允许（未使用代码主动扫描步骤） | CLI 加 --rule，不改 eslint.config.js；扫死代码 + 孤儿 API |
 | grep `(const\|let\|function\|class)\s+_\w+\s*[=(:]` | 允许（未使用代码主动扫描步骤） | 查下划线前缀死代码逃生口 |
 | 加下划线前缀 / `eslint-disable-next-line` 保留死代码 | **禁止** | 错误逃生口；死代码应直接删 |
 
 ## Error Signatures
 
-需要定位已编辑行中的常见错误时，读取 `references/error-signatures.md`。错误签名只帮助判断根因，不会扩大允许修改的文件或行范围；根因落在范围外时，只报告，不修复。
+需要定位已编辑行中的常见错误时，读取 `references/{baseline-eslint,ts-typing,reactive-errors}.md`。错误签名只帮助判断根因，不会扩大允许修改的文件或行范围；根因落在范围外时，只报告，不修复。
 
 ## Required Constraints
 
