@@ -33,6 +33,7 @@ Step 4  与它**实际**所在位置对比 → 不同 = 违规（凭据 = 归属
 | 页面状态（ref / reactive）、事件处理、副作用编排 | `.vue` 内部（唯一例外） | `formData`、`handleSave` |
 | 组件 | 内层 `addOrEdit/components/` 或外层 `components/`，按真 import 数判定 | `FieldsSelector.vue` |
 | 刷新信号 / 缓存 composable | `utils/`（`*.composable.ts` 或 index.ts barrel） | `requestListRefresh` |
+| **转发别名 const**（`const rules = FORM_RULES`） | **不写。** 删掉转发行，模板 / 调用方直接用导入名 | `:rules="FORM_RULES"` |
 
 **Step 4 判定后的 4 条要求**：
 
@@ -320,7 +321,7 @@ rm src/pages/<业务块>/utils/format.ts
 
 **违规处置**：
 - ❌ `addOrEdit/addOrEdit.vue:135 const formRules: FormRules = {...27 行...}`（纯静态，无 enum 工厂引用）→ 抽到 `addOrEdit/config/index.ts` 作 `STORE_ADD_OR_EDIT_FORM_RULES`
-- ❌ `addOrEdit/index.vue:148 const rules: FormRules<StoreEntryPlatformFormState> = {...14 行纯静态...}`（**变量名不叫 formRules，v1 扫描漏掉**）→ 抽到 `addOrEdit/config/index.ts` 作 `STORE_ENTRY_PLATFORM_FORM_RULES`，调用方 `import { STORE_ENTRY_PLATFORM_FORM_RULES as rules } from "./config"`（**alias import 保住模板 `:rules="rules"` 不改**）
+- ❌ `addOrEdit/index.vue:148 const rules: FormRules<StoreEntryPlatformFormState> = {...14 行纯静态...}`（**变量名不叫 formRules，v1 扫描漏掉**）→ 抽到 `addOrEdit/config/index.ts` 作 `STORE_ENTRY_PLATFORM_FORM_RULES`，调用方 `import { STORE_ENTRY_PLATFORM_FORM_RULES } from "./config"`，模板 `:rules="STORE_ENTRY_PLATFORM_FORM_RULES"`
 - ❌ `store/enum/index.ts:88 export const STORE_ADD_OR_EDIT_FORM_RULES: FormRules = {...}`（纯静态 formRules 错放外层 enum/）→ 挪到 `addOrEdit/config/index.ts`
 - ❌ `addOrEdit/add.vue` 与 `addOrEdit/editOrCheck.vue` 各自重复定义同一 formRules → 抽 `addOrEdit/config/getFormRules()` factory（如果差异大）或就近（如果差异小）
 
@@ -331,14 +332,43 @@ rm src/pages/<业务块>/utils/format.ts
 
 **反模式**：
 - ❌ **按变量名 `formRules` 找**（漏 `rules` / `xxxRules` / `FormRules<T>` 泛型形式）——**判定依据是「这个对象是不是 FormRules」，不是它叫什么名**
-- ❌ "抽到 config/ 但模板 `:rules="rules"` 要改"—— 用 `import { XXX_FORM_RULES as rules }` alias import，模板零改动
+- ❌ "抽到 config/ 但模板 `:rules="rules"` 要改"—— 模板里**直接用导出的常量原名**（`:rules="FORM_RULES"`），改模板是对的，不要为了少改模板去做转发别名
+- ❌ **`const rules = FORM_RULES` 转发别名**—— `.vue` 里不允许出现「把 config 的常量原样再赋给一个新变量」的转发行。同理适用于 `const statusOptions = ABNORMAL_STATUS_OPTIONS` 等一切纯转发 const。**它在 `.vue` 留了一个无意义的中间名，只为了让模板看起来短**，正确做法是模板直接引用 config 的导出名
+- ❌ **`import { XXX_FORM_RULES as rules } from "./config"` alias import**—— 同上，这是转发别名的 import 形态。会导致两条 lint 规则打架（`perfectionist/sort-named-imports` 要求 alias 排最后，拆成两行又触发 `import/no-duplicates`）。**模板直接用原名，两条规则都不碰**
 - ❌ "formRules 抽到 enum/ 让所有字典集中管理"—— enum/ 应该装字典 / 状态码，不该装 formRules；纯静态 formRules 放 enum/ = 大杂烩
 - ❌ "formRules 抽到 config/ 但 config/ 反向依赖 enum 工厂"—— 破坏单层依赖，违反就近原则
 - ❌ "formRules 跨 addOrEdit/*.vue 重复定义，懒得抽"—— 重复定义会随字段增减漂移，必须抽 factory 或就近统一
 
 **抽到 config 后的 2 个必做动作**：
 1. **相对路径**：`addOrEdit/config/index.ts` 里 import 业务块根 types 要写 `"../../types"`（不是 `"../types"`）
-2. **import 排序**：`perfectionist/sort-named-imports` 要求 `import { getFormItems, XXX_FORM_RULES as rules, validateSaveForm }`——alias import 排在最后，非 alias 按字母序
+2. **调用方直引原名，不做转发**：`.vue` 里 `import { XXX_FORM_RULES } from "./config"`，模板 `:rules="XXX_FORM_RULES"`。**不要**加 `const rules = XXX_FORM_RULES`，**不要**用 `import { XXX_FORM_RULES as rules }`
+
+## 转发别名禁令（适用于所有目录，不只 FormRules）
+
+`.vue` / `.ts` 里禁止出现**纯转发 const**——把一个已导入的名字原样赋给另一个名字：
+
+```ts
+// ❌ 全部禁止
+const rules = FORM_RULES
+const statusOptions = ABNORMAL_STATUS_OPTIONS
+const columns = TABLE_COLUMNS
+```
+
+```ts
+// ❌ 也禁止（同一问题的 import 形态）
+import { FORM_RULES as rules } from "./config"
+```
+
+**为什么禁**：转发变量不做任何计算、不做任何转换，只是让模板里少打几个字符，代价是 `.vue` 多一行无意义的中间名，且**读代码的人要多跳一次**才知道 `rules` 到底是什么。模板里直接写 `FORM_RULES` 反而一眼可读。
+
+**正确写法**：删掉转发行，模板直接引用导入名。
+
+```vue
+<!-- ✅ 模板直接用导入名 -->
+<DynamicForm :rules="FORM_RULES" :form-items="formItems" />
+```
+
+**判定**：一行 `const X = Y` 里 `Y` 是一个已 import 的标识符（且 `X` 没有再参与任何运算 / 条件 / 加工）→ 转发别名 → 删掉 `X`，把用到 `X` 的地方改成 `Y`。
 
 ## 结论分类（必填）
 

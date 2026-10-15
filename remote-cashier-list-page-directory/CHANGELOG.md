@@ -44,6 +44,21 @@ worktree 里 `.pi/git/github.com/2000cyj/remote-develop-skills/` 的副本与源
 ```
 `read 08-*.md` 拿到的是随机一份。修法：playbook 统一改 90/ 编号。
 
+## 2026-10-15 —— 转发别名禁令（v5）
+
+### 事故 7：`.vue` 里的转发别名 const
+
+`StoreAuditOnboarding/addOrEdit/index.vue` 抽完 FormRules 后留下 `const rules = FORM_RULES` 一行；`storeAuditAbnormal/addOrEdit/index.vue` 同样有 `const statusOptions = ABNORMAL_STATUS_OPTIONS`。纯转发，不做任何计算。
+
+skill 之前的「必做动作 2」甚至**要求**这么写（`import { XXX_FORM_RULES as rules }` alias import「模板零改动」），等于把反模式写成了规则。
+
+**根因：把「少改模板」当成目标，牺牲了可读性。** 转发变量在 `.vue` 留一个无意义的中间名，读代码的人要多跳一次才知道 `rules` 是什么。而且 alias import 会让 `perfectionist/sort-named-imports` 与 `import/no-duplicates` 两条规则打架（alias 要排最后 → 拆两行 → 重复 import 报错）。
+
+**修法 v5**：
+- 新增归属表行「转发别名 const → 不写」
+- 检查 12 的「必做动作 2」从「alias import 保住模板零改动」改为「模板直接用导出原名」
+- 增设「转发别名禁令」小节，适用于所有目录，不只 FormRules
+
 ## 2025-01-14 —— 数据搬运事故（company/）
 
 同批 3 起，全部是「凭印象改值」而非「从 git HEAD 拿值」：

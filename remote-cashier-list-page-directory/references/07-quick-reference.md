@@ -27,6 +27,7 @@
 4. **建枚举前先查 `@/common/enum`**：公共 → 本块 `enum/` → 就近 `enum/`，三级都没有才建。
 5. **改任何字面量值前 `git show HEAD:<file>`**，不一致就停并问 user。
 6. **验收只扫本次改过的文件**，禁止全项目扫 / `--fix` / 裸跑 `vue-tsc`。
+7. **禁转发别名**：`const rules = FORM_RULES` / `import { X as rules }` 全部不写——删掉转发行，模板直接用导入名。
 
 ## 7 项目录
 
@@ -56,6 +57,7 @@ src/pages/<业务模块>/
 | 接口函数 | `apis/index.ts` |
 | 枚举 / 魔法值 | 公共 enum → 本块 enum → 就近 enum |
 | 状态 / 事件 / 副作用 | `.vue` 内 |
+| 转发别名 `const rules = FORM_RULES` | **不写**——模板直接用导入名 |
 
 ## 维护
 
