@@ -6,11 +6,11 @@
 
 ## 审查总则（先读这一段，优先于所有检查项）
 
-> **不要用关键字扫。** 本文件所有 `grep` / 扫描命令**只是规范的可选执行器**，不是审查方法。审查方法是：**按 7 项目录的职责，逐文件判定文件里每一条声明的归属目录**。命令没命中 **≠** 合规。
+> **不要用关键字扫。** 审查方法是：**逐文件 read，列出每一条顶层声明，查归属表**。命令只能匹配写法，接口名有规律、接口名没有规律——用命令必然漏检（见 `CHANGELOG.md` 事故 1）。
 
 ### 审查方法：按职责定位，不按关键字定位
 
-**不要**先 grep 关键字找违规。要**先定归属，再看现状**：
+**不要**先按关键字找违规。要**先定归属，再看现状**：
 
 ```
 Step 1  列出业务块的 7 项目录（index.vue / addOrEdit/ / apis/ / components/ / config/ / enum/ / utils/ / types/）
@@ -19,7 +19,7 @@ Step 3  对每一条声明查下表 → 得到它**应该**在哪个目录
 Step 4  与它**实际**所在位置对比 → 不同 = 违规（凭据 = 归属表行号）
 ```
 
-**声明种类 → 归属目录**（这张表就是规范，不要拿 grep 当规范）：
+**声明种类 → 归属目录**（这张表是本 skill 的规范正文）：
 
 | 声明种类 | 应该在哪 | 实例 |
 |---|---|---|
@@ -36,12 +36,35 @@ Step 4  与它**实际**所在位置对比 → 不同 = 违规（凭据 = 归属
 
 **Step 4 判定后的 4 条要求**：
 
-1. **扫描命令只是加速器**：本文件后文各检查项里的 `grep` 只用于“快速列出待判定的声明”，不用于“判定有无违规”。
-2. **不许拿“命令没命中”当结论**：命令没命中只说明命令模式没覆盖写法，必须回到 Step 2 逐文件读完。
-3. **命名不影响归属**：变量叫 `rules` 还是 `formRules`、`XxxVO` 还是 `XxxRow`，都不改变它应该去的目录。命令按关键字写会漏；归属表按种类写不会漏。
-4. **发现归属表没覆盖的声明种类**：先修代码，再回本表加一行（按**种类**描述，不按变量名）。
+1. **不用命令判定**：本文件不提供扫描命令。逐文件 read 是唯一方法。
+2. **命名不影响归属**：变量叫 `rules` 还是 `formRules`、`XxxVO` 还是 `XxxRow`，都不改变它应该去的目录。归属表按**种类**写，命令按**关键字**写——后者必漏。
+3. **发现归属表没覆盖的声明种类**：先修代码，再回本表加一行（按**种类**描述，不按变量名）。
 
-> 事故记录（storeEntryPlatform/ 2026-10-15）：旧审查方式用 `grep "^const formRules"` 找违规，命令只匹配 `formRules` 这个名字，漏掉了 `const rules: FormRules<T>`（14 行纯静态），user 直接点名才抽出。**根因不是 grep 写错，是拿 grep 当规范**——改成“按声明种类查归属目录”后，变量叫什么名都跑不掉。
+> 事故 1–5 见 `CHANGELOG.md`。一句话总结：**把执行器当规范，是这个 skill 出过所有问题的唯一根因**。
+
+## 归属表没写全时的兜底
+
+一张表不可能穷举所有写法。遇到表里没有的声明种类时：
+
+1. **先按语义归类**（它到底是数据、类型、映射、工具、还是状态？），再就近放进对应目录。
+2. **修完代码后回本表补一行**，按**种类**写（例如「对外暴露的组件 props 形态 → 组件同级 types」），**不按变量名写**。
+3. 不要因为「表里没写」就留在 `.vue` 里。表的意图是**先定归属**，不是**找白名单豁免**。
+
+## 数据搬运保护（改任何字面量值前必读）
+
+搬动 `Record<KEY, value>` / 字面量数组 / 任何字面量值（字符串、数字、URL、权限码、字段名、enum 名、状态值、颜色码、路由路径）时：
+
+1. **权威源是 `git show HEAD:<file>`**，不是 working tree 当前内容——working tree 可能已被改过或有污染。
+2. 搬动前 `git show HEAD:<file>` 拿**原值**。
+3. 把原值**逐字**复制到新位置。
+4. 搬完 `git diff` 验证值完全一致。
+5. **任何不一致 → 立刻停，问 user。** 不许自己判断哪个对。
+
+以下属于后端契约 / 多模块影响，**用户没让改就不动**：API 路径与字段名、业务状态值、权限码、tag type / 颜色编码、路由路径与菜单。
+
+**agent 幻觉的 4 种模式**（都表现为"凭合理性改值"）：命名规范化、类型推断、业务合理性、记忆污染。
+
+> 3 起真实事故（8 个权限码 / 4 个颜色 / 1 条路由路径）见 `CHANGELOG.md` 2025-01-14。
 
 ## 检查清单（按 7 项固定目录逐项）
 
@@ -108,30 +131,18 @@ touch src/pages/<业务模块>/components/Foo.vue
 
 > 业务背景：之前 store/ 案例中 SubAccountManager 凭印象被误判为"fill.vue 用了"（实际只 doc 注释提了，未真 import）—— agent 凭语感判定跨页复用导致组件错放外层 `components/`。本节定义**唯一证据**判定法。
 
-**扫描命令**（强制执行，**不接受** grep 命令之外的判定）：
-
-```bash
-# 步骤 1: 列出 components/ 下所有 .vue 文件名
-ls src/pages/<业务块>/components/*.vue 2>&1
-
-# 步骤 2: 对每个组件，**grep 真正的 import 路径**（不是字符串提及）
-# 命中规则：精确匹配 `import <ComponentName> from "..."` 其中路径指向该组件
-for comp in $(ls src/pages/<业务块>/components/*.vue | xargs -n1 basename | sed 's/\.vue$//'); do
-  echo "=== $comp 真调用方 ==="
-  grep -rnE "^import[[:space:]]+${comp}[[:space:]]+from" src/pages/ --include="*.vue" --include="*.ts" 2>&1
-done
-```
+**怎么查**：逐个 read `components/` 下的 `.vue`，在 `src/pages/` 下找**真正的 import 行**（`import <组件名> from "..."` 且路径指向该组件文件）。doc 注释里提到组件名不算。
 
 **判定标准**（满足以下**全部**才认作"真跨页复用"）：
-- 1️⃣ grep 输出**至少 2 个**真 import（import 行 + `from` 路径指向该 .vue 文件）
+- 1️⃣ 找到**至少 2 个**真 import（import 行 + `from` 路径指向该 .vue 文件）
 - 2️⃣ 这 2 个 import 来自**不同业务模块**的 .vue / .ts（不是同一文件 + 同一目录内的子组件引用）
 - 3️⃣ 调用方**不限于** addOrEdit 目录——必须包含 `index.vue` / 其他 addOrEdit 之外的 .vue
 
 **判定红线**（**不认作**"跨页复用"的 4 种情况）：
-- ❌ grep 只命中 doc 注释 / JSDoc / 中文说明里提到组件名（**不是 import**）—— 之前 SubAccountManager 误判就是这种情况（fill.vue 注释提了但没 import）
-- ❌ grep 只命中 1 个 import（即使来自另一个 .vue）—— 单调用方也该放 addOrEdit/components/
-- ❌ grep 命中的多个 import 都来自同一 addOrEdit 目录（fill.vue 跟 detail.vue 同目录）—— 仍是 addOrEdit 内复用
-- ❌ grep 命中的 import 路径不对应（"SubAccountManager" 字符串在别处使用但不是该组件）—— 必须验证 from 路径
+- ❌ 只在 doc 注释里找到 / JSDoc / 中文说明里提到组件名（**不是 import**）—— 之前 SubAccountManager 误判就是这种情况（fill.vue 注释提了但没 import）
+- ❌ 只找到 1 个 import（即使来自另一个 .vue）—— 单调用方也该放 addOrEdit/components/
+- ❌ 找到的多个 import 都来自同一 addOrEdit 目录（fill.vue 跟 detail.vue 同目录）—— 仍是 addOrEdit 内复用
+- ❌ 找到的 import 路径不对应（"SubAccountManager" 字符串在别处使用但不是该组件）—— 必须验证 from 路径
 
 **违规处置**：
 - ❌ `store/components/ChangeInfoModal.vue` 仅 `addOrEdit.vue` 1 个真 import → 应挪到 `addOrEdit/components/`
@@ -139,13 +150,13 @@ done
 - ❌ 业务块没跨页组件却保留 `components/` 空目录 → 删目录（**禁预创建空目录**）
 
 **判定例外**（以下情况**不违规**）：
-- ✅ grep 命中 ≥2 个真 import 且跨业务块（如 `StoreAuditOnboarding/fill.vue` 用了 store 的 SubAccountManager）—— 业务块共用
+- ✅ 找到 ≥2 个真 import 且跨业务块（如 `StoreAuditOnboarding/fill.vue` 用了 store 的 SubAccountManager）—— 业务块共用
 - ✅ 组件被 `defineExpose` + `renderDialog` 命令式调用（命令式调用也是真调用方）
 
 **反模式**：
 - ❌ "这个组件以后会跨页用，先放外层"—— 首次就该放内层（"以后" = 不可证伪的预言）
 - ❌ "doc 注释提到 = 算用到"—— doc 注释是给人看的，import 是机器验证的
-- ❌ "grep 命中文本就算引用"—— 必须是 `^import` 开头的行
+- ❌ "提到组件名就算引用"—— 必须是真的 import 行
 - ❌ "外层有 components/ 目录就该填东西"—— 业务块没跨页组件就**不创建**该目录
 
 #### 检查 5b：components 私有的 formRules inline 审查
@@ -156,22 +167,9 @@ done
 
 > 业务背景：之前 closeStoreFormItems 9 行 + computed 包装（纯静态）→ 反模式。**先看 computed，再看行数**。
 
-**扫描命令**（必检）：
+**怎么查**：逐个 read `components/` 下的 `.vue`，在 `src/pages/` 下找**真正的 import 行**（`import <组件名> from "..."` 且路径指向该组件文件）。doc 注释里提到组件名不算。
 
-```bash
-# 扫 .vue / .ts 顶层 const X = computed(() => [...]) 模式
-grep -rnE "^const[[:space:]]+\w+[[:space:]]*=[[:space:]]*computed\(" src/pages/<业务块>/ 2>&1
-```
-
-**判定**（按以下顺序执行）：
-
-```bash
-# 对每个命中行，紧跟查看 computed 体内是否含响应式依赖
-# 命中以下任意关键字 = 真 computed（不拆）
-grep -A 10 "^const.*=.*computed(" src/pages/<业务块>/addOrEdit/<file>.vue | grep -E "\.value\.|props\.|reactive\(|ref\("
-```
-
-**判定公式**（**v3 最终态，2026-10-15 补"纯数据写成方法、值传进去"**）：
+**判定公式**：
 
 > 前提认知：`computed` 体内**全是纯数据**（数组 / 对象字面量），没有副作用、没有异步。所以它**总能**搬进 `config/`，唯一区别是**依赖的值从哪来**。
 
@@ -241,24 +239,11 @@ rm src/pages/<业务块>/utils/format.ts
 
 > 这是**反向扫描**检查——不仅看目录存在性，还要扫 .vue 内容看是否有该拆未拆的 inline enum/config/utils。
 
-**扫描命令**：
-```bash
-# 扫 inline 枚举选项数组（应拆到 addOrEdit/enum/）
-grep -rn "const.*OPTIONS.*=" src/pages/<业务块>/addOrEdit/*.vue
-
-# 扫 inline Descriptions items 数组（应拆到 addOrEdit/config/）
-grep -rn "const.*Items.*=" src/pages/<业务块>/addOrEdit/*.vue
-
-# 扫 Descriptions items 工厂函数（应拆到 addOrEdit/config/）
-grep -rn "function.*Items.*(" src/pages/<业务块>/addOrEdit/*.vue
-
-# 扫行数，判断是否超阈值
-wc -l src/pages/<业务块>/addOrEdit/*.vue
-```
+**怎么查**：逐个 read `addOrEdit/*.vue`，列出顶层的静态数组 / 工厂函数（`xxxOPTIONS` / `xxxItems` / `function xxxItems()`），再看行数与使用方数。
 
 **违规标志**（必须满足以下三条才算"该拆"）：
-- 1️⃣ 在 `addOrEdit/*.vue` 中命中上述 grep 模式
-- 2️⃣ 该数组/函数 **仅被 1 个 .vue 文件使用**（grep 验证）
+- 1️⃣ 该数组/函数声明在 `addOrEdit/*.vue` 顶层
+- 2️⃣ 该数组/函数 **仅被 1 个 .vue 文件使用**（逐文件确认）
 - 3️⃣ 行数满足阈值（enum ≥5 行 / config Descriptions items ≥10 行 / DynamicForm items ≥15 行）
 
 **违规处置**：
@@ -280,17 +265,7 @@ wc -l src/pages/<业务块>/addOrEdit/*.vue
 
 > `addOrEdit/` **不建 `menu/` 目录**。顶部 header 的 UI 资源（容器 class / 标题文案）和 actions 工厂均放 `addOrEdit/config/index.ts`，与表单 items / 描述项 同质。
 
-**扫描命令**：
-```bash
-# 扫顶栏容器 class 重复（config/ 触发）
-grep -rn "sticky top-0 z-10" src/pages/<业务块>/addOrEdit/*.vue
-
-# 扫顶栏 container 长 className（≥3 行重复）
-grep -rn "flex items-center justify-between px-6 py-4 bg-white border-b" src/pages/<业务块>/addOrEdit/*.vue
-
-# 扫 header 标题常量模式
-grep -rn "text-base font-semibold text-\[#1f2937\]" src/pages/<业务块>/addOrEdit/*.vue
-```
+**怎么查**：逐个 read `addOrEdit/*.vue`，比对顶栏 container class / 标题文案 / actions 按钮组是否在 ≥2 个文件里重复出现。
 
 **违规标志**（满足以下任一条必须拆）：
 - 1️⃣ ≥2 个 .vue 出现完全相同的 `sticky top-0 z-10 flex items-center justify-between px-6 py-4 bg-white border-b` 容器 class —— 应提取 `PAGE_HEADER_CLASSES` 常量到 `addOrEdit/config/index.ts`
@@ -314,14 +289,7 @@ grep -rn "text-base font-semibold text-\[#1f2937\]" src/pages/<业务块>/addOrE
 
 > `addOrEdit/components/*.vue` 的 `const rules: FormRules = {...}` 含自定义 validator 或依赖 props 时，抽到 `addOrEdit/config/index.ts` 的 `getXxxFormRules(ctx)` factory。与页面级 FORM_RULES 同质，仅作用域不同。
 
-**扫描命令**：
-```bash
-# 扫组件级 FormRules inline（检查 11 触发）
-grep -rn "const rules.*FormRules\|: FormRules =" src/pages/<业务块>/addOrEdit/components/*.vue 2>&1
-
-# 扫组件级自定义 validator（强烈指标）
-grep -rn "validator:.*=>" src/pages/<业务块>/addOrEdit/components/*.vue 2>&1
-```
+**怎么查**：逐个 read `addOrEdit/components/*.vue`，列出顶层 `FormRules` 对象，看行数、是否含自定义 `validator`、是否引用 `props.`。
 
 **违规标志**（满足以下任一条必须拆）：
 - 1️⃣ `addOrEdit/components/*.vue` 的 `rules` 行数 ≥7 行
@@ -343,29 +311,10 @@ grep -rn "validator:.*=>" src/pages/<业务块>/addOrEdit/components/*.vue 2>&1
 
 > 业务背景：`addOrEdit/*.vue` 顶层的 `FormRules` 对象（不管变量名叫 `formRules` / `rules` / `xxxRules`）抽离到哪——`config/` 还是 `enum/`——**就近原则**有明确的判定公式。之前 store/ 案例中 `STORE_ADD_OR_EDIT_FORM_RULES` 错放外层 `enum/` 就是没遵守就近原则。
 
-**扫描命令**（**v2：按类型注解扫，不按变量名扫**）：
+**怎么查**：逐个 read `addOrEdit/*.vue`，列出顶层 `FormRules` 对象（变量名不限），再看它体内引用什么。
 
-```bash
-# 主命令：扫 addOrEdit/*.vue 顶层所有 FormRules 注解的 const（任意变量名）
-grep -rnE "^const[[:space:]]+\w+[[:space:]]*:[[:space:]]*FormRules" src/pages/<业务块>/addOrEdit/*.vue 2>&1
-# 补充：扫 .ts config 里的具名导出（判位置对错）
-grep -rnE "^export const[[:space:]]+\w+_FORM_RULES.*FormRules" src/pages/<业务块>/enum/*.ts src/pages/<业务块>/addOrEdit/config/*.ts 2>&1
-```
-
-> ⚠️ **v2 变更（storeEntryPlatform 2026-10-15 事故）**：v1 只扫 `^const[[:space:]]+formRules`，漏掉了 `const rules: FormRules<X>` / `const phoneRules: FormRules<X>` / `const fieldRules: ...` 等任意命名。**判定依据是类型注解 `FormRules`，不是变量名**。事故：`storeEntryPlatform/addOrEdit/index.vue:148 const rules: FormRules<StoreEntryPlatformFormState> = {...14 行纯静态...}` 被 v1 扫描漏掉，user 直接点名才抽出。
-
-**判定**（**就近原则 2 选 1**）：
-
-```bash
-# 步骤 1: 检查 rules 体内是否 import 自 ../enum 或引用 enum 工厂
-grep -A 50 "^const[[:space:]]+\w+[[:space:]]*:[[:space:]]*FormRules" src/pages/<业务块>/addOrEdit/<file>.vue | grep -E "from \"\.\./enum\"|createDictionaryEnum|new \w+Enum\("
-
-# 步骤 2: 检查是否跨页共享字段名（多个 addOrEdit/*.vue 引用同一 formRules 名字）
-grep -rn "<FORM_RULES_NAME>" src/pages/<业务块>/addOrEdit/ 2>&1
-```
-
-**判定公式**：
-- 步骤 1 **命中**（import 自 `../enum` 或引用 `createDictionaryEnum` 等 enum 工厂）→ 抽到 `addOrEdit/enum/index.ts`（**允许特例**，与字典共享字段名）
+**判定公式**（**就近原则 2 选 1**，看的是 FormRules 对象内部引用了什么，不是变量叫什么）：
+- **命中**（import 自 `../enum` 或引用 `createDictionaryEnum` 等 enum 工厂）→ 抽到 `addOrEdit/enum/index.ts`（**允许特例**，与字典共享字段名）
 - 步骤 1 **不命中**（纯静态、仅 required/min/max/type）→ 抽到 `addOrEdit/config/index.ts`（**默认位置**）
 - 步骤 2 命中（多 .vue 共享）→ 抽到 `addOrEdit/config/index.ts` 作 factory（如果差异大）或各 .vue 就近（如果差异小）
 
@@ -381,7 +330,7 @@ grep -rn "<FORM_RULES_NAME>" src/pages/<业务块>/addOrEdit/ 2>&1
 - ✅ rules 体内只是把 config 里的字段规则重新组装（如 `phone: phoneRules`）→ 保留薄壳 inline，字段规则本体在 config
 
 **反模式**：
-- ❌ **扫描只 grep 变量名 `formRules`**（漏 `rules` / `xxxRules` / `FormRules<T>` 泛型形式）——**必须按类型注解 `FormRules` 扫**，这是 storeEntryPlatform 2026-10-15 事故根因
+- ❌ **按变量名 `formRules` 找**（漏 `rules` / `xxxRules` / `FormRules<T>` 泛型形式）——**判定依据是「这个对象是不是 FormRules」，不是它叫什么名**
 - ❌ "抽到 config/ 但模板 `:rules="rules"` 要改"—— 用 `import { XXX_FORM_RULES as rules }` alias import，模板零改动
 - ❌ "formRules 抽到 enum/ 让所有字典集中管理"—— enum/ 应该装字典 / 状态码，不该装 formRules；纯静态 formRules 放 enum/ = 大杂烩
 - ❌ "formRules 抽到 config/ 但 config/ 反向依赖 enum 工厂"—— 破坏单层依赖，违反就近原则
@@ -429,29 +378,7 @@ grep -rn "<FORM_RULES_NAME>" src/pages/<业务块>/addOrEdit/ 2>&1
 
 > 业务背景：业务代码常见"在 .vue 顶层 `<script setup>` 块内 / .ts 顶层声明 `interface FormState` / `type ViewTabKey` / `interface BiUserOption`"——这种 type/interface 本应集中到就近 `types/index.ts`，却散在 10 个文件里，重复定义 + 跨文件难找 + 无法用 `paths`/`as const` 共享。store/ 模块 2026-10-15 集中化案例：22 个 type/interface 从 `apis/type.ts` 集中到 `types/index.ts`，删 apis/type.ts 455 行；addOrEdit.vue 1 个 inline BiUserOption 复用 @/pages/company/types 避免重复定义。详见 `references/09-no-inline-type-in-vue.md`。
 
-**扫描命令**（**6 种 .ts 顶层 + 2 种 .vue 顶层**）：
-
-```bash
-# 1. 扫 .ts 顶层 interface 声明（apis/type.ts + apis/index.ts + config/index.ts + utils/*.ts + addOrEdit/apis/*.ts）
-for f in $(find src/pages/<业务块> -type f -name "*.ts" 2>/dev/null); do
-  if [ -f "$f" ]; then
-    # 跳过 types/index.ts（已合规）
-    case "$f" in */types/index.ts) continue ;; esac
-    grep -nE "^(export[[:space:]]+)?(interface|type)[[:space:]]+[A-Z]\w*" "$f" 2>/dev/null
-  fi
-done
-
-# 2. 扫 .vue <script setup> 顶层 interface 声明
-for f in $(find src/pages/<业务块> -type f -name "*.vue" 2>/dev/null); do
-  if [ -f "$f" ]; then
-    # 提取 <script> 块扫顶层 interface / type
-    awk '/<script[^>]*>/,/<\/script>/' "$f" 2>/dev/null | grep -nE "^(interface|type)[[:space:]]+[A-Z]\w*"
-  fi
-done
-
-# 3. 快速检查（单行 grep，适合人脑查 1 个文件）
-grep -nE "^(interface|type)[[:space:]]+[A-Z]\w*" src/pages/<业务块>/addOrEdit/*.vue
-```
+**怎么查**：逐个 read 业务块下**所有** `.ts`（跳过 `types/index.ts`）和所有 `.vue` 的 `<script setup>` 块，列出每一条顶层 `interface` / `type` 声明（含泛型、联合、交叉）。
 
 **判定公式**（**A vs B 选项**）：
 - **A 选项**（推荐，user 2026-10-15 在 store/ 选用）：**所有 type/interface 全部集中到业务块根 `types/index.ts`**，包括 `apis/type.ts` + `addOrEdit/apis/type.ts` 里的 DTO/VO；调用方统一从 `./types`（或 `../types`）import；`apis/type.ts` 退化/删除
@@ -463,7 +390,7 @@ grep -nE "^(interface|type)[[:space:]]+[A-Z]\w*" src/pages/<业务块>/addOrEdit
 - 3️⃣ `apis/index.ts` / `addOrEdit/apis/index.ts` / `config/index.ts` / `utils/*.ts` 顶层 `interface X`（如 `interface CompanySelectItem`）—— 应抽到就近 `types/index.ts`
 - 4️⃣ 跨业务块 inline 重复定义（如 store/addOrEdit.vue 的 `interface BiUserOption` 跟 company/types/index.ts 的 `BiUserOption` 字段 100% 一样）—— 应**复用** `@/pages/<其他业务块>/types` 的 export，不复制
 
-**违规处置**（**4 步流程**，详见 `references/09-appendix-remediation.md`）：
+**违规处置**（**4 步流程**，详见 `references/91-remediation-type-playbook.md`）：
 - 1️⃣ **步骤 1：扫描现状** — 跑上述 6 种命令 + JS 脚本（附录 A 完整脚本）列出所有 type/interface 位置 + 调用方
 - 2️⃣ **步骤 2：判定 A/B** — 与 user 确认 A 选项（推荐）还是 B 选项
 - 3️⃣ **步骤 3：写入 `types/index.ts`** — 按章节组织（基础枚举 / 实体与子类型 / 列表分页 / 批量操作 / 保存 DTO / 辅助下拉）
@@ -474,7 +401,7 @@ grep -nE "^(interface|type)[[:space:]]+[A-Z]\w*" src/pages/<业务块>/addOrEdit
 - ✅ 全局共享类型 import（`import type { FileUploadRecordVO } from "@/common/types/shared"`）—— share 包已集中
 - ✅ 第三方库类型 import（`import type { VxeGridPropTypes } from "vxe-table"`）—— 库自带 .d.ts
 - ✅ `import type { Foo } from "./types"` 引用就近 types —— 合规用法
-- ✅ 局部 1 行 helper type（仅 string union）—— `type Mode = "view" | "edit"` 且仅 1 个 .vue 用
+- ✅ **零例外**：任何 `interface` / `type`（哪怕只有 1 行、哪怕只有 1 个调用方、哪怕是 string union）都必须进 `types/index.ts`。「只有 1 个调用方」「只有 1 行」「是 string union」都不是留在 .vue 的理由
 - ✅ 跨 add + edit 页面共用 FormState 已拆 2 个（`AddFormState` / `EditOrCheckFormState`）—— 合规
 
 **反模式**：
@@ -482,7 +409,7 @@ grep -nE "^(interface|type)[[:space:]]+[A-Z]\w*" src/pages/<业务块>/addOrEdit
 - ❌ "反正只有 1 个调用方" —— 单调用方也是就近 types 判定依据
 - ❌ 把所有 type 都搬到 `@/common/types` —— 就近 types 才是规范
 - ❌ 保留旧 `apis/type.ts` re-export 兼容 —— 直接删，pages 内 TS 单步构建
-- ❌ 删 import 时漏看是否还有别处用 —— 先 grep 再删
+- ❌ 删 import 时漏看是否还有别处用 —— 先全局搜符号名再删
 - ❌ `apis/type.ts` + `addOrEdit/apis/type.ts` 保留 DTO 但 .vue 顶层 type 已集中（B 选项不一致）—— 必须 A 或 B 二选一到底
 - ❌ 跨 add + edit 页面的 FormState 合并成 1 个 `FormState` 共享 —— 拆 2 个 `AddFormState` / `EditOrCheckFormState`
 - ❌ types/index.ts 反向依赖 `./enum`（如 `type ViewTabKey = typeof VIEW_TABS[number]["key"]`）—— 解耦，用 `type ViewTabKey = CompanyViewTab`

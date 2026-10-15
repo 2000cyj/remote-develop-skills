@@ -136,8 +136,8 @@ grep -nE '^\s*\*\s*/$' -A 1 src/path/to/file.ts | awk '/^\s*\*\s*\/$/{getline ne
 
 ## 5. 与其他 reference 的关系
 
-- **目标 8（enum 风格）**：批量提取 enum 时由 perl 修空行（见 `08-appendix-remediation.md` 步骤 4）
-- **目标 9（type/interface 集中）**：批量提取 type 时由 perl 修空行（见 `09-appendix-remediation.md` 步骤 4）
+- **目标 8（enum 风格）**：批量提取 enum 时由 perl 修空行（见 `90-remediation-enum-playbook.md` 步骤 4）
+- **目标 9（type/interface 集中）**：批量提取 type 时由 perl 修空行（见 `91-remediation-type-playbook.md` 步骤 4）
 - **目标 2（审查）**：新增检查项 13 扫"doc 与代码之间空行"违规
 - **04-shared-vs-private.md**：无直接关系（属于归属判定，不涉及代码风格）
 - **07-quick-reference.md**：速查表加一行

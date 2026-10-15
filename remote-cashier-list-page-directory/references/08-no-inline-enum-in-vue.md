@@ -4,7 +4,7 @@
 
 **本目标分两件事**：
 1. **规范定义**（预防）——以后 vue 页面不能再这样写
-2. **现状补救**（一次性清理）——已存在的违规一次性提取（详 `references/08-appendix-remediation.md`）
+2. **现状补救**（一次性清理）——已存在的违规一次性提取（详 `references/90-remediation-enum-playbook.md`）
 
 ---
 
@@ -89,12 +89,7 @@
 | 列表页（外层 index.vue）+ addOrEdit 都有 | **外层** `enum/index.ts` |
 | 被其他业务模块 import | **外层** `enum/index.ts`（再考虑是否提到 `@/common/enum`） |
 
-**grep 实操**：
-
-```bash
-# 看变量 X 的所有调用方
-grep -rn "\bX\b" src/pages/<业务块>/ --include="*.vue" --include="*.ts" | grep -v "enum/index.ts"
-```
+**怎么数调用方**：逐个 read `src/pages/<业务块>/` 下的 `.vue` / `.ts`，数出该符号被几个文件引用（定义文件本身不算）。只认真 import / 真调用，doc 注释里提到不算。
 
 ### 1.5 写法规约（写入就近 enum 的姿势）
 
@@ -143,25 +138,13 @@ export const SECTION_TITLE_COLORS: Record<string, [string, string]> = {
 
 ---
 
-## 3. 自动化检查（pi 编辑时）
+## 3. 怎么检查（pi 编辑时）
 
-agent 在编辑 .vue 文件后，自动跑：
-
-```bash
-# 扫所有大写 const 顶层定义（识别 enum 风格）
-# 用 ctx_execute 跑，参考附录 A 脚本
-cd micro/cashier && npx ctx_execute --code "
-const fs = require('fs');
-const path = require('path');
-// ... (附录 A 完整脚本)
-"
-```
+**逐文件 read，列出每条顶层声明，查 `02-audit-page-compliance.md` 的归属表。** 不提供扫描脚本——命令只匹配写法，接口名有规律、接口名没有规律，用命令必然漏检（见 `CHANGELOG.md` 事故 1）。
 
 **命中后处理流程**：
-1. 报告给用户：「X.vue 第 N 行检测到 inline enum 风格 `Y = {...} as const`」
-2. **不擅自修改**——询问用户是否提取；用户确认后按目标 4 归属判定提取
-
----
+1. 报告给用户：「X.vue 第 N 行有 inline enum 风格 `Y = {...} as const`」
+2. **不擅自修改**——询问用户是否提取；用户确认后按归属判定提取
 
 ## 4. 反模式（不要做）
 
@@ -170,9 +153,9 @@ const path = require('path');
 - ❌ 顺手把 `MAX_*` 数字标量也搬进 enum/——非 enum 风格，YAGNI
 - ❌ 全部 enum 提到 `@/common/enum`——就近 enum 才是规范
 - ❌ 保留旧 .vue 文件 re-export 兼容——直接删，pages 内 TS 单步构建
-- ❌ 删 import 时漏看是否还有别处用——先 grep 再删
+- ❌ 删 import 时漏看是否还有别处用——先全局搜符号名再删
 - ❌ 跑 `npx eslint src/pages/<业务块>/` 整目录——只跑本次改的文件
-- ❌ 删 const 块时**只删定义不删 doc**——`/** xxx value -> el-tag type */` 描述的是 const，const 没了 doc 成了无主注释。详情见 `08-appendix-remediation.md` 步骤 4a。
+- ❌ 删 const 块时**只删定义不删 doc**——`/** xxx value -> el-tag type */` 描述的是 const，const 没了 doc 成了无主注释。详情见 `90-remediation-enum-playbook.md` 步骤 4a。
 - ❌ **formRules 抽错位置**（违反就近原则）：把纯静态 formRules（不引用 enum 工厂）也抽到 enum——默认应放就近 `addOrEdit/config/`，放 enum 会让 enum 变成"字典+校验规则+状态码"大杂烩。仅在 formRules 引用 `createDictionaryEnum` 等 enum 工厂时（与字典字段名强耦合），才放 enum。判定决策见 `04-shared-vs-private.md`「FormRules 抽离位置决策」段。
 
 ---
@@ -184,7 +167,7 @@ const path = require('path');
 - **目标 4（归属）**：1.4 节归属判定直接复用
 - **04-shared-vs-private.md 模式 1**：描述了 inline 枚举选项数组违规
 
-**一次性历史清理**（把现状已存在的违规提取掉）见附录 `references/08-appendix-remediation.md`——只有在收到"扫一遍 src/pages 把 inline enum 全提取了"这类指令时才执行，**不作为新代码规范的一部分**。
+**一次性历史清理**（把现状已存在的违规提取掉）见附录 `references/90-remediation-enum-playbook.md`——只有在收到"扫一遍 src/pages 把 inline enum 全提取了"这类指令时才执行，**不作为新代码规范的一部分**。
 
 ---
 

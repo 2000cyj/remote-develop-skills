@@ -140,7 +140,7 @@ npx vue-tsc --noEmit
 - **`remote-ts-es-check/SKILL.md`**：本目标的核心约束完全来自此 skill。改完代码 → 调它扫 changed files → 报告 0 错
 - **目标 8/9/10 验收检查清单**（各 references 文档）：每个目标的验收清单最后一步都应引用本目标的"必跑 remote-ts-es-check"约束
 - **`04-shared-vs-private.md`**：归属判定后，落地时同样要走本目标的 ESLint 验证流程
-- **`08-appendix-remediation.md` 步骤 5**（`remote-ts-es-check` 验证）已部分覆盖本目标，但只覆盖"扫一遍"场景；本目标覆盖"每次改完必跑"
+- **`90-remediation-enum-playbook.md` 步骤 5**（`remote-ts-es-check` 验证）已部分覆盖本目标，但只覆盖"扫一遍"场景；本目标覆盖"每次改完必跑"
 
 ---
 

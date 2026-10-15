@@ -126,7 +126,7 @@ import { formatMoney, formatDate } from "./format"
 import { formatMoney, formatDate } from "."
 ```
 
-> ⚠️ **前置验证**：合并前先 grep 调用方确认 `./format` 没有别的 import 路径误引。
+> ⚠️ **前置验证**：合并前逐文件确认 `./format` 没有别的 import 路径误引。
 
 ## 重构原则（Ponytail rung 6：最小必要修改）
 

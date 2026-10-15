@@ -4,7 +4,7 @@
 
 **本目标分两件事**：
 1. **规范定义**（预防）——以后 type/interface 必须集中到就近 `types/index.ts`
-2. **现状补救**（一次性清理）——已存在的散落 type 一次性集中（详 `references/09-appendix-remediation.md`）
+2. **现状补救**（一次性清理）——已存在的散落 type 一次性集中（详 `references/91-remediation-type-playbook.md`）
 
 ---
 
@@ -80,12 +80,7 @@
 
 **company 模块 2026-10-14 选用 A**（44 个全部集中到一个 `types/index.ts`），符合用户原话"所有的类型对象全部放到 types/index.ts 下面"。
 
-**grep 实操**：
-
-```bash
-# 看某 type X 的所有调用方（用 word boundary 避免匹配到 Xxx）
-grep -rln "\bX\b" src/pages/<业务块>/ --include="*.vue" --include="*.ts" | grep -v "types/index.ts"
-```
+**怎么数调用方**：逐个 read `src/pages/<业务块>/` 下的 `.vue` / `.ts`，数出该符号被几个文件引用（定义文件本身不算）。只认真 import / 真调用，doc 注释里提到不算。
 
 ### 1.5 写法规约（写入就近 types 的姿势）
 
@@ -139,25 +134,13 @@ export interface X {
 
 ---
 
-## 3. 自动化检查（pi 编辑时）
+## 3. 怎么检查（pi 编辑时）
 
-agent 在编辑 .vue 或 .ts 文件后，自动跑：
-
-```bash
-# 扫所有 .vue <script setup> 顶层 interface/type 声明
-# 用 ctx_execute 跑，参考附录 A 脚本
-cd micro/cashier && ctx_execute "
-const fs = require('fs');
-const path = require('path');
-// ... (附录 A 完整脚本)
-"
-```
+**逐文件 read，列出每条顶层声明，查 `02-audit-page-compliance.md` 的归属表。** 不提供扫描脚本——命令只匹配写法，接口名有规律、接口名没有规律，用命令必然漏检（见 `CHANGELOG.md` 事故 1）。
 
 **命中后处理流程**：
-1. 报告给用户：「X.vue 第 N 行检测到 inline `interface Y` / `type Y`」
-2. **不擅自修改**——询问用户是否集中；用户确认后按 1.4 归属判定集中（A 或 B 选项）
-
----
+1. 报告给用户：「X.vue 第 N 行有 inline `interface Y` / `type Y`」
+2. **不擅自修改**——询问用户是否提取；用户确认后按归属判定提取
 
 ## 4. 反模式（不要做）
 
@@ -165,7 +148,7 @@ const path = require('path');
 - ❌ "反正只有 1 个调用方"——单调用方也是就近 types 判定依据
 - ❌ 把所有 type 都搬到 `@/common/types`——就近 types 才是规范
 - ❌ 保留旧 .ts 文件 re-export 兼容——直接删，pages 内 TS 单步构建
-- ❌ 删 import 时漏看是否还有别处用——先 grep 再删
+- ❌ 删 import 时漏看是否还有别处用——先全局搜符号名再删
 - ❌ apis/type.ts + addOrEdit/apis/type.ts 保留 DTO 但 .vue 顶层 type 已集中（B 选项不一致）——必须 A 或 B 二选一到底
 - ❌ 跨 add + edit 页面的 FormState 合并成 1 个 `FormState` 共享——拆 2 个 `AddFormState` / `EditOrCheckFormState`
 - ❌ types/index.ts 反向依赖 `./enum`（如 `type ViewTabKey = typeof VIEW_TABS[number]["key"]`）——解耦，用 `type ViewTabKey = CompanyViewTab`
@@ -184,7 +167,7 @@ const path = require('path');
 - **目标 8（enum 风格）**：本目标与目标 8 是兄弟规范——目标 8 管 enum 字面量，本目标管 type/interface
 - **04-shared-vs-private.md**：「步骤 3 判 attribute（type / interface）」段落已被本目标覆盖；A 选项下 `apis/type.ts` 退化为 re-export 壳
 
-**一次性历史清理**（把现状已存在的散落 type 集中掉）见附录 `references/09-appendix-remediation.md`——只有在收到"扫一遍 src/pages 把 inline type 全集中了"这类指令时才执行，**不作为新代码规范的一部分**。
+**一次性历史清理**（把现状已存在的散落 type 集中掉）见附录 `references/91-remediation-type-playbook.md`——只有在收到"扫一遍 src/pages 把 inline type 全集中了"这类指令时才执行，**不作为新代码规范的一部分**。
 
 ---
 
