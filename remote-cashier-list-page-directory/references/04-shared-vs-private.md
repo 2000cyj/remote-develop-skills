@@ -113,26 +113,34 @@ grep -rln "\b<函数名>\b" src/pages/<业务模块>/ --include="*.vue" --includ
 - 现在补在 04-shared-vs-private.md 模式 2 表格（新增 1 行）+ 判定顺序口诀（**先看 computed，再看行数**）
 - 以后类似情况：看到 `const X = computed(() => [...])` 先看内部是否有 props/reactive/函数依赖 → **无依赖 = 反模式，必拆**
 
-### store - 2026-10-15：closeStoreFormItems 抽 config（formItems 留 .vue 区分判定）
+### store - 2026-10-15：closeStoreFormItems 抽 config（v1） + formItems factory 抽 config（v2，**最终态**）
 
 | 源文件 | 变量 | 原形式 | 抽后位置 | 原因 |
 |---|---|---|---|---|
 | `addOrEdit/addOrEdit.vue` | `closeStoreFormItems`（9 行 + computed 包装） | `computed(() => [...6 静态 item + ElSwitch + CASHIER_GUARANTEE_RETURN_STATUS_OPTIONS.options...])` | `addOrEdit/config/index.ts` `export const CLOSE_STORE_FORM_ITEMS` | computed 包纯静态——无 `.value.` / `props.` / `reactive` / `ref` 任何响应式依赖 |
-| `addOrEdit/addOrEdit.vue` | `formItems`（**不抽**） | `computed(() => [...35 item 含 companyOptions.value.map(...)...])` | 留 addOrEdit.vue | **真 computed**——依赖 `companyOptions.value.map(...)` 响应式，拆出后丧失响应式 |
+| `addOrEdit/addOrEdit.vue` | `formItems`（35 行 + computed 包装） | `computed(() => [...35 item 含 companyOptions.value.map(...) + !!formData.operatorId...])` | `addOrEdit/config/index.ts` `export function getStoreAddOrEditFormItems(ctx)` **factory 模式** | **真 computed 有响应式依赖**——但通过 factory ctx 传 `Ref<companyOptions>` / `Ref<departmentOptions>` / `Reactive<formData>`，computed 包到 factory 内部，响应式追踪仍能生效 |
 
-**双 const 同 .vue 区分判定**（Items + Items 配对）：
-- **A `closeStoreFormItems`**（关店与保证金分组）= 纯静态（无响应式）→ 抽 config
-- **B `formItems`**（动态表单配置）= 依赖 `usePlatformOptions().options.value` 等响应式 → 留 .vue
-- 判定公式：grep 体内 `\.value\.|props\.|reactive|ref\(` → 有 = 留 .vue；无 = 抽 config
+**双 const 同 .vue 区分判定**（Items + Items 配对，**v2 最终态**）：
+- **A `closeStoreFormItems`**（关店与保证金分组）= 纯静态（无响应式）→ 抽 config **常量化**（`export const CLOSE_STORE_FORM_ITEMS = [...]`）
+- **B `formItems`**（动态表单配置）= 依赖 `companyOptions.value.map(...)` / `!!formData.operatorId` 等响应式 → 抽 config **factory 化**（`export function getStoreAddOrEditFormItems(ctx) { return computed(() => [...]) }`）
+- 判定公式：grep 体内 `\.value\.|props\.|reactive|ref\(` → 有 = factory 模式抽 config；无 = 常量化抽 config
+
+**factory 模式要点**（防止响应式丢失）：
+- ctx 接口需精确声明依赖类型：`Ref<{ value, label }[]>` / `Reactive<{ operatorId? }>` —— 避免 `any`
+- factory 内部访问 `ctx.companyOptions.value.map(...)` / `!!ctx.formData.operatorId` 保留响应式追踪
+- factory 返回 `ComputedRef`，调用方 `const formItems = getStoreAddOrEditFormItems({ companyOptions, departmentOptions, formData })` 拿到 computed 实例，模板 `:form-items="formItems"` **不用改**
+- ctx 传 .vue 顶层 ref/reactive，**不是**传原始值——传原始值（如 `[...arr]`) = 响应式丢失
+
+**v1 → v2 反思（关键迭代）**：
+- v1 判定 formItems 留 .vue（依赖响应式 → 拆出丧失响应式），user 纠正「写个方法，值传进去就行」—— v2 改 factory 模式 + ctx 传 Ref/Reactive 保留响应式
+- 教训：判定公式"有响应式依赖 = 留 .vue"**错**；正确判定 = "有响应式依赖 = factory 模式抽 config（ctx 传 Ref/Reactive）"
+- factory 模式跟 `getXxxFormRules(ctx)` 组件级 form rules 模式同源（参见 04 案例行 37）
 
 **diff 动**：
-- `addOrEdit/config/index.ts` 从 35 行增到 54 行（+19 行 = `import { ElSwitch } + import { CASHIER_GUARANTEE_RETURN_STATUS_OPTIONS } + CLOSE_STORE_FORM_ITEMS 14 行 + 注释`）
-- `addOrEdit.vue` 833 → 824 行（-9：删 computed 包装 + 改 import 顺序去 unused `ElSwitch`/`CASHIER_GUARANTEE_RETURN_STATUS_OPTIONS`）
-- 同 .vue 内 `formRules` + `closeStoreFormItems` 都从 `./config` 引入（perfectionist/sort-named-imports 排序：`CLOSE_STORE_FORM_ITEMS` 在 `STORE_ADD_OR_EDIT_FORM_RULES` 之前）
-
-**反思**：
-- 2 个 formItems 共存易混淆，**先看每个 computed 体内是否有响应式依赖**—— 1 处 `companyOptions.value.map(...)` 就够定性为"真 computed"（其余 30 行字面量/字典/组件引用不能掩盖这 1 处响应式）
-- 抽 config 后 `ElSwitch`/`CASHIER_GUARANTEE_RETURN_STATUS_OPTIONS` 在 .vue 变 unused → 必须删 import，**否则 ESLint unused-imports 报错**
+- v1 抽 `CLOSE_STORE_FORM_ITEMS` 常量：`addOrEdit/config/index.ts` 35 → 54 行（+19）；`addOrEdit.vue` 833 → 824 行（-9）
+- v2 抽 `getStoreAddOrEditFormItems(ctx)` factory：`addOrEdit/config/index.ts` 54 → 104 行（+50：factory 35 行 + Ctx interface 4 行 + 注释）；`addOrEdit.vue` 824 → 790 行（-34：删 inline 35 行 + 调用 4 行）
+- v2 调用方 import 顺序：`CLOSE_STORE_FORM_ITEMS as closeStoreFormItems, STORE_ADD_OR_EDIT_FORM_RULES as formRules, getStoreAddOrEditFormItems`（perfectionist/sort-named-imports：computed factory 排在 alias 之后）
+- v2 unused import 清理：删 `CASHIER_SHOP_STATUS_OPTIONS`（移到 factory 内部用）+ `ElInputNumber`（移到 factory 内部用）—— **必须**删，否则 ESLint unused-imports 报错
 
 ## 判定口诀
 

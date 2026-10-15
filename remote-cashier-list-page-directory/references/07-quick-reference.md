@@ -102,11 +102,13 @@ grep -rnE "^const[[:space:]]+\w+[[:space:]]*=[[:space:]]*computed\(" src/pages/<
 grep -A 10 "^const.*=.*computed(" src/pages/<业务块>/addOrEdit/<file>.vue | grep -E "\.value\.|props\.|reactive\(|ref\("
 ```
 
-**判定**（**先看 computed，再看行数**）：
-- `computed(() => [...])` + 体内**无**响应式依赖 → **反模式**：去 computed + 抽 `addOrEdit/config/`（行数任意）
-- `computed(() => ({...})` + 体内**有**响应式依赖 → **真 computed**：留 .vue
+**判定**（**v2 最终态，先看 computed，再看行数**）：
+- `computed(() => [...])` + 体内**无**响应式依赖 → **反模式**：去 computed + 抽 `addOrEdit/config/` 常量化（`export const X = [...]`，行数任意）
+- `computed(() => [...])` + 体内**有**响应式依赖（`.value.` / `props.` / `reactive` / `ref`）→ **factory 模式抽 config**：`export function getXxxFormItems(ctx: { companyOptions: Ref<...>, formData: Reactive<...> }) { return computed(() => [...]) }`，ctx 传 `Ref`/`Reactive` 保留响应式追踪
+- `computed(() => ({...})` + 体内**有**响应式依赖（依赖 props.xxx）→ **factory 模式抽 config**（ctx 传 props 或调用方 ref）
 
-事故案例（store/ 2026-10-15）：`closeStoreFormItems` 9 行 + computed 包装 + 纯静态 → 抽 `addOrEdit/config/CLOSE_STORE_FORM_ITEMS`。
+事故案例（store/ 2026-10-15 v1）：`closeStoreFormItems` 9 行 + computed 包装 + 纯静态 → 抽 `addOrEdit/config/CLOSE_STORE_FORM_ITEMS` 常量。
+事故案例（store/ 2026-10-15 v2）：`formItems` 35 行 + computed 包装 + 依赖 `companyOptions.value.map(...)` / `!!formData.operatorId` → 抽 `addOrEdit/config/getStoreAddOrEditFormItems(ctx)` factory（user 纠正「写个方法，值传进去」）。
 
 ### inline type/interface 集中化扫描（检查 13，**目标 9**）
 
@@ -186,3 +188,43 @@ touch src/pages/<业务模块>/components/Foo.vue
 
 # 调用方直接 import（不推荐 utils/confirm.ts 中间层）
 # ```ts
+# import { confirmDelete } from "@/common/utils"
+# ```
+
+## 验证
+
+```bash
+# 7 项固定目录检查
+ls src/pages/<业务模块>/
+
+# ESLint
+npx eslint src/pages/<业务模块> --ext .vue,.ts
+
+# 重复审查
+cat references/02-audit-page-compliance.md
+```
+
+## 输出格式（所有目标）
+
+- 列出新建/改动的目录树
+- 标注每个 apis/components/config/enum/utils 是外层还是内层
+- 说明 addOrEdit 文件形态
+- 区分三类结论（必须整改/建议优化/无需修改）
+
+## 反模式（速记）
+
+- ❌ 缺 7 项任意一项
+- ❌ 列表页和 addOrEdit 共用 index.vue
+- ❌ 把仅 addOrEdit 用的放外层
+- ❌ 弹窗组件含 el-dialog
+- ❌ 弹窗组件未暴露 submit()
+- ❌ 工具用 try/catch + ElMessageBox.confirm（应改 confirmDelete）
+- ❌ 创建 utils/confirm.ts 一行转发中间层（2026-09-21 重构后取消，调用方直连 @/common/utils）
+- ❌ `utils/` 下放 `format.ts` / `relatedUser.ts` 等非例外文件（应合进 `index.ts`）
+- ❌ `utils/validation.ts` 总行数 <100 行（不属"大块"，应合进）
+- ❌ `*.composable.ts` 实际不含 lifecycle 钩子（违规独立成文件）
+- ❌ **`addOrEdit/*.vue` 出现 ≥5 行 OPTIONS 数组 / ≥10 行 Descriptions items 数组 / ≥10 行 items 工厂却未拆到 `addOrEdit/{enum,config}/`**（**检查 9** 必检）
+- ❌ **`addOrEdit/*.vue` ≥2 个文件使用相同 `sticky top-0 z-10 flex items-center justify-between px-6 py-4 bg-white border-b` 顶栏 class 却未拆 `addOrEdit/config/index.ts`**（**检查 10** 必检；**不建 `addOrEdit/menu/`**）
+- ❌ **`addOrEdit/components/*.vue` 含 `rules: FormRules` ≥7 行 / 自定义 validator / 依赖 props 却未抽 `getXxxFormRules(ctx)` factory**（**检查 11** 必检）
+- ❌ 建议优化项下发为必须整改
+- ❌ import 同一路径多次（应合并）

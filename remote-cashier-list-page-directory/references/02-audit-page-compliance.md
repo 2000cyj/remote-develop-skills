@@ -132,10 +132,10 @@ grep -rnE "^const[[:space:]]+\w+[[:space:]]*=[[:space:]]*computed\(" src/pages/<
 grep -A 10 "^const.*=.*computed(" src/pages/<业务块>/addOrEdit/<file>.vue | grep -E "\.value\.|props\.|reactive\(|ref\("
 ```
 
-**判定公式**：
-- 命中 `computed(() => [...])` + 体内**无** `.value.` / `props.` / `reactive` / `ref` → **反模式**：去 computed + 抽 addOrEdit/config/（行数任意）
-- 命中 `computed(() => ({ ... }))` + 体内**有**响应式依赖 → **真 computed**：留 .vue
-- 命中 `computed(() => [...])` + 体内**有**响应式依赖 → **真 computed**：留 .vue
+**判定公式**（**v2 最终态，2026-10-15 补 factory 模式**）：
+- 命中 `computed(() => [...])` + 体内**无** `.value.` / `props.` / `reactive` / `ref` → **反模式**：去 computed + 抽 addOrEdit/config/ 常量化（`export const X = [...]`）
+- 命中 `computed(() => [...])` + 体内**有**响应式依赖（如 `companyOptions.value.map(...)`）→ **factory 模式抽 config**（`export function getXxxFormItems(ctx: { companyOptions: Ref<...>, ... }) { return computed(() => [...]) }`），ctx 传 `Ref` / `Reactive` 保留响应式追踪
+- 命中 `computed(() => ({ ... }))` + 体内**有**响应式依赖（如依赖 props.xxx）→ **factory 模式抽 config**（ctx 传 props / 调用方 ref）
 
 **违规处置**：
 - ❌ `addOrEdit.vue:203 closeStoreFormItems = computed(() => [...6 静态 item...])`（9 行 + 无响应式依赖）→ 抽 `addOrEdit/config/CLOSE_STORE_FORM_ITEMS` 常量
@@ -144,6 +144,7 @@ grep -A 10 "^const.*=.*computed(" src/pages/<业务块>/addOrEdit/<file>.vue | g
 
 **反模式**：
 - ❌ "computed 包装一下未来可扩展"—— 未来可扩展是借口；当前纯静态就是反模式
+- ❌ "体内有响应式依赖 = 留 .vue，拆出去丧失响应式"—— **错**！应该 factory 模式抽 config + ctx 传 `Ref`/`Reactive` 保留响应式（store/ formItems 2026-10-15 案例）
 - ❌ "computed 是 Vue 写法，const 写法不对"—— Vue 写法 ≠ 任何地方都该用；纯静态数据用 const 更直白
 - ❌ "我先 computed 包装，下次加 reactive 依赖"—— 等真要加再换 computed；**当前**就该是 const
 
