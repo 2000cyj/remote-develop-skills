@@ -75,6 +75,7 @@ matches.
 | `write-allowlist`, `allowlist`, `写权限`, `写盘` | — | `remote-write-scope` |
 | `vue-tsc`, `ESLint` (in frontend / Vue / TS context) | `bi-cashier`, `.java` | `remote-ts-es-check` |
 | `src/pages/`, `src/pages` | `bi-cashier`, `Java` | `remote-cashier-list-page-directory` |
+| 会后归档, `任务集`, 工时评估对照, 会话总结, 任务表, `PM/任务集` | 事前排期, 计划书, 工时估算 | `remote-session-task-summary` |
 
 ### Step 2 — Module + file type (medium priority)
 

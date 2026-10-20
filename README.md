@@ -19,7 +19,7 @@
 │   ├── package.json
 │   └── test/
 │       └── index.test.js
-├── remote-*/                           # 已发布的 10 个子 skill
+├── remote-*/                           # 已发布的 11 个子 skill
 │   ├── SKILL.md                        # 入口
 │   ├── references/                     # 按目标分档的深度参考
 │   └── recipes/                        # （按需）操作手册
@@ -34,7 +34,7 @@
 |------------|------|----------|
 | `SKILL.md` | 根路由器 | ✅ |
 | `pi-extension/` | host 状态栏 | ✅ |
-| `remote-*/SKILL.md` | 已发布子 skill | ✅（10 个）|
+| `remote-*/SKILL.md` | 已发布子 skill | ✅（11 个）|
 | `incubating/remote-*/SKILL.md` | 孵化中 skill | ❌（毕业才挪到根）|
 | `deprecated/remote-*/SKILL.md` | 弃用 skill | ❌（仅作历史归档）|
 | `docs/` `superpowers/` `.claude/` | 工程产物 / 私有配置 | ❌ |
