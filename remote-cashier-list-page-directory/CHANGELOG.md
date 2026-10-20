@@ -71,6 +71,24 @@ skill 之前的「必做动作 2」甚至**要求**这么写（`import { XXX_FOR
 
 ---
 
+## 2026-10-15 —— 新增目标 12：优先复用 share 包
+
+### 事故 8：自写组件与 share 包重复
+
+`storeAuthorization/` 的 `AuthDrawer.vue` 自写弹窗外壳，而 share 的 `renderDrawer` / `renderDialog` 能覆盖同类场景；页面骨架虽然正确用了 `ListPageLayout` + `PageVxeTable` + `useListPage`，但自写外壳部分没查过 share。
+
+**根因不是「不知道 share 有这个组件」，是规范里根本没有「组件该不该存在」这一层检查。** 原有 13 项检查全部在管「已有声明该放哪」（归属），没有一项管「这个组件要不要自己写」（来源）。检查 5 的「共用放外层」只解决放哪，不解决该不该造。
+
+**修法**：新增 `references/12-prefer-share-package-components.md` + 真源 `02-audit-page-compliance.md` 检查 14：
+- 三级来源优先级：share `@ob-web/share` → `@ob-common` / `common/` → 本块 `components/`
+- 本块 `components/` 降为最后一级，写之前必须留下「1、2 级都没有」的查证证据
+- share 全量清单快照（32 个组件 + 12 个组合式函数 + 工具/常量），并标注「清单会过期，用命令重新拉」
+- 6 条违规标志 + 4 条合法例外（例外不是默认）
+
+**为什么强调「查导出名别猜目录名」**：share 里有 `renderDrawer`（不是 `Drawer`）、`FlowableDialog`（在 `Business/Approval/flowableDialog/`）、`SearchForm`（在 `DynamicForm/SearchForm/`）—— 按目录名拼 import 会直接报错或拿到错误的东西。
+
+---
+
 ## 维护流程（必读）
 
 改这个 skill 时：

@@ -445,3 +445,34 @@ import { FORM_RULES as rules } from "./config"
 - ❌ types/index.ts 反向依赖 `./enum`（如 `type ViewTabKey = typeof VIEW_TABS[number]["key"]`）—— 解耦，用 `type ViewTabKey = CompanyViewTab`
 - ❌ 跑 `npx eslint src/pages/<业务块>/` 整目录 —— 只跑本次改的文件
 - ❌ `import type { X } from "./types"` 后又 `import type { X } from "./apis/type"`（重复 import）—— 保留 1 个
+
+### 检查 14：share 包组件复用审查（**目标 12**）
+
+> share 包（`@ob-web/share`，源码 `D:/OB/ob_web/packages/share`）是页面组件与组合式函数的**第一来源**。「共用放外层」（检查 5）管的是组件**放哪**，本检查管的是组件**该不该存在**。完整清单与查法见 `references/12-prefer-share-package-components.md`。
+
+**优先级**（与 enum 三级同一套思路，高覆盖低）：
+
+| 级 | 来源 |
+|---|---|
+| 1 | `@ob-web/share` 的 `components/` / `composables/` |
+| 2 | `@ob-common` 或微应用 `common/` |
+| 3 | 本业务块 `components/` —— **只有 1、2 都没有才允许写** |
+
+**怎么查**：逐个 read `share/components/<组件>/index.ts` 确认**导出名**（不要按目录名猜——`renderDrawer` / `FlowableDialog` / `SearchForm` 都与目录名不一致），再 read 源码 `.vue` 看 props。清单快照 + 重新拉取的命令在 12 号文档。
+
+**违规标志**（满足任一条必须整改）：
+- 1️⃣ 自写列表页骨架（搜索区 + 按钮区 + 表格 + 分页），而 `ListPageLayout` + `PageVxeTable` + `useListPage` 能覆盖
+- 2️⃣ 自写提交按钮 loading 防重，而 `LoadingButton` 能覆盖
+- 3️⃣ 自写 `xxxSearchForm` / `xxxDialog` / `xxxDrawer`，而 `SearchForm` / `renderDialog` / `renderDrawer` 能覆盖
+- 4️⃣ 别的业务块已有同名同功能组件，本块又造一个
+- 5️⃣ 造组件但报告里写不出「share 里没有 X」的查证证据 —— 视为未查
+- 6️⃣ 把 share 组件复制进 `components/` 再改 —— 改 import 路径复用，复制会让上游修复无法同步
+
+**合法例外**（必须在报告里写明）：share props 满足不了且改造成本 > 复制成本 / share 组件依赖了本块不该引入的接口或 store / 该组件只用 1 处且只有 2~3 行 / 产品视觉稿与 share 默认样式冲突。**例外不是默认**，拿不出这 4 条之一按必须整改处理。
+
+**反模式**：
+- ❌ 「先写完再说」—— 先写后查等于没查
+- ❌ 查了 share 目录名就下结论 —— 导出名与目录名经常不一致
+- ❌ 「share 组件不支持我要的样式」就重写 —— 先看 props 能不能配，不能配再走例外条款
+- ❌ 在本块造 `GenericTable` / `BaseDialog` / `SearchForm` 这类通用名 —— 通用名归 share
+- ❌ 改 share 组件的 props 语义迁就单个页面 —— 加可选 props，不改已有行为

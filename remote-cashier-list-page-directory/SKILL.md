@@ -25,6 +25,7 @@ description: Use when 在 src/pages/ 下新建或改造页面/业务模块目录
 | 目标 9：禁止 .vue/.ts 顶层 type/interface | type 违规的 8 种模式 | `references/09-no-inline-type-in-vue.md` |
 | 目标 10：JSDoc 与代码之间不留空行 | doc/code 紧贴规则 | `references/10-no-blank-line-between-doc-and-code.md` |
 | 目标 11：改完必须用 `remote-ts-es-check` | **强制，所有目标适用** | `references/11-must-use-remote-ts-es-check.md` |
+| **目标 12：优先复用 share 包组件** | 写组件/组合式函数之前 | `references/12-prefer-share-package-components.md` |
 | 一次性批量整改 enum | 收到「把 inline enum 全提取了」 | `references/90-remediation-enum-playbook.md` |
 | 一次性批量整改 type | 收到「把 type 全搬到 types/」 | `references/91-remediation-type-playbook.md` |
 | 速查表 | 一页查表 | `references/07-quick-reference.md` |
@@ -47,6 +48,7 @@ description: Use when 在 src/pages/ 下新建或改造页面/业务模块目录
 5. **`utils/` 默认只能放 `index.ts`**（细则与 3 个例外见 `02-audit-page-compliance.md` 检查 8）。
 6. **改完必须用 `remote-ts-es-check` 验证**，只能扫本次改过的文件（细则见 `11-must-use-remote-ts-es-check.md`）。
 7. **搬动任何字面量值前必须 `git show HEAD:<file>` 拿原值**，搬完 diff 验证，不一致立即停并问 user（细则见 `02-audit-page-compliance.md`「数据搬运保护」）。
+8. **写组件前先查 share 包 `@ob-web/share`**：share → `@ob-common`/`common/` → 本块 `components/`，三级都无才允许写（细则见 `12-prefer-share-package-components.md`）。
 
 ## 审查方法（唯一正确做法）
 

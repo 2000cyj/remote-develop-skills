@@ -18,6 +18,7 @@
 | 批量清 inline enum | `90-remediation-enum-playbook.md` |
 | 批量清 inline type | `91-remediation-type-playbook.md` |
 | 验收 | `11-must-use-remote-ts-es-check.md` |
+| 写组件前查 share 包 | `12-prefer-share-package-components.md` |
 
 ## 最容易忘的 6 条
 
@@ -28,6 +29,7 @@
 5. **改任何字面量值前 `git show HEAD:<file>`**，不一致就停并问 user。
 6. **验收只扫本次改过的文件**，禁止全项目扫 / `--fix` / 裸跑 `vue-tsc`。
 7. **禁转发别名**：`const rules = FORM_RULES` / `import { X as rules }` 全部不写——删掉转发行，模板直接用导入名。
+8. **写组件前先查 share 包 `@ob-web/share`**（`ListPageLayout` / `PageVxeTable` / `useListPage` / `SearchForm` / `renderDialog` / `renderDrawer` / `LoadingButton` / `Descriptions` / `NumberRange` / `Preview/*` / `Upload` / `ExportButton` …）——share → `@ob-common` → 本块 `components/`，三级都无才允许写。查导出名别猜目录名。
 
 ## 7 项目录
 
@@ -58,6 +60,7 @@ src/pages/<业务模块>/
 | 枚举 / 魔法值 | 公共 enum → 本块 enum → 就近 enum |
 | 状态 / 事件 / 副作用 | `.vue` 内 |
 | 转发别名 `const rules = FORM_RULES` | **不写**——模板直接用导入名 |
+| 自写组件 / 组合式函数 | **先查 share `@ob-web/share`**——三级都无才写本块 |
 
 ## 维护
 
