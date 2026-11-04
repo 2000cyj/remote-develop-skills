@@ -21,14 +21,14 @@ PageResult<T>       // code / msg / data / total / current / size，实现 Itera
 ```
 
 - 成功：`BaseResult.success(data)` / `BaseResult.success(msg, data)`
-- 失败：`BaseResult.fail(ResultCode.X, "提示")` —— **优先用 `ResultCode` 枚举**，不要自己写数字
+- 失败：`BaseResult.fail(ErrorCode.X, "提示")` —— **优先用 `ErrorCode` 枚举**，不要自己写数字
 - 分页：`PageResult.of(records, total, current, size)`
 - Controller 返回 `BaseResult<T>`，不要直接返回裸对象
 
 ## 异常与错误码
 
-- 业务异常一律 `BusinessException`，携带 `ResultCode`
-- `ResultCode` 是唯一错误码来源：客户端段 400-429、服务端段 500-502、自定义段 900+
+- 业务异常一律 `BusinessException`，携带 `ErrorCode`
+- `ErrorCode` 是唯一错误码来源：客户端段 400-429、服务端段 500-502、自定义段 900+
 - 全局兜底由 `GlobalExceptionHandler` 处理，Service 里**不要**自己 try-catch 包装成 `Result`
 
 ## 实体约定

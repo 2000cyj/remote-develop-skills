@@ -17,7 +17,7 @@ simple-iot/
 │   └── utils/
 ├── iot-common/
 │   ├── iot-core/                  # 基础类：BaseEntity / BaseResult / PageResult /
-│   │                              #   ResultCode / BusinessException /
+│   │                              #   ErrorCode / BusinessException /
 │   │                              #   DeviceTransport / DeviceKeyParser / DeviceProvider
 │   └── iot-protocol-core/         # 协议契约：ProtocolDecoder / DecodeResult /
 │                                  #   DeviceRequest / TSL 物模型
