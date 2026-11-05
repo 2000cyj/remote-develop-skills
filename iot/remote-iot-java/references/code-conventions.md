@@ -16,20 +16,49 @@
 ## 统一响应
 
 ```java
-BaseResult<T>       // code / msg / data；success 已由响应码推导，不再单独存字段
-PageResult<T>       // code / msg / data / total / current / size，实现 Iterable<T>
+BaseResult<T>       // code / msg / data；success 已由响应码推导（isSuccess()），不是独立字段
+PageResult<T>       // 纯分页载荷：records / total / current / size，不带信封字段
 ```
 
 - 成功：`BaseResult.success(data)` / `BaseResult.success(msg, data)`
 - 失败：`BaseResult.fail(ErrorCode.X, "提示")` —— **优先用 `ErrorCode` 枚举**，不要自己写数字
 - 分页：`PageResult.of(records, total, current, size)`
-- Controller 返回 `BaseResult<T>`，不要直接返回裸对象
+- **分页接口返回 `BaseResult<PageResult<T>>`**，不要直接返回裸 `PageResult`
+  - Service 层方法返回 `PageResult<T>`（只管分页载荷），Controller 层负责包信封
+- `PageResult` 已**不实现** `Iterable<T>`，列表字段名是 `records` 不是 `data`
+- 前端用 `iot-web/src/utils/page.js` 的 `normalizePage(res)` 兼容列表 / 分页两种形态，新增页面不要自己拆信封
 
 ## 异常与错误码
 
-- 业务异常一律 `BusinessException`，携带 `ErrorCode`
+- 业务异常一律 `ServiceException`，携带 `ErrorCode`
 - `ErrorCode` 是唯一错误码来源：客户端段 400-429、服务端段 500-502、自定义段 900+
 - 全局兜底由 `GlobalExceptionHandler` 处理，Service 里**不要**自己 try-catch 包装成 `Result`
+- `ErrorCode` 的提示字段名是 `msg`（`getMsg()`），不是 `message`
+
+### 异常类设计规范
+
+```java
+@Getter
+public final class ServiceException extends RuntimeException {
+
+    private final Integer code;   // 不可变
+    private final String msg;     // 不可变
+
+    public ServiceException(String msg) { ... }
+    public ServiceException(Integer code, String msg) { ... }
+    public ServiceException(ErrorCode errorCode) { ... }
+    public ServiceException(ErrorCode errorCode, String msg) { ... }
+
+    @Override
+    public String getMessage() { return msg; }
+}
+```
+
+- **不可变**：`code` / `msg` 收为 `final`，**不要**给异常加 setter —— 异常抛出后不应被改写
+- **不要用 `@Data`**：它会生成基于字段值的 `equals` / `hashCode`（两个不同异常只要码和提示相同就相等），异常语义上应是身份比较；生成的 `toString()` 也会改变日志首行格式。用 `@Getter` 就够
+- 构造器统一调用 `super(msg)`，并覆写 `getMessage()` 返回 `msg`（对外提示不变）
+- 合并 / 替换异常类前走 `references/bulk-edit.md` 的「合并两个同义类」检查表
+
 
 ## 实体约定
 
@@ -72,6 +101,9 @@ public class Xxx extends BaseEntity {
 
 - 全项目 324/456 个 Java 文件带 `@author dingyunwei`，**新增类沿用**
 - 枚举 / 接口 / 工具类同样要写描述（不要只留 `@author`）
+- 描述用**简短名词短语**，与包内既有风格对齐
+- 补注释时 **`@author` 沿用该文件原值**（仓库里存在 `dwx` 等其它作者），不要强行统一
+- 批量补注释的操作与自检见 `references/bulk-edit.md`
 - 方法级注释：写清**做什么**（`@param` 只说参数是什么）
 
 ## 规则节点

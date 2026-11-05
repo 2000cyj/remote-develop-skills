@@ -111,6 +111,37 @@
 - 一次性审查报告、Sprint 排期这类内部产物放在根目录，会让外部用户误读成"待修问题清单"
 - **约束**：根目录只留对外文档（README / CHANGELOG / CONTRIBUTING / CODE_OF_CONDUCT / SECURITY / ROADMAP）；内部产物挪走或删掉
 
+### 18. `.planning/` 的 gitignore 状态错配
+
+- `.gitignore` 里有 `/.planning/`（本意是不入库），但这 7 个文件**早已被 git 追踪** —— gitignore 对已追踪文件无效
+- 结果：它一边是"纯本地工作文档"，一边跟着仓库走。改类名 / 改架构时必须**同步改这些 md**，否则仓库里留着已废弃的类名
+- 里面是 2026-03 的分析快照，大量内容已过期（"32 张表"、缺 16 张表的问题列表、`ResultCode` / `BusinessException` 等旧名）
+- **约束**：改到相关文件时顺手同步；长期方案是 `git rm --cached -r .planning` 让 gitignore 真正生效
+
+### 19. `.planning/` 里的响应结构示例已经不准
+
+- `ARCHITECTURE.md` 写的失败响应是 `{"code":400,"msg":"...","data":null,"success":false}`
+- 实际：`BaseResult` 带 `@JsonInclude(NON_NULL)`，`fail(...)` 把 `data` 置 null → **`data` 字段整个不出现**
+- 实际输出是 `{"code":400,"msg":"...","success":false}`（`success` 是 `isSuccess()` 推导的 getter，Jackson 会当属性序列化）
+- **约束**：文档里贴响应示例前，先按当前 `BaseResult` / `PageResult` 的实际行为核对，别照抄旧文
+
+## P2 — 批量改码事故（详见 references/bulk-edit.md）
+
+### 20. 脚本拼接丢换行 → 提交了语法错误的 Java
+
+- 用 `'\n'.join(lines) + rest` 拼字符串时 join 结果不带尾换行，把 `*/` 与下一行粘成 ` */@Data`
+- **约束**：全程用行数组操作，最后一次性 join；改完跑"无 `*/` 粘连"自检
+
+### 21. 回溯找 javadoc 没跳过空行 → 出现两个 javadoc 块
+
+- 旧 javadoc 与注解之间有空行的文件（`*/\n\n@Getter`）会导致旧块没被替换、又插一个新块
+- **约束**：回溯时先跳空行；改完检查"每个文件类型声明前恰好 1 个 javadoc 块"
+
+### 22. `git mv` 后暂存区半成品
+
+- `git mv` 只暂存了重命名，**类名改动留在工作区**；直接 commit 会提交出「文件名与类名不一致」的坏代码
+- **约束**：`git status --porcelain` 首列 `R` + 次列 `M` = 索引与工作区不一致，提交前必须 `git add -A <目标路径>`
+
 ## 提交前自检清单
 
 - [ ] `python scripts/verify_schema.py` 全绿
@@ -119,5 +150,8 @@
 - [ ] 许可证六处一致（Apache 2.0）
 - [ ] 新增对外链接的目标文件**已入库**且存在
 - [ ] 测试数 / 规则节点数 / 表数等数字已同步
-- [ ] 没有把用户未提交的改动一起 `git add`
-- [ ] 没有把 `.codegraph/` `__pycache__/` `node_modules/` `dist/` 提交进去
+- [ ] 没有把用户未提交的改动一起 `git add`（显式 `git add <path>`，别用 `git add -A`）
+- [ ] 没有把 `.codegraph/` `__pycache__/` `node_modules/` `dist/` `.codex/` 提交进去
+- [ ] 批量改码：javadoc 块唯一、花括号配平、无 `*/` 粘连、行尾一致
+- [ ] 全仓重命名：旧名 grep 归零、类名 = 文件名、枚举常量逐个比对
+

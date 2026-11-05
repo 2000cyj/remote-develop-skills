@@ -17,7 +17,7 @@ simple-iot/
 │   └── utils/
 ├── iot-common/
 │   ├── iot-core/                  # 基础类：BaseEntity / BaseResult / PageResult /
-│   │                              #   ErrorCode / BusinessException /
+│   │                              #   ErrorCode / ServiceException /
 │   │                              #   DeviceTransport / DeviceKeyParser / DeviceProvider
 │   └── iot-protocol-core/         # 协议契约：ProtocolDecoder / DecodeResult /
 │                                  #   DeviceRequest / TSL 物模型
@@ -86,7 +86,7 @@ ProtocolFactory.getDecoder(protoKey)      ← 按产品绑定的 protoKey 路由
 | 新驱动（TCP / HTTP / 自定义） | `iot-server/driver/{type}/` 实现 `DeviceTransport` | 设备号解析另实现 `DeviceKeyParser` |
 | 新设备号解析器（系统级） | `iot-driver/system-driver/` | `DriverTypeEnum.driverTypes()` 声明适用驱动类型 |
 | 新实体 / 表 | `iot-server/entity/Xxx.java` + `doc/sql/init.sql` + `doc/sql/migrations/` | 见 `schema-sync.md` |
-| 新 REST 接口 | `iot-server/controller/iot/XxxController.java` | 返回值统一 `BaseResult<T>`，分页用 `PageResult<T>` |
+| 新 REST 接口 | `iot-server/controller/iot/XxxController.java` | 返回值统一 `BaseResult<T>`，分页用 `BaseResult<PageResult<T>>` |
 | 新业务逻辑 | `iot-server/service/XxxService.java` + `service/impl/XxxServiceImpl.java` | — |
 | 公共基础类 | `iot-common/iot-core/`（跨模块复用） | 注意**不要**在 `iot-server` 重复定义同名同包名的类 |
 
