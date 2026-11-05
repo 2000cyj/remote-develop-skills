@@ -111,12 +111,12 @@
 - 一次性审查报告、Sprint 排期这类内部产物放在根目录，会让外部用户误读成"待修问题清单"
 - **约束**：根目录只留对外文档（README / CHANGELOG / CONTRIBUTING / CODE_OF_CONDUCT / SECURITY / ROADMAP）；内部产物挪走或删掉
 
-### 18. `.planning/` 的 gitignore 状态错配
+### 18. `.planning/` 已摘出仓库（通用教训：gitignore 对已追踪文件无效）
 
-- `.gitignore` 里有 `/.planning/`（本意是不入库），但这 7 个文件**早已被 git 追踪** —— gitignore 对已追踪文件无效
-- 结果：它一边是"纯本地工作文档"，一边跟着仓库走。改类名 / 改架构时必须**同步改这些 md**，否则仓库里留着已废弃的类名
-- 里面是 2026-03 的分析快照，大量内容已过期（"32 张表"、缺 16 张表的问题列表、`ResultCode` / `BusinessException` 等旧名）
-- **约束**：改到相关文件时顺手同步；长期方案是 `git rm --cached -r .planning` 让 gitignore 真正生效
+- `.planning/` 是 2026-03 生成的 codebase 分析快照（7 份 md），本意是纯本地参考
+- `.gitignore` 里写了 `/.planning/`，但这些文件在引入时已被 `git add`，**gitignore 对已追踪文件无效** —— 于是它一边是"本地文档"一边跟着仓库走，改类名 / 改架构都得同步维护，而内容早已漂移（"32 张表"、旧类名等）
+- **2026-11 已用 `git rm --cached -r .planning` 摘出仓库**，磁盘文件保留，`.gitignore` 从此真正生效；历史仍可追溯（`git log -- .planning/`）
+- **通用教训**：往 `.gitignore` 加规则后，要确认目标文件**此前没被追踪**；已追踪的必须 `git rm --cached` 才能真正排除
 
 ### 19. `.planning/` 里的响应结构示例已经不准
 
