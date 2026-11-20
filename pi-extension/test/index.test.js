@@ -127,9 +127,9 @@ test("loadSkillPaths returns 11 skills (1 router + 10 sub)", () => {
   assert.ok(paths[0].endsWith("SKILL.md"), "first is router");
 });
 
-test("loadRouterTable extracts 10 sub-skill rows", () => {
+test("loadRouterTable extracts 8 sub-skill rows", () => {
   const table = loadRouterTable(REPO_ROOT);
-  assert.equal(table.length, 10);
+  assert.equal(table.length, 8);
   assert.ok(table.every((r) => r.name.startsWith("remote-")));
   assert.ok(table.every((r) => r.tokens.length > 0));
 });
@@ -164,13 +164,6 @@ test("route 'orca cli' → remote-orca-cli", () => {
   const hits = routeQuery(table, "用 orca 跑 worktree spawn");
   assert.ok(hits.length > 0);
   assert.equal(hits[0].name, "remote-orca-cli");
-});
-
-test("route '写权限 allowlist' → remote-write-scope", () => {
-  const table = loadRouterTable(REPO_ROOT);
-  const hits = routeQuery(table, "写权限 allowlist");
-  assert.ok(hits.length > 0);
-  assert.equal(hits[0].name, "remote-write-scope");
 });
 
 test("route 'agent 派发' → remote-orca-agent-communication", () => {

@@ -44,7 +44,7 @@
 ## 2. skill 命名约定
 
 - **前缀必填**：`remote-`（已发布的子 skill 一律 `remote-<领域>`）
-- **领域用 kebab-case**：`remote-cashier-java-standard` / `remote-idea-mcp-usage` / `remote-write-scope`
+- **领域用 kebab-case**：`remote-cashier-java-standard` / `remote-idea-mcp-usage` / `remote-commit-git`
 - **目录名 = `name` 字段**：自检脚本逐字比对，**不**允许 `Remote-Foo` / `remote_foo` / `foo`
 - **cashier 模块专属加 `cashier` 中缀**：`remote-cashier-flowable-task-with-next` / `remote-cashier-java-standard` / `remote-cashier-list-page-directory` —— 显式标注模块组归属
 - **不允许**空格 / 中文 / 下划线 / 全大写

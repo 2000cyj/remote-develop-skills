@@ -3355,7 +3355,7 @@ public interface StoreAuditOffboardingApplicationService extends IService<StoreA
 
 ### 22.4 关联规则
 
-- `remote-idea-mcp-usage/SKILL.md` — IDEA MCP 工具能力边界（`execute_terminal_command` 走 powershell、不受 write-allowlist 拦）
+- `remote-idea-mcp-usage/SKILL.md` — IDEA MCP 工具能力边界（`execute_terminal_command` 走 powershell）
 - `references/code-compile-verification.md` §2.1-2.3 — mvn install 命令模板 + .m2 jar 完整性自检
 - §21.1 / §21.5 / §21.7 / §21.9 — 强制自检 + 报告模板（仍适用，但**验证手段升级**为 `execute_terminal_command` + `mvn install`，不再依赖 `build_project`）
 - §红线 — 任何"已构建通过"声明必须附 `BUILD SUCCESS` 段（V20261009 升级为：必须 `mvn install` 真退出码 + 4 模块 SUCCESS 列表）

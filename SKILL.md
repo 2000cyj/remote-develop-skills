@@ -72,7 +72,6 @@ matches.
 | `orca` (as a CLI command, not in `BiFlowableClient` etc.) | `BiFlowableClient`, `审批` | `remote-orca-cli` |
 | `ptyId`, `incarnationId`, `tabId`, `跨agent`, `跨 agent`, `派发` | — | `remote-orca-agent-communication` |
 | `conventional commits`, `commitlint`, `lint-staged`, `拆批`, `分批提交` | — | `remote-commit-git` |
-| `write-allowlist`, `allowlist`, `写权限`, `写盘` | — | `remote-write-scope` |
 | `vue-tsc`, `ESLint` (in frontend / Vue / TS context) | `bi-cashier`, `.java` | `remote-ts-es-check` |
 | `src/pages/`, `src/pages` | `bi-cashier`, `Java` | `remote-cashier-list-page-directory` |
 | 会后归档, `任务集`, 工时评估对照, 会话总结, 任务表, `PM/任务集` | 事前排期, 计划书, 工时估算 | `remote-session-task-summary` |
@@ -96,7 +95,7 @@ prompt about bi-cashier + IDEA tool goes to Step 1's
 **任何路由到 `remote-cashier-java-standard` 的任务**，**同时**也必须 read 加载 `remote-idea-mcp-usage`：
 
 - **`remote-cashier-java-standard` 提供"怎么写"**（分层、注释、PageHelper、§8 3 参、§15 软删、§15.1 INSERT 路径、§21/§22 编译验证红线）
-- **`remote-idea-mcp-usage` 提供"怎么操作"**（`mcp__idea__execute_tool execute_terminal_command` 跑 mvn、`get_file_problems` / `lint_files` / `build_project` 的能力边界、db 写读、写-allowlist hook 绕过路径）
+- **`remote-idea-mcp-usage` 提供"怎么操作"**（`mcp__idea__execute_tool execute_terminal_command` 跑 mvn、`get_file_problems` / `lint_files` / `build_project` 的能力边界、db 写读）
 
 **两者必须同时加载**，单加载 java-standard 会：不知道环境路径、不知道怎么跑 mvn、不知道怎么调 db 验证。单加载 idea-mcp-usage 会：违反 §8 / §15 / §21 规则。两个是互补的，不是互斥的。
 
@@ -108,7 +107,7 @@ prompt about bi-cashier + IDEA tool goes to Step 1's
 
 **优先级从高到低**（高 → 低；越高越首选）：
 
-1. **`mcp__idea__execute_tool execute_terminal_command`** — 首选。能跑 mvn install / mvn -pl X -am compile / javac / git / sed / find。走 IDEA 自己的 powershell，不受 write-allowlist hook 拦，拿真退出码。
+1. **`mcp__idea__execute_tool execute_terminal_command`** — 首选。能跑 mvn install / mvn -pl X -am compile / javac / git / sed / find。走 IDEA 自己的 powershell，拿真退出码。
 2. **`mcp__idea__execute_tool get_file_problems` / `lint_files`** — 用于调过 mvn 后的局部文件错误复查（单文件、单行）。
 3. **mcp__context_mode__ctx_execute / ctx_execute_file** — **仅**用于"读"路径：处理 IDEA MCP 不能读的 large log / json / 大文件
 4. **Bash（read-only）** — `ls` / `grep` / `find` / `stat` 这类只读导航

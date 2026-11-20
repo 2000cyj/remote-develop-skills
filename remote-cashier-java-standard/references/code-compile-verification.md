@@ -213,7 +213,6 @@ Write-Host EXIT:$LASTEXITCODE
 
 **为什么是首选**：
 - `mcp__idea__execute_tool build_project` 是 fire-and-forget（参见 §3）——不起这个作用
-- 走 IDEA MCP `execute_terminal_command` 不受 write-allowlist hook 拦（`get_file_problems` / `lint_files` 受 `--filePath` 误拦，参见 §4）
 - 拿真退出码 + 4 模块 SUCCESS 列表，证据可重放
 
 **首跑前置**（`.m2` 只有 sources.jar 缺 runtime jar 时）：

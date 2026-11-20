@@ -18,8 +18,7 @@
       "./remote-orca-agent-communication/SKILL.md",
       "./remote-orca-cli/SKILL.md",
       "./remote-session-task-summary/SKILL.md",
-      "./remote-ts-es-check/SKILL.md",
-      "./remote-write-scope/SKILL.md"
+      "./remote-ts-es-check/SKILL.md"
     ]
   }
 }
