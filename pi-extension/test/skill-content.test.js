@@ -5,6 +5,27 @@ import { fileURLToPath } from "node:url";
 import { dirname, resolve, join } from "node:path";
 
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
+const tsRoot = join(repo, "remote-ts-es-check");
+const tsEntry = readFileSync(join(tsRoot, "SKILL.md"), "utf8");
+
+test("TS/ESLint entry stays under 16 KiB with valid on-demand references", () => {
+  assert.ok(Buffer.byteLength(tsEntry, "utf8") <= 16 * 1024);
+  const routes = [...tsEntry.matchAll(/^Use references\/([\w-]+\.md) when /gm)];
+  assert.equal(routes.length, 10);
+  for (const [, name] of routes) {
+    assert.ok(existsSync(join(tsRoot, "references", name)), `Missing TS reference: ${name}`);
+  }
+});
+
+test("TS/ESLint entry preserves hunk scope, explicit type-check consent and hook fields", () => {
+  assert.match(tsEntry, /changed hunks/);
+  assert.match(tsEntry, /禁止 `--fix`/);
+  assert.match(tsEntry, /只有用户明确要求项目级\/全量类型验证时才运行/);
+  assert.match(tsEntry, /仅发现类型嫌疑不构成授权/);
+  for (const field of ["HOOK_ESLINT_ARGS", "HOOK_TSC_ARGS", "HOOK_MAX_ATTEMPTS", "HOOK_SRC_REGEX"]) {
+    assert.match(tsEntry, new RegExp(`^${field}=`, "m"));
+  }
+});
 const root = join(repo, "remote-cashier-java-standard");
 const entry = readFileSync(join(root, "SKILL.md"), "utf8");
 const references = [...entry.matchAll(/^Use `references\/([^`]+\.md)` when /gm)]
