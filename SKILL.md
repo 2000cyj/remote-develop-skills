@@ -3,8 +3,8 @@ name: remote-develop-skills
 description: >
   Use on ANY coding task in the orca-workflow workspace: Java 8 back-end
   work, Vue 3 front-end work, bi-cashier modifications, bi-flowable
-  tasks, IDEA tooling, orca-cli, TypeScript type checks, git commits,
-  or write-permission discussions. This skill is a ROUTER — it points
+  tasks, IDEA tooling, orca-cli, TypeScript type checks, or git commits.
+  This skill is a ROUTER — it points
   you to the specialized sub-skill for the topic at hand. Follow the
   4-step decision algorithm below; pick the first matching step; load
   that sub-skill's SKILL.md from <available_skills> (do NOT guess
@@ -28,6 +28,14 @@ treating a task as solved directly. Sub-skill rules override the
 generic rules here.
 
 Off: "stop router" / "ignore remote-develop-skills".
+
+## File-write checks
+
+These skills do not require a file-write permission snapshot, a local
+permission file, or a mounted permission hook before editing files.
+Do not invent such prerequisites or stop work because they are absent.
+Follow the actual tool/runtime permissions and the user's requested
+scope. Business authorization and database safety rules remain separate.
 
 ## How to load a sub-skill
 
