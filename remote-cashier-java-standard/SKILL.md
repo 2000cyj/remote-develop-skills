@@ -50,6 +50,7 @@ description: Use when 修改、审查或新建 bi-cashier-api/bi-cashier-compone
 ### 代码质量与测试
 
 - 接口方法、常量、字段变量必须有业务语义 Javadoc；Impl 的 `@Override` 方法不加方法 Javadoc（含 inheritDoc）。Controller public 方法用中文 Swagger 注解，不加方法 Javadoc；类和自定义 helper 保留必要 Javadoc。
+- Javadoc 必须与真实签名一致：改签名（≥3 参 DTO 化 / 删参 / 合并参）必须在同一 commit 内同步 `@param`（名称逐字一致，失效项删除）；一个方法上方只保留一个 Javadoc 块，描述必须与方法实际行为一致；提交前自查 `stale=0 missing=0 orphan=0`，细则见 documentation-rules §0.4。
 - DTO/VO 字段 Javadoc 末尾不加句号，字段间与类体首尾留空行；Resource 注入集中在类顶部按字段名字母序。
 - 业务失败抛 `BusinessException`，提示语面向用户，不暴露内部术语；关键业务键放日志。CRUD 失败、CAS 冲突、RPC 异常等不得静默处理。Controller 不承担业务日志。
 - 禁止循环查库/同步跨 Service 写入、吞异常、printStackTrace；跨服务复用已有 API Feign Client。Controller 禁用已废弃 `@BusLogs`。
@@ -65,7 +66,7 @@ Use `references/po-identity.md` when 修改 PO 继承、审计字段或业务唯
 Use `references/po-boundaries.md` when 审查 XML 返回类型、PO 继承边界或 MP 泛型三件套（原核心 §4.7）。
 Use `references/pagination-rules.md` when 新增或修改分页、PageHelper 与 Mapper XML（原核心 §4.8）。
 Use `references/method-contracts.md` when 修改参数对象化、BeanCopy、日志、helper 或 PO 显式字段映射（原核心 §5–13、§4.9）。
-Use `references/documentation-rules.md` when 修改接口/Impl/Controller 注释及无载荷写接口（原代码规范 §0–0.3）。
+Use `references/documentation-rules.md` when 修改接口/Impl/Controller 注释及无载荷写接口（原代码规范 §0–0.4）。
 Use `references/layout-rules.md` when 需要文件布局、注解顺序、泛型、模块归属与完整红线（原代码规范 §1–9）。
 Use `references/code-structure.md` when 修改类结构、DTO/VO 格式、helper 或未使用代码。
 Use `references/coding-quality.md` when 修改命名、异常文案、日志、安全规则或 Feign 契约。

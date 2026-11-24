@@ -196,6 +196,35 @@ StorePageDTO storeDto = BeanCopyUtils.copy(dto, StorePageDTO::new);
 - `SKILL.md` §13.6「方法简化」+ `SKILL.md` §7「禁止简单数据筛选赋值 wrapper helper」— 同一原则的早期沉淀
 - `references/code-review-checklist.md` §9「自检 quick 命令」— 新增扫 1-调用 wrapper 的 grep
 
+### 21. Javadoc 与签名脱节：DTO 化后注释没跟着改（V20261124 新增）
+
+**黄金原则**：
+
+> **改签名 = 改注释。** 形参增删改（含 ≥3 参 DTO 化）必须在同一 commit 内同步 `@param`；
+> 一个方法上方只留一个 Javadoc 块，且描述必须与方法当前行为一致。
+
+**反面案例**（`StoreAuditOnboardingManageServiceImpl`，2026-11-24 规范整改实测）：
+
+| # | 问题 | 表现 | 处置 |
+|---|------|------|------|
+| 1 | 失效 `@param` | `resolveReturnNodeHandler` 的 `engineNextAssignee` 已删参，注释还在；`writeStoreArchives` 留了 5 个旧参（application / subAccountsByStore / applyDepartmentName / newProcessFlow） | 按真实签名重写 |
+| 2 | 重复 Javadoc 块 | `historySatisfiesScope` / `historyScopeSatisfied` 上下各一块（旧块仍写 `targetPlatforms` / `applyDepartment`）；`resolveReturnNodeHandler` 上方留着已删方法的孤儿块 | 合并 / 删除 |
+| 3 | 缺 `@param` | 27 个 helper 一个 `@param` 都没有（validateDemandRows / isSubmittable / alignStoreRowsByDemands / findTaskById …） | 补齐 |
+| 4 | 描述错位 | `isSubAccountAllBlank` 写的是「校验填表输入…」；`findTaskById` 写的是「节点 10 完成后完成流程（COMPLETED）」 | 改描述 |
+
+**事后教训**：
+
+1. 新写 Javadoc 时**不删旧块** → 同一方法上方两块注释，review 只看得到第一块（还是旧的）
+2. DTO 化只改签名不动注释 → 文档描述的是「改之前的世界」
+3. 描述是复制来的 → 挂错方法身上也不报错
+
+**自查脚本要点**：按括号深度提取形参名（泛型里的逗号会误切，跨行签名要拼行），查 `stale` / `missing` / `orphan` 三类，期望全 0；完整协议与脚本要点见 `references/documentation-rules.md` §0.4。
+
+**关联规则**：
+
+- `references/documentation-rules.md` §0.4 — Javadoc 与签名一致性协议、审查硬指标、脚本要点
+- `SKILL.md` 核心规则「代码质量与测试」— Javadoc 必须与真实签名一致
+
 ---
 
 ## 红线（必须遵守）

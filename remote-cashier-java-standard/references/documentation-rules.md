@@ -369,3 +369,46 @@ grep -rEn "return Result\.success\(\);|public Result<Void>"   bi-cashier-web/src
 1. **校验类接口**（`isXxxExists` / `existsIn` / `checkXxx` 等）：返回真实布尔 `Result.success(boolean exists)`，**不**写死 `Boolean.TRUE`。
 2. **返回业务对象**的接口（`Result<XxxVO>` / `Result<PageResult<XxxVO>>`）：走常规解包，不需要 `Boolean.TRUE`。
 
+### 0.4 Javadoc 必须与真实签名一致（V20261124 新增）
+
+> 来源：`bi-cashier-service` 的 `StoreAuditOnboardingManageServiceImpl`（2026-11-24 规范整改）。
+> DTO 化 / 删参 / 合并参之后注释没跟着改 → Javadoc 与代码说两套话，review 与排障都被误导。
+
+#### 协议
+
+| 场景 | 要求 |
+|---|---|
+| 改方法签名（≥3 参 DTO 化、删除形参、合并形参） | 同一个 commit 内同步 `@param`：删失效项、补新增项、语义变了就改描述 |
+| `@param` 名称 | 必须与形参**逐字**一致（含大小写）；不得保留已删除的形参名 |
+| 形参有、Javadoc 缺 `@param` | 补齐（helper 强制；存量代码在被改动行范围内一并补） |
+| 一个方法上方出现**两个连续** `/** ... */` 块 | 只留描述该方法的那一块，另一块删除（多半是上一轮误加 / 遗留） |
+| Javadoc 描述与方法实际行为不符 | 改描述（如「校验填表输入」挂在「整条是否全空」的方法上） |
+| 描述里出现已删除的方法 / 能力 | 一并删掉（如已删方法留下的孤儿注释块） |
+
+#### 审查硬指标（提交前必跑）
+
+```bash
+# 连续两个 Javadoc 块（疑似重复 / 孤儿注释）
+grep -n -A2 -E "^\s*/\*\*$" Target.java | grep -B1 -E "^[0-9]+-\s*/\*\*$"
+# 预期：0 命中
+```
+
+`@param` 与签名的一致性用脚本比对（node / python 均可），三类都要查：
+
+- `stale`：Javadoc 有、形参已不在签名里（改签名后最常见的漏改）。
+- `missing`：形参有、Javadoc 缺 `@param`。
+- `orphan`：Javadoc 块后面紧跟另一个 Javadoc 块。
+
+脚本要点：
+
+1. 提取形参名要按**括号深度**扫描，不能用贪婪正则（如 `/\(([\s\S]*)\)/`）：泛型 `<Map<String, List<X>>>` 里的逗号会误切，跨行签名要拼行后再解析。
+2. 只比对 `private/public/protected/static` 方法声明；字段 Javadoc、类 Javadoc 不参与。
+3. 期望值：`stale=0 missing=0 orphan=0`。
+
+#### 案例（StoreAuditOnboardingManageServiceImpl，2026-11-24）
+
+- 3 处重复 Javadoc 块：`historySatisfiesScope` / `historyScopeSatisfied`（旧块仍写 `@param targetPlatforms / applyDepartment`，DTO 化后已失效）+ `resolveReturnNodeHandler` 上方遗留的「已删方法」孤儿块。
+- 27 处 helper 缺 `@param`（validateDemandRows / isSubmittable / requireOnboardingVersion / alignStoreRowsByDemands / findTaskById / firstNonBlank …）。
+- 2 处描述错位：`isSubAccountAllBlank`（写的是「校验填表输入」）、`findTaskById`（写的是「节点 10 完成后完成流程」）。
+- 修复后扫描：`stale=0 missing=0 orphan=0`，并按 §22 跑真 Maven（`mvn -o -pl bi-cashier-service -am -DskipTests compile` → BUILD SUCCESS）。
+
