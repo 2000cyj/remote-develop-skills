@@ -185,6 +185,15 @@ if (CollUtil.isNotEmpty(list)) {
 - 嵌套类一律 `public static class`，写在所在外层类的**最后**（参考 SKILL.md §2.2 中的子项布局）。
 - 不要超过 **2 层嵌套**（外层 → 嵌套静态类 → 不再嵌套）；如需更深，改成顶层类放在同包。
 
+### 7.1 禁止用嵌套类承载数据（V20261124 新增）
+
+- 嵌套类只用于「DTO / VO 的子项」（如 `StoreSaveRequestDTO.ChangeInfoItem`）这类**结构从属**场景；
+  **凡是承载业务数据的上下文 / 聚合 / 统计对象（哪怕写成 `private static final class` 放在 Impl 里），一律拆成 `bi-cashier-api` 的顶级 DTO / VO 类**，类名以 `DTO` / `VO` 结尾。
+- 理由：内部类不进 api 模块 → 别的模块 / 前端拿不到、无法复用；构造器直接吃 PO → PO 越过 api 边界外泄；手写 getter 与项目 `@Data` 风格不一致。
+- 判定口径：类里有字段，且对象被当作「数据载体」传递 / 返回 / 计数统计 → 拆。
+- 允许留在原类的只有：枚举、常量容器、无状态的工具型小类。
+- 案例：`references/helper-and-comment-cases.md` §22。
+
 ## 8. 私有 helper 与重构
 
 | 信号 | 推荐做法 |

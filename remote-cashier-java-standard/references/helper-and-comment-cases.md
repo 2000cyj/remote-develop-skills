@@ -227,6 +227,41 @@ StorePageDTO storeDto = BeanCopyUtils.copy(dto, StorePageDTO::new);
 
 ---
 
+### 22. Impl 内部类当 DTO 用：DemandSlot / StoreAlignResult 案例（V20261124 新增）
+
+**黄金原则**：
+
+> 承载数据的对象放 `bi-cashier-api` 顶级类（`XxxDTO` / `XxxVO`）；Impl 里不写 `private static final class` 当数据载体。
+
+**反面案例**（`StoreAuditOnboardingManageServiceImpl`，2026-11-24 规范整改实测）：
+
+| # | 问题 | 表现 | 处置 |
+|---|------|------|------|
+| 1 | 内部类承载业务数据 | `private static final class DemandSlot`（需求行槽位）、`private static final class StoreAlignResult`（对齐统计：保留 / 新增 / 作废） | 拆成 `StoreAuditOnboardingDemandSlotDTO` / `StoreAuditOnboardingStoreAlignResultDTO`（api 模块） |
+| 2 | 构造器吃 PO | `new DemandSlot(demand)` 直接接 `StoreAuditOnboardingDemandPO` → PO 越过 api 边界外泄 | DTO 只留字段，Impl 里逐字段 set |
+| 3 | 手写 getter + 无注解 | 内部类手写 `getKeepCount()`，无 `@Data` / `@ApiModel` / 字段 Javadoc | 按 api 模块 DTO 规范重写（`@Data` + `@ApiModel` + 逐字段 Javadoc 与 `@ApiModelProperty`） |
+
+**事后教训**：
+
+1. 内部类"看着很轻"，其实是 **api 模块缺位**的信号——等这个对象要复用、要被前端看到、要跨层传时，已经没有位置放它了
+2. 构造器接 PO 最容易被忽略：类本身在 service 层还好，PO 一旦进构造器就等于把持久层对象带出边界
+3. 手写 getter 让这个类看起来"合规"，掩盖了它根本不该待在 Impl 里
+
+**审查硬指标**：
+
+```bash
+grep -rn "private static final class\|private static class" bi-cashier-service/src/main/java
+```
+
+结果非空即逐个判定：枚举 / 常量容器可留，数据载体必须拆到 api。
+
+**关联规则**：
+
+- `references/code-structure.md` §7.1 — 嵌套类使用边界
+- `SKILL.md` 核心规则「契约、参数与返回值」— 聚合/上下文 DTO 必须在 api 中作为独立顶级类
+
+---
+
 ## 红线（必须遵守）
 
 > 任何"已构建通过" / "编译验证完成" / "已通过编译" 的声明，**必须**附可重放的证据。**首选 `IDEA MCP execute_terminal_command` 跑 `mvn install -pl 4 模块 -am`**，拿 `BUILD SUCCESS` 段与 4 模块 SUCCESS 列表进报告。

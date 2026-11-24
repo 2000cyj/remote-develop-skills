@@ -31,6 +31,7 @@ description: Use when 修改、审查或新建 bi-cashier-api/bi-cashier-compone
 - Controller ≥2 个独立业务入参收进 DTO；Service/Component/helper ≥3 个形参必须 DTO 化。只有全部为固定 RPC 传输字段且不超过3个时可记录例外；CAS、状态推进、复合写入不算 RPC 例外。
 - 审查或调整调用链必须统计接口、实现和调用方中的 ≥3 参数方法，报告处理结果，不能因历史代码或刚下沉而跳过。
 - 聚合/上下文 DTO 必须在 api 中作为独立顶级类，禁止嵌入 Service/Interface/Impl。
+- 承载数据的上下文/聚合/统计对象禁止写成 Impl 内部类（`private static final class`），必须是 api 模块顶级 DTO/VO；细则见 code-structure §7.1。
 - `PageResult<T>`、`Result<PageResult<T>>` 必须带泛型；PO→VO 转换后重新包装 records，禁止伪泛型。
 - 无返回载荷的写接口返回 `Result<Boolean>` / `Result.success(Boolean.TRUE)`；查询校验布尔接口返回真实结果，业务对象接口正常返回对象。
 - Controller 返回 VO，不泄露 PO；Page/List/Detail 按业务视图独立命名。DTO 校验边界变更需同步相关前端 FormRules、maxlength。
@@ -100,7 +101,7 @@ Use `references/dto-contract-cases.md` when 查实战案例 §12–14：DTO/VO/P
 Use `references/soft-delete-cases.md` when 查实战案例 §15：MP 自动软删与手写 XML 的差异。
 Use `references/audit-and-view-cases.md` when 查实战案例 §15.1、§16：审计自动填充、INSERT 默认值和视图命名。
 Use `references/data-access-cases.md` when 查实战案例 §17–18：BankCard 软删整改和数据级唯一性。
-Use `references/helper-and-comment-cases.md` when 查实战案例 §19–20：Impl 注释、一次调用 wrapper 反模式与补充红线。
+Use `references/helper-and-comment-cases.md` when 查实战案例 §19–22：Impl 注释、一次调用 wrapper 反模式、Javadoc 与签名脱节、内部类当 DTO 用反模式。
 
 上述拆出文件保留原文细则和案例；不要因其引用了旧 SKILL.md 章节而重新加载所有文件。后续新增规则写入对应主题文件，入口仅保留核心约束与导航。
 
