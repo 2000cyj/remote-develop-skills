@@ -274,6 +274,8 @@ if (CollUtil.isNotEmpty(list)) {
 | **纯 filter 1 调用方 wrapper** | `private boolean matchAggregateStatusFilter(row, filters) { if (isEmpty(filters)) return true; String s = row.getAggregateStatus(); return isNotBlank(s) && filters.contains(s); }` | 调用方 1 处 + 方法体只有 empty/blank/contains 三段式判断 | **内联到调用点的 `for` 循环里**（`if (CollUtils.isNotEmpty(aggregateStatuses)) { ... continue; }`） |
 | **ID 生成 1 调用方 2 行 wrapper** | `private String generateUniqueValue() { String date = LocalDate.now().format(...); return PREFIX + IDUtils.getId(date, TYPE); }` | 调用方 1 处 + 方法体只日期拼接 + IDUtils 拼接 | **内联到调用点**（2 行直接写在 `if (isInsert)` 里，变量名加注释说明"生成 SAA- 业务ID"） |
 | **死方法 0 调用** | `static boolean isOpenAuditNode(...)` 整段 0 引用 | `Grep "isOpenAuditNode\("` | **直接删** |
+| **安全壳 wrapper（try/catch 包一次调用）** | `private List<X> listPendingTasksSafely(String uv) { try { return listCurrentTasks(uv); } catch (Exception ex) { log.warn(...); return Collections.emptyList(); } }` | 调用方 1 处 + 方法体只有「一次调用 + catch 兜底」 | **内联到调用点**（try/catch 就地写，加一行注释说明降级口径） |
+| **单点调用的归一化 / 字典 helper** | `private String mapStoreCountScope(String s)`、`private Map<String, String> loadDepartmentNameMap()` | 调用方 1 处 + 方法体无业务规则（纯字符串归一化 / 纯字典取值） | **内联到调用点**（用局部变量承接） |
 
 **内联示例（"一判断一返回"）**：
 
@@ -286,6 +288,30 @@ private int normalizePageNum(Integer pageNum) {
 
 // ✅ 正例：内联三元
 int pageNum = dto.getPageNum() == null || dto.getPageNum() < 1 ? 1 : dto.getPageNum();
+```
+
+**安全壳内联示例（try/catch 包一次调用）**：
+
+```java
+// ❌ 反例：只包一层 try/catch，却单独占一个方法
+private List<TaskItemSnapshotDTO> listPendingTasksSafely(String uniqueValue) {
+    try {
+        return listCurrentTasks(uniqueValue);
+    } catch (Exception ex) {
+        log.warn("上架申请详情-查询流程待办失败：uniqueValue={}, reason={}", uniqueValue, ex.getMessage());
+        return Collections.emptyList();
+    }
+}
+
+// ✅ 正例：内联到调用点，降级口径写进注释
+List<TaskItemSnapshotDTO> pendingTasks;
+try {
+    pendingTasks = listCurrentTasks(uniqueValue);
+} catch (Exception ex) {
+    // 流程引擎不可用时不阻断详情查询，按「无待办」处理
+    log.warn("上架申请详情-查询流程待办失败：uniqueValue={}, reason={}", uniqueValue, ex.getMessage());
+    pendingTasks = Collections.emptyList();
+}
 ```
 
 **"取列表第一个" 内联示例**：

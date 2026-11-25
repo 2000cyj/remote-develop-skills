@@ -412,3 +412,31 @@ grep -n -A2 -E "^\s*/\*\*$" Target.java | grep -B1 -E "^[0-9]+-\s*/\*\*$"
 - 2 处描述错位：`isSubAccountAllBlank`（写的是「校验填表输入」）、`findTaskById`（写的是「节点 10 完成后完成流程」）。
 - 修复后扫描：`stale=0 missing=0 orphan=0`，并按 §22 跑真 Maven（`mvn -o -pl bi-cashier-service -am -DskipTests compile` → BUILD SUCCESS）。
 
+
+### 0.5 依赖注入字段不加 Javadoc（V20261125 新增）
+
+> 来源：`bi-cashier-service` 的 `StoreAuditOnboardingManageServiceImpl`（2026-11-25 用户明确要求）。
+> 注入字段写「××记录器（记录××的人工动作）」这类描述，属于把字段名翻译一遍，读者从类型和名字就能看出来，属于噪音注释。
+
+#### 协议
+
+| 场景 | 要求 |
+|---|---|
+| `@Resource` / `@Autowired` 注入的依赖字段 | **不加 Javadoc**，字段名与类型已足够表达用途 |
+| 接口内的字段变量 | 仍按 §0 要求保留业务语义 Javadoc（极少使用） |
+| DTO / VO / PO 字段 | 仍按 §0 要求保留业务语义 Javadoc |
+| 注入顺序 | 集中在类顶部，按字段名字母序排列 |
+
+#### 审查硬指标（提交前必跑）
+
+```bash
+# 注入字段上方是否还挂着 Javadoc（违规）
+grep -n -B 6 "@Resource" Target.java | grep -E "^\s*[0-9]+[-:]\s*/\*\*\s*$"
+# 预期：0 命中
+```
+
+#### 案例（StoreAuditOnboardingManageServiceImpl，2026-11-25）
+
+- 14 个注入字段（`AccountAuditRecorder` / `IStoreAuditOnboardingApplicationService` / `BiFlowableClient` / `ICommonManageService` / `ICompanyService` / `DataDictionaryProvider` / `FieldPermissionService` / `IStoreAuditOnboardingCompanyService` / `IStoreAuditOnboardingDemandService` / `IStoreAuditOnboardingStoreService` / `IStoreEntryPlatformService` / `IStoreService` / `IStoreSubAccountService` / `IStoreAuditOnboardingArchiveWriteContextDTO` 相关注入）各带一段描述性 Javadoc → 全部删除。
+- 只删紧贴 `@Resource` 的注释块，方法 / 内部类 / 字段其它 Javadoc 一条不动；注入顺序、类型、命名不变。
+- 验证：`mvn -o -pl bi-cashier-service -am -DskipTests compile` → BUILD SUCCESS（纯注释改动，零逻辑变化）。

@@ -52,10 +52,11 @@ description: Use when 修改、审查或新建 bi-cashier-api/bi-cashier-compone
 
 - 接口方法、常量、字段变量必须有业务语义 Javadoc；Impl 的 `@Override` 方法不加方法 Javadoc（含 inheritDoc）。Controller public 方法用中文 Swagger 注解，不加方法 Javadoc；类和自定义 helper 保留必要 Javadoc。
 - Javadoc 必须与真实签名一致：改签名（≥3 参 DTO 化 / 删参 / 合并参）必须在同一 commit 内同步 `@param`（名称逐字一致，失效项删除）；一个方法上方只保留一个 Javadoc 块，描述必须与方法实际行为一致；提交前自查 `stale=0 missing=0 orphan=0`，细则见 documentation-rules §0.4。
-- DTO/VO 字段 Javadoc 末尾不加句号，字段间与类体首尾留空行；Resource 注入集中在类顶部按字段名字母序。
+- DTO/VO 字段 Javadoc 末尾不加句号，字段间与类体首尾留空行；Resource 注入集中在类顶部按字段名字母序，且**注入字段不加 Javadoc**（细则见 documentation-rules §0.5）。
 - 业务失败抛 `BusinessException`，提示语面向用户，不暴露内部术语；关键业务键放日志。CRUD 失败、CAS 冲突、RPC 异常等不得静默处理。Controller 不承担业务日志。
 - 禁止循环查库/同步跨 Service 写入、吞异常、printStackTrace；跨服务复用已有 API Feign Client。Controller 禁用已废弃 `@BusLogs`。
 - 清理真正零引用方法/import/形参；不误删契约参数。一次调用的简单 wrapper 优先内联，保留真实复杂逻辑或复用 helper，详见 code-structure §8。
+- 单点调用 + 无业务语义的薄壳 helper（try/catch 包一次调用、纯字符串归一化、纯字典取值）一律内联到调用点，不单独声明方法，详见 code-structure §8.6。
 - 测试仅放 `bi-cashier-web/src/test`，仅针对 Controller 公开方法；api/component/service 不建 src/test。
 
 ## 按需细则导航
@@ -67,7 +68,7 @@ Use `references/po-identity.md` when 修改 PO 继承、审计字段或业务唯
 Use `references/po-boundaries.md` when 审查 XML 返回类型、PO 继承边界或 MP 泛型三件套（原核心 §4.7）。
 Use `references/pagination-rules.md` when 新增或修改分页、PageHelper 与 Mapper XML（原核心 §4.8）。
 Use `references/method-contracts.md` when 修改参数对象化、BeanCopy、日志、helper 或 PO 显式字段映射（原核心 §5–13、§4.9）。
-Use `references/documentation-rules.md` when 修改接口/Impl/Controller 注释及无载荷写接口（原代码规范 §0–0.4）。
+Use `references/documentation-rules.md` when 修改接口/Impl/Controller 注释及无载荷写接口（原代码规范 §0–0.5）。
 Use `references/layout-rules.md` when 需要文件布局、注解顺序、泛型、模块归属与完整红线（原代码规范 §1–9）。
 Use `references/code-structure.md` when 修改类结构、DTO/VO 格式、helper 或未使用代码。
 Use `references/coding-quality.md` when 修改命名、异常文案、日志、安全规则或 Feign 契约。
@@ -101,7 +102,7 @@ Use `references/dto-contract-cases.md` when 查实战案例 §12–14：DTO/VO/P
 Use `references/soft-delete-cases.md` when 查实战案例 §15：MP 自动软删与手写 XML 的差异。
 Use `references/audit-and-view-cases.md` when 查实战案例 §15.1、§16：审计自动填充、INSERT 默认值和视图命名。
 Use `references/data-access-cases.md` when 查实战案例 §17–18：BankCard 软删整改和数据级唯一性。
-Use `references/helper-and-comment-cases.md` when 查实战案例 §19–22：Impl 注释、一次调用 wrapper 反模式、Javadoc 与签名脱节、内部类当 DTO 用反模式。
+Use `references/helper-and-comment-cases.md` when 查实战案例 §19–23：Impl 注释、一次调用 wrapper 反模式、Javadoc 与签名脱节、内部类当 DTO 用反模式、单点调用薄壳 helper 内联。
 
 上述拆出文件保留原文细则和案例；不要因其引用了旧 SKILL.md 章节而重新加载所有文件。后续新增规则写入对应主题文件，入口仅保留核心约束与导航。
 

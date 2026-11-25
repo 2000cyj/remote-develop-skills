@@ -262,6 +262,38 @@ grep -rn "private static final class\|private static class" bi-cashier-service/s
 
 ---
 
+### 23. 单点调用的薄壳 helper 内联：StoreAuditOnboardingManageServiceImpl 案例（V20261125 新增）
+
+> 来源：`bi-cashier-service` 的 `StoreAuditOnboardingManageServiceImpl`（2026-11-25 用户明确指出「一处用单纯调用一个方案还独立声明方法」）。
+
+**判定**（三个条件同时成立就是薄壳）：
+
+1. 只有 1 处调用（`grep -c "方法名("` = 1，声明本身不算）；
+2. 方法体没有业务规则：只是「一次调用 + try/catch 兜底」「纯字符串归一化」「纯字典取值」「一次 BeanCopy」；
+3. 方法体 ≤ 10 行，且内联后不破坏可读性。
+
+**本轮处置（4 个）**：
+
+| 原方法 | 行 | 调用点 | 处置 |
+|---|---|---|---|
+| `listPendingTasksSafely(String)` | 559 | `detail()` | 内联：try/catch 就地写，失败按「无待办」降级 |
+| `hasOnboardingPasswordPermission()` | 311 | `detail()` | 内联：权限判断 + try/catch 兜底就地写（用户名取不到 → 无权限） |
+| `mapStoreCountScope(String)` | 3096 | 候选主体列表 | 内联：归一化逻辑写成局部变量 |
+| `loadDepartmentNameMap()` | 2034 | 候选主体列表 | 内联：字典取名就地写 + null 兜底 |
+
+**该留的（不是薄壳，别误删）**：
+
+| 方法 | 留的理由 |
+|---|---|
+| `queryBiUserSafely(Map cache, String adminUserId)` | 承担「本次调用内缓存」，在写店铺档案的循环里反复调用 |
+| `buildAssignComment` / `buildAssignCommentFromStoreRows` | 拼装操作日志文案，有实际逻辑 |
+| `toDemandVOs` / `sumDemandQuantityOfVO` | PO→VO 转换与求和，与 `toDemandVO` 配套 |
+| `resolveReturnNodeHandler` / `resolveNodeCodeByActivityId` | 带日志与异常分支的兜底解析 |
+
+**踩坑（脚本批量删方法时）**：用「从声明行首开始数括号」找方法结束位置是错的——声明行上的空格会让配平提前归零，结果只删掉方法头、留下方法体还把缩进搞乱。正确做法：**从声明行的 `{` 开始配平**，再往上并入紧邻的 javadoc 块。
+
+**验证**：`mvn -o -pl bi-cashier-service -am -DskipTests compile` → BUILD SUCCESS；文件行数 4153 → 4140，私有方法 83 → 80。
+
 ## 红线（必须遵守）
 
 > 任何"已构建通过" / "编译验证完成" / "已通过编译" 的声明，**必须**附可重放的证据。**首选 `IDEA MCP execute_terminal_command` 跑 `mvn install -pl 4 模块 -am`**，拿 `BUILD SUCCESS` 段与 4 模块 SUCCESS 列表进报告。

@@ -428,6 +428,8 @@ private IBankCardManageService bankCardManageService;   // 接口类型，小写
 |--------|------|
 | 类型 | `IXxxManageService`（**接口**，不是 Impl） |
 | 变量名 | `xxxManageService`，全部小写驼峰 |
+| Javadoc | **不加**——注入字段不写描述性 Javadoc，详见 documentation-rules §0.5 |
+| 位置 | 集中在类顶部，按字段名字母序排列 |
 
 ### 8. 类级 Javadoc（必备）
 
